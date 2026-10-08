@@ -280,22 +280,20 @@ describe("AC7 — reflex eval arguments and files", () => {
     expect(exitCode).toBe(1)
   })
 
-  for (const config of ["B", "C"]) {
-    test(`AC7 — --config ${config} reports not implemented and exits 1, before any file is read`, () => {
-      const cwd = makeTempDir("reflex-cli-eval-config-")
-      const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", config)
-      expect(stderr).toContain("not implemented")
-      expect(stdout).toBe("")
-      expect(exitCode).toBe(1)
-    })
-  }
+  test("AC7 — --config C reports not implemented and exits 1, before any file is read", () => {
+    const cwd = makeTempDir("reflex-cli-eval-config-")
+    const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", "C")
+    expect(stderr).toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
 
   test("AC7 — --split, --limit, --k, --max-cost and --dry-run are accepted options", () => {
     const cwd = makeTempDir("reflex-cli-eval-options-")
     const { stdout, stderr, exitCode } = runEvalFrom(
       cwd,
       "--config",
-      "B",
+      "C",
       "--split",
       "tuning",
       "--limit",
@@ -352,6 +350,131 @@ describe("AC7 — reflex eval arguments and files", () => {
     expect(stderr).toContain("index.db")
     expect(stderr).not.toContain("not implemented")
     expect(stderr).not.toMatch(/^\s+at /m)
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+})
+
+describe("AC7 — config B options", () => {
+  test("AC7 — --config B is no longer reported as not implemented: from an empty folder it fails on a missing file, in one line", () => {
+    const cwd = makeTempDir("reflex-cli-eval-b-")
+    const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", "B")
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const rewrite of ["llm", "code"]) {
+    test(`AC7 — --config B --rewrite ${rewrite} is accepted: it goes on to the file checks`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-rewrite-ok-")
+      const { stdout, stderr, exitCode } = runEvalFrom(
+        cwd,
+        "--config",
+        "B",
+        "--rewrite",
+        rewrite
+      )
+      expect(stderr).toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const rewrite of ["foo", "none", ""]) {
+    test(`AC7 — --rewrite "${rewrite}" prints an error naming --rewrite on stderr and exits 1`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-rewrite-bad-")
+      const { stdout, stderr, exitCode } = runEvalFrom(
+        cwd,
+        "--config",
+        "B",
+        "--rewrite",
+        rewrite
+      )
+      expect(stderr).toContain("--rewrite")
+      expect(stderr).toMatch(/llm/)
+      expect(stderr).toMatch(/code/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const rewrite of ["llm", "code"]) {
+    test(`AC7 — --rewrite ${rewrite} with --config A is rejected, naming --rewrite and the config`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-rewrite-a-")
+      const { stdout, stderr, exitCode } = runEvalFrom(
+        cwd,
+        "--config",
+        "A",
+        "--rewrite",
+        rewrite
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("--rewrite")
+      expect(stderr).toMatch(/config/i)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("AC7 — --candidates with a positive integer is accepted: it goes on to the file checks", () => {
+    const cwd = makeTempDir("reflex-cli-eval-candidates-ok-")
+    const { stdout, stderr, exitCode } = runEvalFrom(
+      cwd,
+      "--config",
+      "B",
+      "--candidates",
+      "20"
+    )
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(stderr).not.toMatch(/unknown option/i)
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const candidates of ["0", "-3", "1.5", "abc", ""]) {
+    test(`AC7 — --candidates "${candidates}" prints an error naming --candidates on stderr and exits 1`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-candidates-bad-")
+      const { stdout, stderr, exitCode } = runEvalFrom(
+        cwd,
+        "--config",
+        "B",
+        // The `=` form lets a value start with a dash.
+        `--candidates=${candidates}`
+      )
+      expect(stderr).toContain("--candidates")
+      expect(stderr).toMatch(/positive integer/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("AC7 — config C still reports not implemented, with the config B options", () => {
+    const cwd = makeTempDir("reflex-cli-eval-c-")
+    const { stdout, stderr, exitCode } = runEvalFrom(
+      cwd,
+      "--config",
+      "C",
+      "--rewrite",
+      "code",
+      "--candidates",
+      "20"
+    )
+    expect(stderr).toContain("not implemented")
+    expect(stderr).not.toMatch(/unknown option/i)
     expect(stdout).toBe("")
     expect(exitCode).toBe(1)
   })

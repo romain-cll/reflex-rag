@@ -22,12 +22,23 @@ interface Output {
   citations: string[]
 }
 
+/** What the retrieval loop of config B returns next to the context. */
+interface LoopData {
+  outcome: { type: "answer" | "abstain"; rule: string }
+  hops: number
+  rewrites: number
+  steps: unknown[]
+}
+
 /** What the fake retriever and answerer return for one question. */
 interface Step {
   notes: string[]
   retrievalCalls?: ModelCall[]
+  /** Config B: returned by `retrieve` next to the context. */
+  loop?: LoopData
   output: Output
-  answerCall?: ModelCall
+  /** `null`: the answerer made no model call (an abstention of the loop). */
+  answerCall?: ModelCall | null
   /** The answerer throws this instead of answering. */
   answerError?: { message: string; call?: ModelCall }
 }
@@ -118,7 +129,11 @@ function fakes(steps: Map<string, Step>) {
       if (!step) throw new Error(`unscripted question: ${query}`)
       const context = step.notes.map(chunk)
       contexts.set(query, context)
-      return Promise.resolve({ context, calls: step.retrievalCalls ?? [] })
+      return Promise.resolve({
+        context,
+        calls: step.retrievalCalls ?? [],
+        ...(step.loop ? { loop: step.loop } : {}),
+      })
     },
     answer: (question: string, context: ContextChunk[]) => {
       answerCalls.push({ question, context })
@@ -130,7 +145,10 @@ function fakes(steps: Map<string, Step>) {
       }
       return Promise.resolve({
         output: step.output,
-        call: step.answerCall ?? call("claude-haiku-5-5", 0, 0, 0),
+        call:
+          step.answerCall === undefined
+            ? call("claude-haiku-5-5", 0, 0, 0)
+            : step.answerCall,
       })
     },
   }
@@ -156,26 +174,35 @@ interface RunOptions {
   maxCostUsd?: number
   runsDir?: string
   overrides?: Map<string, Step>
+  config?: string
+  models?: Record<string, string>
+  /** Config B: the loop settings written to the settings line. */
+  loop?: Record<string, unknown>
 }
 
 /** Always writes into a temporary runs folder, never into the repository. */
 function runWith(questions: Question[], options: RunOptions = {}) {
   const runsDir = options.runsDir ?? join(makeTempDir(), "runs")
   const fake = scripted(questions, options.overrides ?? new Map<string, Step>())
-  const result = runEval({
+  const evalOptions = {
     questions,
     retrieve: fake.retrieve,
     answer: fake.answer,
     k: options.k ?? 8,
     maxCostUsd: options.maxCostUsd ?? 1000,
     runsDir,
-    config: "A",
-    split: "test",
-    models: { answerer: "claude-haiku-5-5", embedder: "mistral-embed" },
+    config: options.config ?? "A",
+    split: "test" as const,
+    models: options.models ?? {
+      answerer: "claude-haiku-5-5",
+      embedder: "mistral-embed",
+    },
     thresholds: {},
     gitCommit: "abc1234",
     index: INDEX,
-  })
+    ...(options.loop ? { loop: options.loop } : {}),
+  }
+  const result = runEval(evalOptions)
   return { fake, runsDir, result }
 }
 
@@ -1001,5 +1028,557 @@ describe("AC6 — outputs", () => {
     const { result } = runWith(questions, { runsDir })
     await result
     expect(readdirSync(runsDir)).toHaveLength(1)
+  })
+})
+
+/**
+ * Config B. A model call made by the judge carries `role: "judge"`; the calls
+ * of the embedder, the rewriter and the answerer carry no role. A role, not a
+ * model name: the judge, the rewriter and the answerer all run on Haiku.
+ */
+const HAIKU = "claude-haiku-5-5"
+
+function judgeCall(
+  inputTokens: number,
+  outputTokens: number,
+  latencyMs: number,
+  model = HAIKU
+): ModelCall & { role: "judge" } {
+  return { ...call(model, inputTokens, outputTokens, latencyMs), role: "judge" }
+}
+
+function loopOf(
+  rule: string,
+  hops: number,
+  rewrites: number,
+  type: "answer" | "abstain" = "answer"
+): LoopData {
+  return {
+    outcome: { type, rule },
+    hops,
+    rewrites,
+    steps: [
+      {
+        kind: "search",
+        query: "the question",
+        judged: { c1: 0.9 },
+        kept: ["c1"],
+        assessment: { sufficient: 0.9, links: {}, missing: { choice: "none" } },
+        action: { type, rule },
+      },
+    ],
+  }
+}
+
+const LOOP_SETTINGS = {
+  policy: {
+    thresholds: { relevance: 0.5, sufficient: 0.7, link: 0.5 },
+    budgets: { maxHops: 3, maxRewrites: 1, maxChunks: 12 },
+  },
+  rewriter: "llm",
+  candidates: 50,
+}
+
+const B_MODELS = {
+  judge: HAIKU,
+  rewriter: HAIKU,
+  answerer: HAIKU,
+  embedder: "mistral-embed",
+}
+
+describe("AC2 — records of a loop run (config B)", () => {
+  test("AC2 — a record keeps the loop data returned by retrieve: outcome, hops, rewrites and steps", async () => {
+    const question = makeQuestion(1)
+    const loop = loopOf("sufficient", 2, 1)
+    const overrides = new Map([[question.id, { ...goodStep(question), loop }]])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    expect(plain(records[0]).loop).toEqual(loop)
+  })
+
+  test("AC2 — the trace line of a record holds its loop", async () => {
+    const question = makeQuestion(1)
+    const loop = loopOf("answer-best-effort", 1, 0)
+    const overrides = new Map([[question.id, { ...goodStep(question), loop }]])
+    const { result, runsDir } = runWith([question], { config: "B", overrides })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    expect(plain(JSON.parse(lines[1]!)).loop).toEqual(loop)
+  })
+
+  test("AC2 — a record of config A has no loop", async () => {
+    const { records } = await runWith([makeQuestion(1)]).result
+    expect(plain(records[0]).loop).toBeUndefined()
+  })
+
+  test("AC2 — cost sums every call: embeddings, judge, rewriter and answerer", async () => {
+    const question = makeQuestion(1)
+    const calls = [
+      // 0.10 USD: embedding of the query.
+      call("mistral-embed", MILLION, 0, 10),
+      // 0.10 USD: a judge call.
+      judgeCall(MILLION, 0, 200),
+      // 0.50 USD: a rewriter call, on the same model as the judge.
+      call(HAIKU, 0, MILLION, 300),
+    ]
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          retrievalCalls: calls,
+          loop: loopOf("sufficient", 0, 1),
+          output: answered("Denver"),
+          // 0.10 + 0.50 USD.
+          answerCall: call(HAIKU, MILLION, MILLION, 600),
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    expect(records[0]!.costUsd).toBeCloseTo(1.3, 9)
+    expect(records[0]!.calls).toHaveLength(4)
+    expect(records[0]!.calls.slice(0, 3)).toEqual(calls)
+  })
+
+  test("AC2 — an answer that returns call null adds no call and no cost", async () => {
+    const question = makeQuestion(1)
+    const retrievalCalls = [
+      call("mistral-embed", MILLION, 0, 10),
+      judgeCall(MILLION, 0, 200),
+    ]
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          retrievalCalls,
+          loop: loopOf("sufficient", 0, 0),
+          output: answered("Denver"),
+          answerCall: null,
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    expect(records[0]!.calls).toEqual(retrievalCalls)
+    expect(records[0]!.costUsd).toBeCloseTo(0.2, 9)
+    expect(records[0]!.output).toEqual(answered("Denver"))
+    expect(records[0]!.grade).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC2 — regression, an abstention of the loop is recorded as given, without answer call, and is correct on a no_answer question", async () => {
+    const question = makeQuestion(1, {
+      category: "no_answer",
+      expected: { kind: "abstain" },
+      stale: [],
+      sources: [],
+      sourceGroups: [],
+    })
+    const output = {
+      status: "abstained" as const,
+      value: "",
+      answer: "No relevant note was found (rule abstain-nothing-relevant).",
+      citations: [],
+    }
+    const retrievalCalls = [
+      call("mistral-embed", MILLION, 0, 10),
+      judgeCall(MILLION, 0, 200),
+    ]
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: [],
+          retrievalCalls,
+          loop: loopOf("abstain-nothing-relevant", 0, 1, "abstain"),
+          output,
+          answerCall: null,
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    const record = plain(records[0])
+    expect(record.output).toEqual(output)
+    expect(record.contextNotes).toEqual([])
+    expect(record.calls).toEqual(retrievalCalls)
+    expect(record.recall).toBeNull()
+    expect(record.grade).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC2 — an answer error keeps the loop and costs the loop calls plus the call the error carries", async () => {
+    const question = makeQuestion(1)
+    const loop = loopOf("sufficient", 1, 0)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          // 0.10 USD for the loop.
+          retrievalCalls: [judgeCall(MILLION, 0, 200)],
+          loop,
+          output: answered("unused"),
+          // 2 USD for the call of the failed answer.
+          answerError: {
+            message: "output truncated",
+            call: call("claude-sonnet-5-5", MILLION, 0, 250),
+          },
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    const record = plain(records[0])
+    expect(record.output).toBeNull()
+    expect(record.loop).toEqual(loop)
+    expect(records[0]!.costUsd).toBeCloseTo(2.1, 9)
+  })
+
+  test("AC2 — the cost of the loop calls counts toward the cost cap", async () => {
+    const questions = [1, 2, 3].map((n) => makeQuestion(n))
+    const overrides = new Map(
+      questions.map((q) => [
+        q.id,
+        {
+          notes: q.sources,
+          // 2 USD spent in the loop, nothing for the answer.
+          retrievalCalls: [judgeCall(MILLION, 0, 10, "claude-sonnet-5-5")],
+          loop: loopOf("sufficient", 0, 0),
+          output: answered("Denver"),
+          answerCall: null,
+        } satisfies Step,
+      ])
+    )
+    const { result } = runWith(questions, {
+      config: "B",
+      maxCostUsd: 2,
+      overrides,
+    })
+    const { records, skipped } = await result
+    expect(records).toHaveLength(1)
+    expect(skipped).toBe(2)
+  })
+})
+
+/** A loop record with `judgeCalls` judge calls among its other calls. */
+function loopRecord(
+  n: number,
+  loop: {
+    category?: RunRecord["category"]
+    rule: string
+    hops: number
+    rewrites: number
+    judgeCalls: number
+  }
+): RunRecord {
+  const calls = [
+    call("mistral-embed", 20, 0, 10),
+    ...Array.from({ length: loop.judgeCalls }, () => judgeCall(500, 50, 100)),
+    // The rewriter and the answerer run on the judge's model, without its role.
+    call(HAIKU, 200, 20, 100),
+    call(HAIKU, 1000, 100, 300),
+  ]
+  return {
+    ...makeRecord(n, { category: loop.category ?? "simple", calls }),
+    loop: loopOf(loop.rule, loop.hops, loop.rewrites),
+  } as unknown as RunRecord
+}
+
+describe("AC3 — loop metrics (config B)", () => {
+  const records = [
+    loopRecord(1, { rule: "sufficient", hops: 0, rewrites: 0, judgeCalls: 2 }),
+    loopRecord(2, { rule: "sufficient", hops: 2, rewrites: 0, judgeCalls: 4 }),
+    loopRecord(3, {
+      category: "multi_hop",
+      rule: "answer-best-effort",
+      hops: 1,
+      rewrites: 1,
+      judgeCalls: 3,
+    }),
+    loopRecord(4, {
+      category: "no_answer",
+      rule: "abstain-nothing-relevant",
+      hops: 0,
+      rewrites: 1,
+      judgeCalls: 5,
+    }),
+  ]
+
+  test("AC3 — mean hops per question, per category and overall", () => {
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).meanHops).toBeCloseTo(0.75, 9)
+    expect(plain(byCategory.simple).meanHops).toBeCloseTo(1, 9)
+    expect(plain(byCategory.multi_hop).meanHops).toBeCloseTo(1, 9)
+    expect(plain(byCategory.no_answer).meanHops).toBeCloseTo(0, 9)
+  })
+
+  test("AC3 — mean rewrites per question, per category and overall", () => {
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).meanRewrites).toBeCloseTo(0.5, 9)
+    expect(plain(byCategory.simple).meanRewrites).toBeCloseTo(0, 9)
+    expect(plain(byCategory.multi_hop).meanRewrites).toBeCloseTo(1, 9)
+    expect(plain(byCategory.no_answer).meanRewrites).toBeCloseTo(1, 9)
+  })
+
+  test("AC3 — mean judge calls per question counts the calls with the judge role, not the other calls of the same model", () => {
+    const { overall, byCategory } = summarize(records)
+    // (2 + 4 + 3 + 5) / 4
+    expect(plain(overall).meanJudgeCalls).toBeCloseTo(3.5, 9)
+    expect(plain(byCategory.simple).meanJudgeCalls).toBeCloseTo(3, 9)
+    expect(plain(byCategory.multi_hop).meanJudgeCalls).toBeCloseTo(3, 9)
+    expect(plain(byCategory.no_answer).meanJudgeCalls).toBeCloseTo(5, 9)
+  })
+
+  test("AC3 — a loop record without any judge call counts zero, not null", () => {
+    const summary = summarize([
+      loopRecord(1, {
+        rule: "sufficient",
+        hops: 0,
+        rewrites: 0,
+        judgeCalls: 0,
+      }),
+    ])
+    expect(plain(summary.overall).meanJudgeCalls).toBe(0)
+    expect(plain(summary.overall).meanHops).toBe(0)
+    expect(plain(summary.overall).meanRewrites).toBe(0)
+  })
+
+  test("AC3 — finalRules counts the rule of the final action, per category and overall, only for the rules that occurred", () => {
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).finalRules).toEqual({
+      sufficient: 2,
+      "answer-best-effort": 1,
+      "abstain-nothing-relevant": 1,
+    })
+    expect(plain(byCategory.simple).finalRules).toEqual({ sufficient: 2 })
+    expect(plain(byCategory.multi_hop).finalRules).toEqual({
+      "answer-best-effort": 1,
+    })
+    expect(plain(byCategory.no_answer).finalRules).toEqual({
+      "abstain-nothing-relevant": 1,
+    })
+  })
+
+  test("AC3 — the loop metrics are null and the rule counts empty for config A records", () => {
+    const summary = summarize([makeRecord(1), makeRecord(2)])
+    for (const metrics of [summary.overall, summary.byCategory.simple!]) {
+      expect(plain(metrics).meanHops).toBeNull()
+      expect(plain(metrics).meanRewrites).toBeNull()
+      expect(plain(metrics).meanJudgeCalls).toBeNull()
+      expect(plain(metrics).finalRules).toEqual({})
+    }
+  })
+
+  test("AC3 — runEval writes the loop metrics in summary.json", async () => {
+    const questions = [
+      makeQuestion(1),
+      makeQuestion(2, { category: "temporal" }),
+    ]
+    const overrides = new Map([
+      [
+        "q-001",
+        {
+          ...goodStep(questions[0]!),
+          retrievalCalls: [judgeCall(500, 50, 100), judgeCall(500, 50, 100)],
+          loop: loopOf("sufficient", 1, 0),
+        },
+      ],
+      [
+        "q-002",
+        {
+          ...goodStep(questions[1]!),
+          retrievalCalls: [judgeCall(500, 50, 100)],
+          loop: loopOf("answer-best-effort", 3, 1),
+        },
+      ],
+    ])
+    const { result, runsDir } = runWith(questions, { config: "B", overrides })
+    const { summary } = await result
+    expect(plain(summary.overall).meanHops).toBeCloseTo(2, 9)
+    expect(plain(summary.overall).meanRewrites).toBeCloseTo(0.5, 9)
+    expect(plain(summary.overall).meanJudgeCalls).toBeCloseTo(1.5, 9)
+    expect(plain(summary.byCategory.temporal).finalRules).toEqual({
+      "answer-best-effort": 1,
+    })
+    const written = JSON.parse(
+      readFileSync(join(readRunDir(runsDir), "summary.json"), "utf8")
+    ) as { overall: Record<string, unknown> }
+    expect(written.overall.meanHops).toBeCloseTo(2, 9)
+    expect(written.overall.finalRules).toEqual({
+      sufficient: 1,
+      "answer-best-effort": 1,
+    })
+  })
+})
+
+describe("AC4 — settings line and report of a loop run (config B)", () => {
+  const questions = [
+    makeQuestion(1),
+    makeQuestion(2, { category: "multi_hop" }),
+    makeQuestion(3, {
+      category: "no_answer",
+      expected: { kind: "abstain" },
+      stale: [],
+      sources: [],
+      sourceGroups: [],
+    }),
+  ]
+  const overrides = new Map<string, Step>([
+    [
+      "q-001",
+      {
+        ...goodStep(questions[0]!),
+        retrievalCalls: [judgeCall(500, 50, 100), judgeCall(500, 50, 100)],
+        loop: loopOf("sufficient", 1, 0),
+      },
+    ],
+    [
+      "q-002",
+      {
+        ...goodStep(questions[1]!),
+        retrievalCalls: [judgeCall(500, 50, 100), judgeCall(500, 50, 100)],
+        loop: loopOf("sufficient", 2, 1),
+      },
+    ],
+    [
+      "q-003",
+      {
+        notes: [],
+        retrievalCalls: [judgeCall(500, 50, 100)],
+        loop: loopOf("abstain-nothing-relevant", 0, 0, "abstain"),
+        output: {
+          status: "abstained",
+          value: "",
+          answer: "No relevant note (abstain-nothing-relevant).",
+          citations: [],
+        },
+        answerCall: null,
+      },
+    ],
+  ])
+
+  test("AC4 — the settings line holds the loop settings and the judge and rewriter models", async () => {
+    const { result, runsDir } = runWith(questions, {
+      config: "B",
+      models: B_MODELS,
+      loop: LOOP_SETTINGS,
+      overrides,
+    })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const header = plain(JSON.parse(lines[0]!))
+    expect(header.config).toBe("B")
+    expect(header.models).toEqual(B_MODELS)
+    expect(header.loop).toEqual(LOOP_SETTINGS)
+  })
+
+  test("AC4 — the run folder of config B is named after its config", async () => {
+    const { result, runsDir } = runWith(questions, {
+      config: "B",
+      models: B_MODELS,
+      loop: LOOP_SETTINGS,
+      overrides,
+    })
+    await result
+    expect(readRunDir(runsDir)).toMatch(/[^/]+-B-test$/)
+  })
+
+  /** The markdown tables of a report, as header cells and rows by first cell. */
+  function tablesOf(report: string) {
+    const tables: Array<{ header: string[]; rows: Map<string, string[]> }> = []
+    let current: string[][] = []
+    const flush = () => {
+      if (current.length > 0) {
+        const [header, , ...body] = current as [
+          string[],
+          string[],
+          ...string[][],
+        ]
+        tables.push({
+          header,
+          rows: new Map(body.map((cells) => [cells[0]!, cells])),
+        })
+      }
+      current = []
+    }
+    for (const line of report.split("\n")) {
+      if (!line.startsWith("|")) {
+        flush()
+        continue
+      }
+      current.push(
+        line
+          .replace(/^\||\|$/g, "")
+          .split("|")
+          .map((cell) => cell.trim())
+      )
+    }
+    flush()
+    return tables
+  }
+
+  /** The value of `column` on the row `label`, in whichever table has the column. */
+  function cell(report: string, column: string, label: string): string {
+    const table = tablesOf(report).find((t) => t.header.includes(column))
+    expect(table).toBeDefined()
+    const row = table!.rows.get(label)
+    expect(row).toBeDefined()
+    return row![table!.header.indexOf(column)]!
+  }
+
+  async function reportOf(): Promise<string> {
+    const { result, runsDir } = runWith(questions, {
+      config: "B",
+      models: B_MODELS,
+      loop: LOOP_SETTINGS,
+      overrides,
+    })
+    await result
+    return readFileSync(join(readRunDir(runsDir), "report.md"), "utf8")
+  }
+
+  test("AC4 — report.md has the columns hops, rewrites and judge calls, per category and overall", async () => {
+    const report = await reportOf()
+    expect(Number(cell(report, "hops", "overall"))).toBeCloseTo(1, 9)
+    expect(Number(cell(report, "hops", "simple"))).toBeCloseTo(1, 9)
+    expect(Number(cell(report, "hops", "multi_hop"))).toBeCloseTo(2, 9)
+    expect(Number(cell(report, "hops", "no_answer"))).toBeCloseTo(0, 9)
+    expect(Number(cell(report, "rewrites", "overall"))).toBeCloseTo(1 / 3, 2)
+    expect(Number(cell(report, "rewrites", "multi_hop"))).toBeCloseTo(1, 9)
+    expect(Number(cell(report, "judge calls", "overall"))).toBeCloseTo(5 / 3, 2)
+    expect(Number(cell(report, "judge calls", "no_answer"))).toBeCloseTo(1, 9)
+  })
+
+  test("AC4 — report.md has a column per final rule that occurred, with its count", async () => {
+    const report = await reportOf()
+    expect(cell(report, "sufficient", "overall")).toBe("2")
+    expect(cell(report, "sufficient", "simple")).toBe("1")
+    expect(cell(report, "sufficient", "multi_hop")).toBe("1")
+    expect(cell(report, "abstain-nothing-relevant", "overall")).toBe("1")
+    expect(cell(report, "abstain-nothing-relevant", "no_answer")).toBe("1")
+  })
+
+  test("AC4 — report.md keeps the columns of config A", async () => {
+    const report = await reportOf()
+    const table = tablesOf(report).find((t) => t.header.includes("accuracy"))
+    expect(table).toBeDefined()
+    for (const column of ["n", "recall", "p50 (ms)", "p95 (ms)"]) {
+      expect(table!.header).toContain(column)
+    }
   })
 })
