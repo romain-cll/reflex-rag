@@ -250,9 +250,10 @@
           "Denver"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Portland"
+      ],
       "sources": [
-        "Meetings/2025-07-23 Westgate Realty Partners quarterly review.md",
         "Meetings/2025-06-17 Westgate Realty Partners account handoff.md",
         "People/Anya Castillo.md"
       ],
@@ -272,9 +273,10 @@
           "Lucia Engel"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Isaac Sato"
+      ],
       "sources": [
-        "Specs/Atlas requirements.md",
         "Meetings/2025-03-25 Atlas tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
@@ -296,7 +298,6 @@
       },
       "stale": [],
       "sources": [
-        "Decisions/Dune launch date change.md",
         "Meetings/2025-12-03 Dune schedule review.md",
         "Suppliers/Cobalt Test Labs.md"
       ],
@@ -316,9 +317,10 @@
           "Boston"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Austin"
+      ],
       "sources": [
-        "Meetings/2025-08-23 Harborview College quarterly review.md",
         "Meetings/2025-06-10 Harborview College account handoff.md",
         "People/Aisha Whitfield.md"
       ],
@@ -338,9 +340,10 @@
           "Monterrey"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Penang"
+      ],
       "sources": [
-        "Meetings/2026-01-30 Fjord EVT review.md",
         "Meetings/2025-11-21 Fjord tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
@@ -360,9 +363,10 @@
           "Julian Reyes"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Vera Ibarra"
+      ],
       "sources": [
-        "Specs/Dune requirements.md",
         "Meetings/2025-07-20 Dune tooling sign-off.md",
         "Suppliers/Redstone Plastics.md"
       ],
@@ -384,7 +388,6 @@
       },
       "stale": [],
       "sources": [
-        "Meetings/2025-11-08 Dune DVT review.md",
         "Meetings/2025-10-29 Dune pilot kickoff.md",
         "Customers/Pine Valley Medical Center.md"
       ],
@@ -404,9 +407,10 @@
           "Monterrey"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Penang"
+      ],
       "sources": [
-        "Meetings/2025-05-13 Atlas EVT review.md",
         "Meetings/2025-03-25 Atlas tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
@@ -428,7 +432,6 @@
       },
       "stale": [],
       "sources": [
-        "Meetings/2026-03-26 Fjord DVT review.md",
         "Meetings/2026-03-16 Fjord pilot kickoff.md",
         "Customers/Whitmore Campus Services.md"
       ],
@@ -450,7 +453,6 @@
       },
       "stale": [],
       "sources": [
-        "Decisions/Atlas launch date change.md",
         "Meetings/2025-08-01 Atlas schedule review.md",
         "Suppliers/Anvil Test Labs.md"
       ],
@@ -470,9 +472,10 @@
           "Portland"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Chicago"
+      ],
       "sources": [
-        "Meetings/2026-03-31 Northgate Realty Partners quarterly review.md",
         "Meetings/2026-02-12 Northgate Realty Partners account handoff.md",
         "People/Lena Greer.md"
       ],
@@ -492,9 +495,10 @@
           "Portland"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Chicago"
+      ],
       "sources": [
-        "Meetings/2025-09-04 Whitmore Campus Services quarterly review.md",
         "Meetings/2025-08-04 Whitmore Campus Services account handoff.md",
         "People/Lena Greer.md"
       ],
@@ -516,7 +520,6 @@
       },
       "stale": [],
       "sources": [
-        "Meetings/2025-07-07 Atlas DVT review.md",
         "Meetings/2025-06-27 Atlas pilot kickoff.md",
         "Customers/Westgate Realty Partners.md"
       ],
@@ -536,9 +539,10 @@
           "Denver"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Portland"
+      ],
       "sources": [
-        "Meetings/2026-02-01 Valemont Unified Schools quarterly review.md",
         "Meetings/2025-12-10 Valemont Unified Schools account handoff.md",
         "People/Anya Castillo.md"
       ],
@@ -558,9 +562,10 @@
           "Lucia Engel"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Isaac Sato"
+      ],
       "sources": [
-        "Specs/Fjord requirements.md",
         "Meetings/2025-11-21 Fjord tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
@@ -1457,28 +1462,6 @@
     },
     {
       "category": "multi_hop",
-      "question": "Who is the contact at the lab behind the Ember launch delay?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Marcus Thorne"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Decisions/Ember launch date change.md",
-        "Meetings/2026-03-23 Ember schedule review.md",
-        "Suppliers/Anvil Test Labs.md"
-      ],
-      "entity": "project-0004",
-      "refs": [
-        "chain-0027"
-      ],
-      "split": "test",
-      "id": "q-073"
-    },
-    {
-      "category": "multi_hop",
       "question": "Which office does the current account owner of Maple Ridge University work from?",
       "expected": {
         "kind": "value",
@@ -1486,9 +1469,10 @@
           "Chicago"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Boston"
+      ],
       "sources": [
-        "Meetings/2025-10-26 Maple Ridge University quarterly review.md",
         "Meetings/2025-09-22 Maple Ridge University account handoff.md",
         "People/Leah Ashby.md"
       ],
@@ -1497,29 +1481,7 @@
         "chain-0004"
       ],
       "split": "test",
-      "id": "q-074"
-    },
-    {
-      "category": "multi_hop",
-      "question": "Which office does the current account owner of Larchmont Regional Hospital work from?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Austin"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2026-04-30 Larchmont Regional Hospital quarterly review.md",
-        "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md",
-        "People/Luis Whitaker.md"
-      ],
-      "entity": "customer-0008",
-      "refs": [
-        "chain-0008"
-      ],
-      "split": "test",
-      "id": "q-075"
+      "id": "q-073"
     },
     {
       "category": "multi_hop",
@@ -1532,7 +1494,6 @@
       },
       "stale": [],
       "sources": [
-        "Meetings/2026-06-10 Granite DVT review.md",
         "Meetings/2026-05-31 Granite pilot kickoff.md",
         "Customers/Redwood Hills Realty Partners.md"
       ],
@@ -1541,7 +1502,7 @@
         "chain-0036"
       ],
       "split": "test",
-      "id": "q-076"
+      "id": "q-074"
     },
     {
       "category": "multi_hop",
@@ -1552,9 +1513,10 @@
           "Austin"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Denver"
+      ],
       "sources": [
-        "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md",
         "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md",
         "People/Luis Whitaker.md"
       ],
@@ -1563,73 +1525,74 @@
         "chain-0002"
       ],
       "split": "test",
+      "id": "q-075"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the contact at the lab behind the Ember launch delay?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Marcus Thorne"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-03-23 Ember schedule review.md",
+        "Suppliers/Anvil Test Labs.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0027"
+      ],
+      "split": "test",
+      "id": "q-076"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Granite enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Vera Ibarra"
+        ]
+      },
+      "stale": [
+        "Lucia Engel"
+      ],
+      "sources": [
+        "Meetings/2026-01-08 Granite tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "chain-0033"
+      ],
+      "split": "test",
       "id": "q-077"
     },
     {
       "category": "multi_hop",
-      "question": "Who is the contact at the lab behind the Cirrus launch delay?",
+      "question": "In which city is the supplier of the Cirrus EVT enclosures based?",
       "expected": {
         "kind": "value",
         "values": [
-          "Mei Lund"
+          "Shenzhen"
         ]
       },
-      "stale": [],
+      "stale": [
+        "Monterrey"
+      ],
       "sources": [
-        "Decisions/Cirrus launch date change.md",
-        "Meetings/2025-10-26 Cirrus schedule review.md",
-        "Suppliers/Halcyon Compliance Labs.md"
+        "Meetings/2025-05-29 Cirrus tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
       ],
       "entity": "project-0002",
       "refs": [
-        "chain-0019"
+        "chain-0018"
       ],
       "split": "test",
       "id": "q-078"
-    },
-    {
-      "category": "multi_hop",
-      "question": "Which office does the current account owner of Thornbury Unified Schools work from?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Portland"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2025-08-08 Thornbury Unified Schools quarterly review.md",
-        "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md",
-        "People/Tomas Mbeki.md"
-      ],
-      "entity": "customer-0012",
-      "refs": [
-        "chain-0012"
-      ],
-      "split": "test",
-      "id": "q-079"
-    },
-    {
-      "category": "multi_hop",
-      "question": "Who is Larkspur's contact at the supplier building the Ember enclosure?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Isaac Sato"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Specs/Ember requirements.md",
-        "Meetings/2025-09-19 Ember tooling sign-off.md",
-        "Suppliers/Ironwood Plastics.md"
-      ],
-      "entity": "project-0004",
-      "refs": [
-        "chain-0025"
-      ],
-      "split": "test",
-      "id": "q-080"
     },
     {
       "category": "multi_hop",
@@ -1642,7 +1605,6 @@
       },
       "stale": [],
       "sources": [
-        "Meetings/2026-02-26 Ember DVT review.md",
         "Meetings/2026-02-16 Ember pilot kickoff.md",
         "Customers/Maple Ridge University.md"
       ],
@@ -1651,117 +1613,7 @@
         "chain-0028"
       ],
       "split": "test",
-      "id": "q-081"
-    },
-    {
-      "category": "multi_hop",
-      "question": "Who is Larkspur's contact at the supplier building the Granite enclosure?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Vera Ibarra"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Specs/Granite requirements.md",
-        "Meetings/2026-01-08 Granite tooling sign-off.md",
-        "Suppliers/Lattice Molding.md"
-      ],
-      "entity": "project-0006",
-      "refs": [
-        "chain-0033"
-      ],
-      "split": "test",
-      "id": "q-082"
-    },
-    {
-      "category": "multi_hop",
-      "question": "Who is Larkspur's contact at the supplier building the Cirrus enclosure?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Vera Ibarra"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Specs/Cirrus requirements.md",
-        "Meetings/2025-05-29 Cirrus tooling sign-off.md",
-        "Suppliers/Lattice Molding.md"
-      ],
-      "entity": "project-0002",
-      "refs": [
-        "chain-0017"
-      ],
-      "split": "test",
-      "id": "q-083"
-    },
-    {
-      "category": "multi_hop",
-      "question": "Which office does the current account owner of Summit Park Workplace Group work from?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Chicago"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2026-01-17 Summit Park Workplace Group quarterly review.md",
-        "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md",
-        "People/Leah Ashby.md"
-      ],
-      "entity": "customer-0010",
-      "refs": [
-        "chain-0010"
-      ],
-      "split": "test",
-      "id": "q-084"
-    },
-    {
-      "category": "multi_hop",
-      "question": "In which city is the supplier of the Granite EVT enclosures based?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Shenzhen"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2026-04-16 Granite EVT review.md",
-        "Meetings/2026-01-08 Granite tooling sign-off.md",
-        "Suppliers/Lattice Molding.md"
-      ],
-      "entity": "project-0006",
-      "refs": [
-        "chain-0034"
-      ],
-      "split": "test",
-      "id": "q-085"
-    },
-    {
-      "category": "multi_hop",
-      "question": "In which city is the supplier of the Ember EVT enclosures based?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Penang"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2026-01-02 Ember EVT review.md",
-        "Meetings/2025-09-19 Ember tooling sign-off.md",
-        "Suppliers/Ironwood Plastics.md"
-      ],
-      "entity": "project-0004",
-      "refs": [
-        "chain-0026"
-      ],
-      "split": "test",
-      "id": "q-086"
+      "id": "q-079"
     },
     {
       "category": "multi_hop",
@@ -1774,13 +1626,171 @@
       },
       "stale": [],
       "sources": [
-        "Meetings/2025-10-01 Cirrus DVT review.md",
         "Meetings/2025-09-21 Cirrus pilot kickoff.md",
         "Customers/Foxborough Unified Schools.md"
       ],
       "entity": "project-0002",
       "refs": [
         "chain-0020"
+      ],
+      "split": "test",
+      "id": "q-080"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Cirrus enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Vera Ibarra"
+        ]
+      },
+      "stale": [
+        "Lucia Engel"
+      ],
+      "sources": [
+        "Meetings/2025-05-29 Cirrus tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "chain-0017"
+      ],
+      "split": "test",
+      "id": "q-081"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Summit Park Workplace Group work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Chicago"
+        ]
+      },
+      "stale": [
+        "Boston"
+      ],
+      "sources": [
+        "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md",
+        "People/Leah Ashby.md"
+      ],
+      "entity": "customer-0010",
+      "refs": [
+        "chain-0010"
+      ],
+      "split": "test",
+      "id": "q-082"
+    },
+    {
+      "category": "multi_hop",
+      "question": "In which city is the supplier of the Granite EVT enclosures based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Shenzhen"
+        ]
+      },
+      "stale": [
+        "Monterrey"
+      ],
+      "sources": [
+        "Meetings/2026-01-08 Granite tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "chain-0034"
+      ],
+      "split": "test",
+      "id": "q-083"
+    },
+    {
+      "category": "multi_hop",
+      "question": "In which city is the supplier of the Ember EVT enclosures based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Penang"
+        ]
+      },
+      "stale": [
+        "Hsinchu"
+      ],
+      "sources": [
+        "Meetings/2025-09-19 Ember tooling sign-off.md",
+        "Suppliers/Ironwood Plastics.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0026"
+      ],
+      "split": "test",
+      "id": "q-084"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Ember enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Isaac Sato"
+        ]
+      },
+      "stale": [
+        "Julian Reyes"
+      ],
+      "sources": [
+        "Meetings/2025-09-19 Ember tooling sign-off.md",
+        "Suppliers/Ironwood Plastics.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0025"
+      ],
+      "split": "test",
+      "id": "q-085"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Larchmont Regional Hospital work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Austin"
+        ]
+      },
+      "stale": [
+        "Denver"
+      ],
+      "sources": [
+        "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md",
+        "People/Luis Whitaker.md"
+      ],
+      "entity": "customer-0008",
+      "refs": [
+        "chain-0008"
+      ],
+      "split": "test",
+      "id": "q-086"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the contact at the lab behind the Cirrus launch delay?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Mei Lund"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-26 Cirrus schedule review.md",
+        "Suppliers/Halcyon Compliance Labs.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "chain-0019"
       ],
       "split": "test",
       "id": "q-087"
@@ -1809,25 +1819,71 @@
     },
     {
       "category": "temporal",
-      "question": "Who owns the Larchmont Regional Hospital account?",
+      "question": "What is Hector Haddad's current role?",
       "expected": {
         "kind": "value",
         "values": [
-          "Luis Whitaker"
+          "Firmware Lead"
         ]
       },
       "stale": [
-        "Anya Castillo"
+        "Firmware Engineer"
       ],
       "sources": [
-        "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md"
+        "Meetings/2025-11-05 All-hands.md",
+        "Journal/Zoe Adeyemi/2025-11-09 Zoe Adeyemi journal.md"
       ],
-      "entity": "customer-0008",
+      "entity": "person-0014",
       "refs": [
-        "fact-0124"
+        "fact-0274"
       ],
       "split": "test",
       "id": "q-089"
+    },
+    {
+      "category": "temporal",
+      "question": "What is Rosa Novak's current role?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Mechanical Engineering Lead"
+        ]
+      },
+      "stale": [
+        "Mechanical Engineer"
+      ],
+      "sources": [
+        "Meetings/2026-05-25 All-hands.md",
+        "Journal/Ruth Holloway/2026-05-26 Ruth Holloway journal.md"
+      ],
+      "entity": "person-0010",
+      "refs": [
+        "fact-0275"
+      ],
+      "split": "test",
+      "id": "q-090"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Summit Park Workplace Group account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Leah Ashby"
+        ]
+      },
+      "stale": [
+        "Aisha Whitfield"
+      ],
+      "sources": [
+        "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md"
+      ],
+      "entity": "customer-0010",
+      "refs": [
+        "fact-0136"
+      ],
+      "split": "test",
+      "id": "q-091"
     },
     {
       "category": "temporal",
@@ -1849,29 +1905,29 @@
         "fact-0100"
       ],
       "split": "test",
-      "id": "q-090"
+      "id": "q-092"
     },
     {
       "category": "temporal",
-      "question": "Who owns the Thornbury Unified Schools account?",
+      "question": "Who owns the Larchmont Regional Hospital account?",
       "expected": {
         "kind": "value",
         "values": [
-          "Tomas Mbeki"
+          "Luis Whitaker"
         ]
       },
       "stale": [
-        "Lena Greer"
+        "Anya Castillo"
       ],
       "sources": [
-        "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md"
+        "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md"
       ],
-      "entity": "customer-0012",
+      "entity": "customer-0008",
       "refs": [
-        "fact-0148"
+        "fact-0124"
       ],
       "split": "test",
-      "id": "q-091"
+      "id": "q-093"
     },
     {
       "category": "temporal",
@@ -1895,120 +1951,7 @@
         "fact-0269"
       ],
       "split": "test",
-      "id": "q-092"
-    },
-    {
-      "category": "temporal",
-      "question": "What is Hector Haddad's current role?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Firmware Lead"
-        ]
-      },
-      "stale": [
-        "Firmware Engineer"
-      ],
-      "sources": [
-        "Meetings/2025-11-05 All-hands.md",
-        "Journal/Zoe Adeyemi/2025-11-09 Zoe Adeyemi journal.md"
-      ],
-      "entity": "person-0014",
-      "refs": [
-        "fact-0274"
-      ],
-      "split": "test",
-      "id": "q-093"
-    },
-    {
-      "category": "temporal",
-      "question": "Who owns the Redwood Hills Realty Partners account?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Tomas Mbeki"
-        ]
-      },
-      "stale": [
-        "Lena Greer"
-      ],
-      "sources": [
-        "Meetings/2025-10-09 Redwood Hills Realty Partners account handoff.md"
-      ],
-      "entity": "customer-0006",
-      "refs": [
-        "fact-0112"
-      ],
-      "split": "test",
       "id": "q-094"
-    },
-    {
-      "category": "temporal",
-      "question": "Who owns the Summit Park Workplace Group account?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Leah Ashby"
-        ]
-      },
-      "stale": [
-        "Aisha Whitfield"
-      ],
-      "sources": [
-        "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md"
-      ],
-      "entity": "customer-0010",
-      "refs": [
-        "fact-0136"
-      ],
-      "split": "test",
-      "id": "q-095"
-    },
-    {
-      "category": "temporal",
-      "question": "When is Cirrus scheduled to launch?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "June 27, 2027",
-          "2027-06-27"
-        ]
-      },
-      "stale": [
-        "March 31, 2027"
-      ],
-      "sources": [
-        "Meetings/2025-10-26 Cirrus schedule review.md",
-        "Decisions/Cirrus launch date change.md"
-      ],
-      "entity": "project-0002",
-      "refs": [
-        "fact-0189"
-      ],
-      "split": "test",
-      "id": "q-096"
-    },
-    {
-      "category": "temporal",
-      "question": "Which quote was selected for the Ember enclosure?",
-      "expected": {
-        "kind": "value",
-        "values": [
-          "Ironwood Plastics"
-        ]
-      },
-      "stale": [
-        "Redstone Plastics"
-      ],
-      "sources": [
-        "Meetings/2025-09-19 Ember tooling sign-off.md"
-      ],
-      "entity": "project-0004",
-      "refs": [
-        "fact-0223"
-      ],
-      "split": "test",
-      "id": "q-097"
     },
     {
       "category": "temporal",
@@ -2028,6 +1971,73 @@
       "entity": "project-0002",
       "refs": [
         "fact-0183"
+      ],
+      "split": "test",
+      "id": "q-095"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Thornbury Unified Schools account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Tomas Mbeki"
+        ]
+      },
+      "stale": [
+        "Lena Greer"
+      ],
+      "sources": [
+        "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md"
+      ],
+      "entity": "customer-0012",
+      "refs": [
+        "fact-0148"
+      ],
+      "split": "test",
+      "id": "q-096"
+    },
+    {
+      "category": "temporal",
+      "question": "What is Tomas Mbeki's current role?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Senior Account Executive"
+        ]
+      },
+      "stale": [
+        "Account Executive"
+      ],
+      "sources": [
+        "Meetings/2025-11-05 All-hands.md",
+        "Journal/Tessa Okafor/2025-11-10 Tessa Okafor journal.md"
+      ],
+      "entity": "person-0016",
+      "refs": [
+        "fact-0273"
+      ],
+      "split": "test",
+      "id": "q-097"
+    },
+    {
+      "category": "temporal",
+      "question": "Which quote was selected for the Granite enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Lattice Molding"
+        ]
+      },
+      "stale": [
+        "Wexford Molding"
+      ],
+      "sources": [
+        "Meetings/2026-01-08 Granite tooling sign-off.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "fact-0263"
       ],
       "split": "test",
       "id": "q-098"
@@ -2058,69 +2068,47 @@
     },
     {
       "category": "contradiction",
-      "question": "What is the annual contract value with Summit Park Workplace Group?",
+      "question": "How many units did the Granite EVT build produce?",
       "expected": {
         "kind": "conflict",
         "values": [
-          "$172,000",
-          "$198,000"
+          "89 units",
+          "94 units"
         ]
       },
       "stale": [],
       "sources": [
-        "Meetings/2026-01-17 Summit Park Workplace Group quarterly review.md",
-        "Customers/Summit Park Workplace Group billing summary.md"
+        "Meetings/2026-04-16 Granite EVT review.md",
+        "Journal/Zoe Adeyemi/2026-04-18 Zoe Adeyemi journal.md"
       ],
-      "entity": "customer-0010",
+      "entity": "project-0006",
       "refs": [
-        "trap-0016"
+        "trap-0061"
       ],
       "split": "test",
       "id": "q-100"
     },
     {
       "category": "contradiction",
-      "question": "How many units did the Cirrus EVT build produce?",
+      "question": "What battery life do the Ember requirements call for?",
       "expected": {
         "kind": "conflict",
         "values": [
-          "65 units",
-          "70 units"
+          "48 months",
+          "26 months"
         ]
       },
       "stale": [],
       "sources": [
-        "Meetings/2025-08-07 Cirrus EVT review.md",
-        "Journal/Zoe Adeyemi/2025-08-09 Zoe Adeyemi journal.md"
-      ],
-      "entity": "project-0002",
-      "refs": [
-        "trap-0033"
-      ],
-      "split": "test",
-      "id": "q-101"
-    },
-    {
-      "category": "contradiction",
-      "question": "How many units did the Ember EVT build produce?",
-      "expected": {
-        "kind": "conflict",
-        "values": [
-          "74 units",
-          "79 units"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2026-01-02 Ember EVT review.md",
-        "Journal/Rosa Novak/2026-01-04 Rosa Novak journal.md"
+        "Specs/Ember requirements.md",
+        "Specs/Ember requirements (copy).md"
       ],
       "entity": "project-0004",
       "refs": [
-        "trap-0047"
+        "trap-0046"
       ],
       "split": "test",
-      "id": "q-102"
+      "id": "q-101"
     },
     {
       "category": "contradiction",
@@ -2140,6 +2128,28 @@
       "entity": "project-0002",
       "refs": [
         "trap-0032"
+      ],
+      "split": "test",
+      "id": "q-102"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Maple Ridge University?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$78,000",
+          "$101,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-26 Maple Ridge University quarterly review.md",
+        "Customers/Maple Ridge University billing summary.md"
+      ],
+      "entity": "customer-0004",
+      "refs": [
+        "trap-0006"
       ],
       "split": "test",
       "id": "q-103"
@@ -2168,69 +2178,25 @@
     },
     {
       "category": "contradiction",
-      "question": "What battery life do the Granite requirements call for?",
+      "question": "How many units did the Ember EVT build produce?",
       "expected": {
         "kind": "conflict",
         "values": [
-          "53 months",
-          "55 months"
+          "74 units",
+          "79 units"
         ]
       },
       "stale": [],
       "sources": [
-        "Specs/Granite requirements.md",
-        "Specs/Granite requirements (copy).md"
+        "Meetings/2026-01-02 Ember EVT review.md",
+        "Journal/Rosa Novak/2026-01-04 Rosa Novak journal.md"
       ],
-      "entity": "project-0006",
+      "entity": "project-0004",
       "refs": [
-        "trap-0060"
+        "trap-0047"
       ],
       "split": "test",
       "id": "q-105"
-    },
-    {
-      "category": "contradiction",
-      "question": "What is the annual contract value with Maple Ridge University?",
-      "expected": {
-        "kind": "conflict",
-        "values": [
-          "$78,000",
-          "$101,000"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2025-10-26 Maple Ridge University quarterly review.md",
-        "Customers/Maple Ridge University billing summary.md"
-      ],
-      "entity": "customer-0004",
-      "refs": [
-        "trap-0006"
-      ],
-      "split": "test",
-      "id": "q-106"
-    },
-    {
-      "category": "contradiction",
-      "question": "How many units did the Granite EVT build produce?",
-      "expected": {
-        "kind": "conflict",
-        "values": [
-          "89 units",
-          "94 units"
-        ]
-      },
-      "stale": [],
-      "sources": [
-        "Meetings/2026-04-16 Granite EVT review.md",
-        "Journal/Zoe Adeyemi/2026-04-18 Zoe Adeyemi journal.md"
-      ],
-      "entity": "project-0006",
-      "refs": [
-        "trap-0061"
-      ],
-      "split": "test",
-      "id": "q-107"
     },
     {
       "category": "contradiction",
@@ -2252,97 +2218,51 @@
         "trap-0013"
       ],
       "split": "test",
-      "id": "q-108"
+      "id": "q-106"
     },
     {
-      "category": "no_answer",
-      "question": "Which LEED certification level does Thornbury Unified Schools target?",
+      "category": "contradiction",
+      "question": "How many units did the Cirrus EVT build produce?",
       "expected": {
-        "kind": "abstain"
+        "kind": "conflict",
+        "values": [
+          "65 units",
+          "70 units"
+        ]
       },
       "stale": [],
-      "sources": [],
-      "entity": "customer-0012",
-      "refs": [
-        "absent-0019"
+      "sources": [
+        "Meetings/2025-08-07 Cirrus EVT review.md",
+        "Journal/Zoe Adeyemi/2025-08-09 Zoe Adeyemi journal.md"
       ],
-      "split": "test",
-      "id": "q-109"
-    },
-    {
-      "category": "no_answer",
-      "question": "At which trade show will Cirrus be shown?",
-      "expected": {
-        "kind": "abstain"
-      },
-      "stale": [],
-      "sources": [],
       "entity": "project-0002",
       "refs": [
-        "absent-0023"
+        "trap-0033"
       ],
       "split": "test",
-      "id": "q-110"
+      "id": "q-107"
     },
     {
-      "category": "no_answer",
-      "question": "Has Larkspur filed a patent for Granite?",
+      "category": "contradiction",
+      "question": "What battery life do the Granite requirements call for?",
       "expected": {
-        "kind": "abstain"
+        "kind": "conflict",
+        "values": [
+          "53 months",
+          "55 months"
+        ]
       },
       "stale": [],
-      "sources": [],
+      "sources": [
+        "Specs/Granite requirements.md",
+        "Specs/Granite requirements (copy).md"
+      ],
       "entity": "project-0006",
       "refs": [
-        "absent-0030"
+        "trap-0060"
       ],
       "split": "test",
-      "id": "q-111"
-    },
-    {
-      "category": "no_answer",
-      "question": "What data-residency requirements does Redwood Hills Realty Partners have?",
-      "expected": {
-        "kind": "abstain"
-      },
-      "stale": [],
-      "sources": [],
-      "entity": "customer-0006",
-      "refs": [
-        "absent-0013"
-      ],
-      "split": "test",
-      "id": "q-112"
-    },
-    {
-      "category": "no_answer",
-      "question": "When did Larkspur pass its SOC 2 audit?",
-      "expected": {
-        "kind": "abstain"
-      },
-      "stale": [],
-      "sources": [],
-      "entity": "company:SOC 2 audit",
-      "refs": [
-        "absent-0032"
-      ],
-      "split": "test",
-      "id": "q-113"
-    },
-    {
-      "category": "no_answer",
-      "question": "Which LEED certification level does Maple Ridge University target?",
-      "expected": {
-        "kind": "abstain"
-      },
-      "stale": [],
-      "sources": [],
-      "entity": "customer-0004",
-      "refs": [
-        "absent-0011"
-      ],
-      "split": "test",
-      "id": "q-114"
+      "id": "q-108"
     },
     {
       "category": "no_answer",
@@ -2357,37 +2277,97 @@
         "absent-0017"
       ],
       "split": "test",
+      "id": "q-109"
+    },
+    {
+      "category": "no_answer",
+      "question": "When did Larkspur pass its SOC 2 audit?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "company:SOC 2 audit",
+      "refs": [
+        "absent-0032"
+      ],
+      "split": "test",
+      "id": "q-110"
+    },
+    {
+      "category": "no_answer",
+      "question": "What data-residency requirements does Foxborough Unified Schools have?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0002",
+      "refs": [
+        "absent-0009"
+      ],
+      "split": "test",
+      "id": "q-111"
+    },
+    {
+      "category": "no_answer",
+      "question": "Which LEED certification level does Maple Ridge University target?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0004",
+      "refs": [
+        "absent-0011"
+      ],
+      "split": "test",
+      "id": "q-112"
+    },
+    {
+      "category": "no_answer",
+      "question": "What data-residency requirements does Redwood Hills Realty Partners have?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0006",
+      "refs": [
+        "absent-0013"
+      ],
+      "split": "test",
+      "id": "q-113"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Larkspur filed a patent for Granite?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0006",
+      "refs": [
+        "absent-0030"
+      ],
+      "split": "test",
+      "id": "q-114"
+    },
+    {
+      "category": "no_answer",
+      "question": "When does Cirrus launch in Japan?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0002",
+      "refs": [
+        "absent-0022"
+      ],
+      "split": "test",
       "id": "q-115"
-    },
-    {
-      "category": "no_answer",
-      "question": "How much did the Ember crowdfunding campaign raise?",
-      "expected": {
-        "kind": "abstain"
-      },
-      "stale": [],
-      "sources": [],
-      "entity": "project-0004",
-      "refs": [
-        "absent-0026"
-      ],
-      "split": "test",
-      "id": "q-116"
-    },
-    {
-      "category": "no_answer",
-      "question": "Has Gemini Circuits sent its conflict minerals report?",
-      "expected": {
-        "kind": "abstain"
-      },
-      "stale": [],
-      "sources": [],
-      "entity": "supplier-0006",
-      "refs": [
-        "absent-0006"
-      ],
-      "split": "test",
-      "id": "q-117"
     },
     {
       "category": "no_answer",
@@ -2402,34 +2382,64 @@
         "absent-0002"
       ],
       "split": "test",
-      "id": "q-118"
+      "id": "q-116"
     },
     {
       "category": "no_answer",
-      "question": "When does Ember launch in Japan?",
+      "question": "At which trade show will Cirrus be shown?",
       "expected": {
         "kind": "abstain"
       },
       "stale": [],
       "sources": [],
-      "entity": "project-0004",
+      "entity": "project-0002",
       "refs": [
-        "absent-0027"
+        "absent-0023"
+      ],
+      "split": "test",
+      "id": "q-117"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Gemini Circuits sent its conflict minerals report?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "supplier-0006",
+      "refs": [
+        "absent-0006"
+      ],
+      "split": "test",
+      "id": "q-118"
+    },
+    {
+      "category": "no_answer",
+      "question": "Is Redstone Plastics ISO 14001 certified?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "supplier-0004",
+      "refs": [
+        "absent-0004"
       ],
       "split": "test",
       "id": "q-119"
     },
     {
       "category": "no_answer",
-      "question": "What data-residency requirements does Foxborough Unified Schools have?",
+      "question": "Which LEED certification level does Thornbury Unified Schools target?",
       "expected": {
         "kind": "abstain"
       },
       "stale": [],
       "sources": [],
-      "entity": "customer-0002",
+      "entity": "customer-0012",
       "refs": [
-        "absent-0009"
+        "absent-0019"
       ],
       "split": "test",
       "id": "q-120"
