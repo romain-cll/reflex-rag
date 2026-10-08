@@ -2,7 +2,8 @@ import type { ModelCall } from "./types.ts"
 
 export interface Embedding {
   vectors: Float32Array[]
-  call: ModelCall
+  /** One per request sent. */
+  calls: ModelCall[]
 }
 
 export interface Embedder {
