@@ -21,6 +21,7 @@ export interface SearchResult {
 
 export interface Index {
   getNote(pathOrTitle: string): Note | null
+  chunk(id: string): Chunk | null
   chunksOf(path: string): Chunk[]
   outgoingLinks(path: string): Link[]
   backlinks(path: string): Link[]
@@ -49,6 +50,9 @@ export function openIndex(dbPath: string): Index {
     `SELECT path, title, date, summary, frontmatter FROM notes
      WHERE titleKey = ? ORDER BY rowid LIMIT 1`
   )
+  const chunkById = db.query<Chunk, [string]>(
+    `SELECT ${CHUNK_COLUMNS} FROM chunks WHERE id = ?`
+  )
   const chunksOf = db.query<Chunk, [string]>(
     `SELECT ${CHUNK_COLUMNS} FROM chunks WHERE notePath = ? ORDER BY rowid`
   )
@@ -76,6 +80,7 @@ export function openIndex(dbPath: string): Index {
         noteByTitle.get(pathOrTitle.toLowerCase())
       return row && toNote(row)
     },
+    chunk: (id) => chunkById.get(id),
     chunksOf: (path) => chunksOf.all(path),
     outgoingLinks: (path) => outgoing.all(path),
     backlinks: (path) => incoming.all(path),
