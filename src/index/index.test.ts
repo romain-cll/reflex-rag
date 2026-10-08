@@ -363,7 +363,7 @@ describe("AC6 — BM25 search", () => {
     const results = open(dbPath).searchBM25("validated vendors", 5)
     expect(results.map((r) => r.chunk)).toContainEqual(checks())
     expect(results[0]!.chunk).toEqual(checks())
-    expect(results[0]!.score).toEqual(expect.any(Number))
+    expect(typeof results[0]!.score).toBe("number")
   })
 
   test("AC6 — returns at most k results", () => {
