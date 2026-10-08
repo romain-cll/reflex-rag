@@ -5,7 +5,7 @@ Phase 2. `reflex eval --config A` runs a question split through retrieval and th
 ## Acceptance criteria
 
 - **AC1 — grading**: `grade(question, output, contextNotes)` returns `{ correct, failure }`:
-  - `value`: correct when `status` is `answered` and the output's `value` contains one of the expected values and none of the stale values, compared case-insensitively with whitespace collapsed and thousands separators ignored (`$48,200` = `$48200`). The explanation in `answer` is not graded: it may mention the outdated value it replaces;
+  - `value`: correct when `status` is `answered` and the output's `value` contains one of the expected values and none of the stale values, compared case-insensitively with whitespace collapsed and thousands separators ignored (`$48,200` = `$48200`). A stale value that is only part of the matched expected value does not count (`Senior Product Manager` contains `Product Manager`). The explanation in `answer` is not graded: it may mention the outdated value it replaces;
   - `conflict`: correct when `status` is `conflict` and the answer contains both values;
   - `undecided`: correct when `status` is `answered` and the `value` or the answer says no decision was made (`no decision`, `not decided`, `undecided`, `has not been decided`, `not been settled`, `not settled`, `still open`, `left open`, `remains open`, `no final decision`);
   - `abstain`: correct when `status` is `abstained`.
