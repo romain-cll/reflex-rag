@@ -1,0 +1,2438 @@
+{
+  "world": {
+    "seed": 42,
+    "scale": 1
+  },
+  "questions": [
+    {
+      "category": "simple",
+      "question": "What kind of customer is Whitmore Campus Services?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "corporate campus"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Whitmore Campus Services.md"
+      ],
+      "entity": "customer-0005",
+      "refs": [
+        "fact-0103"
+      ],
+      "split": "tuning",
+      "id": "q-001"
+    },
+    {
+      "category": "simple",
+      "question": "How much did Ironwood Plastics ask for the Fjord enclosure tooling?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "$36,300"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Quotes/Fjord enclosure - Ironwood Plastics.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "fact-0237"
+      ],
+      "split": "tuning",
+      "id": "q-002"
+    },
+    {
+      "category": "simple",
+      "question": "Which office does Ines Fitzgerald work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Denver"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "People/Ines Fitzgerald.md"
+      ],
+      "entity": "person-0022",
+      "refs": [
+        "fact-0044"
+      ],
+      "split": "tuning",
+      "id": "q-003"
+    },
+    {
+      "category": "simple",
+      "question": "Who is the main contact at Northgate Realty Partners?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Bennett Calloway"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Northgate Realty Partners.md"
+      ],
+      "entity": "customer-0011",
+      "refs": [
+        "fact-0140"
+      ],
+      "split": "tuning",
+      "id": "q-004"
+    },
+    {
+      "category": "simple",
+      "question": "Where is Anvil Test Labs based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "San Jose"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Suppliers/Anvil Test Labs.md"
+      ],
+      "entity": "supplier-0011",
+      "refs": [
+        "fact-0073"
+      ],
+      "split": "tuning",
+      "id": "q-005"
+    },
+    {
+      "category": "simple",
+      "question": "What price per pack did Everest Energy give for the Dune battery pack?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "$5.74"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Quotes/Dune battery pack - Everest Energy.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "fact-0201"
+      ],
+      "split": "tuning",
+      "id": "q-006"
+    },
+    {
+      "category": "simple",
+      "question": "What kind of customer is Westgate Realty Partners?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "property management"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Westgate Realty Partners.md"
+      ],
+      "entity": "customer-0001",
+      "refs": [
+        "fact-0079"
+      ],
+      "split": "tuning",
+      "id": "q-007"
+    },
+    {
+      "category": "simple",
+      "question": "Did the leadership team decide on moving the sales team to a new CRM?",
+      "expected": {
+        "kind": "undecided"
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-12-04 Operations review.md"
+      ],
+      "entity": "company:CRM",
+      "refs": [
+        "trap-0069"
+      ],
+      "split": "tuning",
+      "id": "q-008"
+    },
+    {
+      "category": "simple",
+      "question": "What issue did the Atlas DVT units show?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "warped enclosure lid"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-07-07 Atlas DVT review.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "fact-0168"
+      ],
+      "split": "tuning",
+      "id": "q-009"
+    },
+    {
+      "category": "simple",
+      "question": "Who is Larkspur's account contact at Northstar Electronics?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Amara Duarte"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Suppliers/Northstar Electronics.md"
+      ],
+      "entity": "supplier-0005",
+      "refs": [
+        "fact-0062"
+      ],
+      "split": "tuning",
+      "id": "q-010"
+    },
+    {
+      "category": "simple",
+      "question": "Which customer is piloting Dune?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Pine Valley Medical Center"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-29 Dune pilot kickoff.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "fact-0207"
+      ],
+      "split": "tuning",
+      "id": "q-011"
+    },
+    {
+      "category": "simple",
+      "question": "What is the target unit cost for Dune?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "$95"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Dune requirements.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "fact-0196"
+      ],
+      "split": "tuning",
+      "id": "q-012"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Westgate Realty Partners work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Denver"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-07-23 Westgate Realty Partners quarterly review.md",
+        "Meetings/2025-06-17 Westgate Realty Partners account handoff.md",
+        "People/Anya Castillo.md"
+      ],
+      "entity": "customer-0001",
+      "refs": [
+        "chain-0001"
+      ],
+      "split": "tuning",
+      "id": "q-013"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Atlas enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Lucia Engel"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Atlas requirements.md",
+        "Meetings/2025-03-25 Atlas tooling sign-off.md",
+        "Suppliers/Wexford Molding.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "chain-0013"
+      ],
+      "split": "tuning",
+      "id": "q-014"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the contact at the lab behind the Dune launch delay?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Felix Mills"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Decisions/Dune launch date change.md",
+        "Meetings/2025-12-03 Dune schedule review.md",
+        "Suppliers/Cobalt Test Labs.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "chain-0023"
+      ],
+      "split": "tuning",
+      "id": "q-015"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Harborview College work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Boston"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-08-23 Harborview College quarterly review.md",
+        "Meetings/2025-06-10 Harborview College account handoff.md",
+        "People/Aisha Whitfield.md"
+      ],
+      "entity": "customer-0009",
+      "refs": [
+        "chain-0009"
+      ],
+      "split": "tuning",
+      "id": "q-016"
+    },
+    {
+      "category": "multi_hop",
+      "question": "In which city is the supplier of the Fjord EVT enclosures based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Monterrey"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-01-30 Fjord EVT review.md",
+        "Meetings/2025-11-21 Fjord tooling sign-off.md",
+        "Suppliers/Wexford Molding.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "chain-0030"
+      ],
+      "split": "tuning",
+      "id": "q-017"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Dune enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Julian Reyes"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Dune requirements.md",
+        "Meetings/2025-07-20 Dune tooling sign-off.md",
+        "Suppliers/Redstone Plastics.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "chain-0021"
+      ],
+      "split": "tuning",
+      "id": "q-018"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the main contact at the customer running the Dune pilot?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Maya Raman"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-11-08 Dune DVT review.md",
+        "Meetings/2025-10-29 Dune pilot kickoff.md",
+        "Customers/Pine Valley Medical Center.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "chain-0024"
+      ],
+      "split": "tuning",
+      "id": "q-019"
+    },
+    {
+      "category": "multi_hop",
+      "question": "In which city is the supplier of the Atlas EVT enclosures based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Monterrey"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-05-13 Atlas EVT review.md",
+        "Meetings/2025-03-25 Atlas tooling sign-off.md",
+        "Suppliers/Wexford Molding.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "chain-0014"
+      ],
+      "split": "tuning",
+      "id": "q-020"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the main contact at the customer running the Fjord pilot?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Simon Brennan"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-03-26 Fjord DVT review.md",
+        "Meetings/2026-03-16 Fjord pilot kickoff.md",
+        "Customers/Whitmore Campus Services.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "chain-0032"
+      ],
+      "split": "tuning",
+      "id": "q-021"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the contact at the lab behind the Atlas launch delay?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Marcus Thorne"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Decisions/Atlas launch date change.md",
+        "Meetings/2025-08-01 Atlas schedule review.md",
+        "Suppliers/Anvil Test Labs.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "chain-0015"
+      ],
+      "split": "tuning",
+      "id": "q-022"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Northgate Realty Partners work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Portland"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-03-31 Northgate Realty Partners quarterly review.md",
+        "Meetings/2026-02-12 Northgate Realty Partners account handoff.md",
+        "People/Lena Greer.md"
+      ],
+      "entity": "customer-0011",
+      "refs": [
+        "chain-0011"
+      ],
+      "split": "tuning",
+      "id": "q-023"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Whitmore Campus Services work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Portland"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-09-04 Whitmore Campus Services quarterly review.md",
+        "Meetings/2025-08-04 Whitmore Campus Services account handoff.md",
+        "People/Lena Greer.md"
+      ],
+      "entity": "customer-0005",
+      "refs": [
+        "chain-0005"
+      ],
+      "split": "tuning",
+      "id": "q-024"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the main contact at the customer running the Atlas pilot?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Ravi Chandra"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-07-07 Atlas DVT review.md",
+        "Meetings/2025-06-27 Atlas pilot kickoff.md",
+        "Customers/Westgate Realty Partners.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "chain-0016"
+      ],
+      "split": "tuning",
+      "id": "q-025"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Valemont Unified Schools work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Denver"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-02-01 Valemont Unified Schools quarterly review.md",
+        "Meetings/2025-12-10 Valemont Unified Schools account handoff.md",
+        "People/Anya Castillo.md"
+      ],
+      "entity": "customer-0007",
+      "refs": [
+        "chain-0007"
+      ],
+      "split": "tuning",
+      "id": "q-026"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Fjord enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Lucia Engel"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Fjord requirements.md",
+        "Meetings/2025-11-21 Fjord tooling sign-off.md",
+        "Suppliers/Wexford Molding.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "chain-0029"
+      ],
+      "split": "tuning",
+      "id": "q-027"
+    },
+    {
+      "category": "temporal",
+      "question": "Which quote was selected for the Fjord enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Wexford Molding"
+        ]
+      },
+      "stale": [
+        "Ironwood Plastics"
+      ],
+      "sources": [
+        "Meetings/2025-11-21 Fjord tooling sign-off.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "fact-0243"
+      ],
+      "split": "tuning",
+      "id": "q-028"
+    },
+    {
+      "category": "temporal",
+      "question": "When is Fjord scheduled to launch?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "February 26, 2027",
+          "2027-02-26"
+        ]
+      },
+      "stale": [
+        "December 14, 2026"
+      ],
+      "sources": [
+        "Meetings/2026-04-20 Fjord schedule review.md",
+        "Decisions/Fjord launch date change.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "fact-0249"
+      ],
+      "split": "tuning",
+      "id": "q-029"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Westgate Realty Partners account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Anya Castillo"
+        ]
+      },
+      "stale": [
+        "Tomas Mbeki"
+      ],
+      "sources": [
+        "Meetings/2025-06-17 Westgate Realty Partners account handoff.md"
+      ],
+      "entity": "customer-0001",
+      "refs": [
+        "fact-0082"
+      ],
+      "split": "tuning",
+      "id": "q-030"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Pine Valley Medical Center account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Aisha Whitfield"
+        ]
+      },
+      "stale": [
+        "Luis Whitaker"
+      ],
+      "sources": [
+        "Meetings/2025-10-17 Pine Valley Medical Center account handoff.md"
+      ],
+      "entity": "customer-0003",
+      "refs": [
+        "fact-0094"
+      ],
+      "split": "tuning",
+      "id": "q-031"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Northgate Realty Partners account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Lena Greer"
+        ]
+      },
+      "stale": [
+        "Leah Ashby"
+      ],
+      "sources": [
+        "Meetings/2026-02-12 Northgate Realty Partners account handoff.md"
+      ],
+      "entity": "customer-0011",
+      "refs": [
+        "fact-0142"
+      ],
+      "split": "tuning",
+      "id": "q-032"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Whitmore Campus Services account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Lena Greer"
+        ]
+      },
+      "stale": [
+        "Leah Ashby"
+      ],
+      "sources": [
+        "Meetings/2025-08-04 Whitmore Campus Services account handoff.md"
+      ],
+      "entity": "customer-0005",
+      "refs": [
+        "fact-0106"
+      ],
+      "split": "tuning",
+      "id": "q-033"
+    },
+    {
+      "category": "temporal",
+      "question": "What is Hazel Osei's current role?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Senior Product Manager"
+        ]
+      },
+      "stale": [
+        "Product Manager"
+      ],
+      "sources": [
+        "Meetings/2025-05-03 All-hands.md",
+        "Journal/Ruth Holloway/2025-05-04 Ruth Holloway journal.md"
+      ],
+      "entity": "person-0007",
+      "refs": [
+        "fact-0271"
+      ],
+      "split": "tuning",
+      "id": "q-034"
+    },
+    {
+      "category": "temporal",
+      "question": "When is Atlas scheduled to launch?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "July 8, 2027",
+          "2027-07-08"
+        ]
+      },
+      "stale": [
+        "April 9, 2027"
+      ],
+      "sources": [
+        "Meetings/2025-08-01 Atlas schedule review.md",
+        "Decisions/Atlas launch date change.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "fact-0169"
+      ],
+      "split": "tuning",
+      "id": "q-035"
+    },
+    {
+      "category": "temporal",
+      "question": "Which quote was selected for the Atlas enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Wexford Molding"
+        ]
+      },
+      "stale": [
+        "Ironwood Plastics"
+      ],
+      "sources": [
+        "Meetings/2025-03-25 Atlas tooling sign-off.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "fact-0163"
+      ],
+      "split": "tuning",
+      "id": "q-036"
+    },
+    {
+      "category": "temporal",
+      "question": "Which quote was selected for the Dune enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Redstone Plastics"
+        ]
+      },
+      "stale": [
+        "Lattice Molding"
+      ],
+      "sources": [
+        "Meetings/2025-07-20 Dune tooling sign-off.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "fact-0203"
+      ],
+      "split": "tuning",
+      "id": "q-037"
+    },
+    {
+      "category": "temporal",
+      "question": "What is Ines Fitzgerald's current role?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Account Executive"
+        ]
+      },
+      "stale": [
+        "Customer Success Manager"
+      ],
+      "sources": [
+        "Meetings/2025-05-03 All-hands.md",
+        "Journal/Rosa Novak/2025-05-09 Rosa Novak journal.md"
+      ],
+      "entity": "person-0022",
+      "refs": [
+        "fact-0272"
+      ],
+      "split": "tuning",
+      "id": "q-038"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Valemont Unified Schools account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Anya Castillo"
+        ]
+      },
+      "stale": [
+        "Tomas Mbeki"
+      ],
+      "sources": [
+        "Meetings/2025-12-10 Valemont Unified Schools account handoff.md"
+      ],
+      "entity": "customer-0007",
+      "refs": [
+        "fact-0118"
+      ],
+      "split": "tuning",
+      "id": "q-039"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Whitmore Campus Services?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$143,000",
+          "$177,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-09-04 Whitmore Campus Services quarterly review.md",
+        "Customers/Whitmore Campus Services billing summary.md"
+      ],
+      "entity": "customer-0005",
+      "refs": [
+        "trap-0008"
+      ],
+      "split": "tuning",
+      "id": "q-040"
+    },
+    {
+      "category": "contradiction",
+      "question": "How many units did the Fjord EVT build produce?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "91 units",
+          "96 units"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-01-30 Fjord EVT review.md",
+        "Journal/Ruth Holloway/2026-02-01 Ruth Holloway journal.md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "trap-0054"
+      ],
+      "split": "tuning",
+      "id": "q-041"
+    },
+    {
+      "category": "contradiction",
+      "question": "How many units did the Atlas EVT build produce?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "55 units",
+          "60 units"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-05-13 Atlas EVT review.md",
+        "Journal/Ruth Holloway/2025-05-15 Ruth Holloway journal.md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "trap-0026"
+      ],
+      "split": "tuning",
+      "id": "q-042"
+    },
+    {
+      "category": "contradiction",
+      "question": "What battery life do the Dune requirements call for?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "40 months",
+          "32 months"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Dune requirements.md",
+        "Specs/Dune requirements (copy).md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "trap-0039"
+      ],
+      "split": "tuning",
+      "id": "q-043"
+    },
+    {
+      "category": "contradiction",
+      "question": "What battery life do the Atlas requirements call for?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "31 months",
+          "30 months"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Atlas requirements.md",
+        "Specs/Atlas requirements (copy).md"
+      ],
+      "entity": "project-0001",
+      "refs": [
+        "trap-0025"
+      ],
+      "split": "tuning",
+      "id": "q-044"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Valemont Unified Schools?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$93,000",
+          "$125,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-02-01 Valemont Unified Schools quarterly review.md",
+        "Customers/Valemont Unified Schools billing summary.md"
+      ],
+      "entity": "customer-0007",
+      "refs": [
+        "trap-0011"
+      ],
+      "split": "tuning",
+      "id": "q-045"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Westgate Realty Partners?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$131,000",
+          "$137,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-07-23 Westgate Realty Partners quarterly review.md",
+        "Customers/Westgate Realty Partners billing summary.md"
+      ],
+      "entity": "customer-0001",
+      "refs": [
+        "trap-0001"
+      ],
+      "split": "tuning",
+      "id": "q-046"
+    },
+    {
+      "category": "contradiction",
+      "question": "What battery life do the Fjord requirements call for?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "59 months",
+          "34 months"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Fjord requirements.md",
+        "Specs/Fjord requirements (copy).md"
+      ],
+      "entity": "project-0005",
+      "refs": [
+        "trap-0053"
+      ],
+      "split": "tuning",
+      "id": "q-047"
+    },
+    {
+      "category": "contradiction",
+      "question": "How many units did the Dune EVT build produce?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "75 units",
+          "80 units"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-09-14 Dune EVT review.md",
+        "Journal/Tessa Okafor/2025-09-16 Tessa Okafor journal.md"
+      ],
+      "entity": "project-0003",
+      "refs": [
+        "trap-0040"
+      ],
+      "split": "tuning",
+      "id": "q-048"
+    },
+    {
+      "category": "no_answer",
+      "question": "Which cyber insurance policy does Northgate Realty Partners require from Larkspur?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0011",
+      "refs": [
+        "absent-0018"
+      ],
+      "split": "tuning",
+      "id": "q-049"
+    },
+    {
+      "category": "no_answer",
+      "question": "How much did Larkspur raise in its Series C?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "company:Series C funding round",
+      "refs": [
+        "absent-0033"
+      ],
+      "split": "tuning",
+      "id": "q-050"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Lattice Molding sent its conflict minerals report?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "supplier-0003",
+      "refs": [
+        "absent-0003"
+      ],
+      "split": "tuning",
+      "id": "q-051"
+    },
+    {
+      "category": "no_answer",
+      "question": "Is Fjord sold through an Amazon storefront?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0005",
+      "refs": [
+        "absent-0029"
+      ],
+      "split": "tuning",
+      "id": "q-052"
+    },
+    {
+      "category": "no_answer",
+      "question": "Is Ironwood Plastics ISO 14001 certified?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "supplier-0001",
+      "refs": [
+        "absent-0001"
+      ],
+      "split": "tuning",
+      "id": "q-053"
+    },
+    {
+      "category": "no_answer",
+      "question": "Where is the Larkspur holiday party held?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "company:holiday party venue",
+      "refs": [
+        "absent-0034"
+      ],
+      "split": "tuning",
+      "id": "q-054"
+    },
+    {
+      "category": "no_answer",
+      "question": "Which cyber insurance policy does Pine Valley Medical Center require from Larkspur?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0003",
+      "refs": [
+        "absent-0010"
+      ],
+      "split": "tuning",
+      "id": "q-055"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Larkspur filed a patent for Atlas?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0001",
+      "refs": [
+        "absent-0020"
+      ],
+      "split": "tuning",
+      "id": "q-056"
+    },
+    {
+      "category": "no_answer",
+      "question": "Which cyber insurance policy does Valemont Unified Schools require from Larkspur?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0007",
+      "refs": [
+        "absent-0014"
+      ],
+      "split": "tuning",
+      "id": "q-057"
+    },
+    {
+      "category": "no_answer",
+      "question": "At which trade show will Fjord be shown?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0005",
+      "refs": [
+        "absent-0028"
+      ],
+      "split": "tuning",
+      "id": "q-058"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Larkspur filed a patent for Dune?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0003",
+      "refs": [
+        "absent-0025"
+      ],
+      "split": "tuning",
+      "id": "q-059"
+    },
+    {
+      "category": "no_answer",
+      "question": "What Net Promoter Score did Westgate Realty Partners give Larkspur?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0001",
+      "refs": [
+        "absent-0008"
+      ],
+      "split": "tuning",
+      "id": "q-060"
+    },
+    {
+      "category": "simple",
+      "question": "Who is the main contact at Summit Park Workplace Group?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Desmond Moreau"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Summit Park Workplace Group.md"
+      ],
+      "entity": "customer-0010",
+      "refs": [
+        "fact-0134"
+      ],
+      "split": "test",
+      "id": "q-061"
+    },
+    {
+      "category": "simple",
+      "question": "Which office does Claire Gallagher work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Chicago"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "People/Claire Gallagher.md"
+      ],
+      "entity": "person-0025",
+      "refs": [
+        "fact-0050"
+      ],
+      "split": "test",
+      "id": "q-062"
+    },
+    {
+      "category": "simple",
+      "question": "What is the target unit cost for Cirrus?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "$90"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Cirrus requirements.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0176"
+      ],
+      "split": "test",
+      "id": "q-063"
+    },
+    {
+      "category": "simple",
+      "question": "How long does Lattice Molding need to deliver the Cirrus enclosure tooling?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "9 weeks"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Quotes/Cirrus enclosure - Lattice Molding.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0180"
+      ],
+      "split": "test",
+      "id": "q-064"
+    },
+    {
+      "category": "simple",
+      "question": "What issue did the Cirrus DVT units show?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "clock that drifts"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-01 Cirrus DVT review.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0188"
+      ],
+      "split": "test",
+      "id": "q-065"
+    },
+    {
+      "category": "simple",
+      "question": "Did the team decide on adding a cellular backhaul option for Granite?",
+      "expected": {
+        "kind": "undecided"
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-12-24 Granite design review.md",
+        "Journal/Tessa Okafor/2025-12-26 Tessa Okafor journal.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "trap-0062"
+      ],
+      "split": "test",
+      "id": "q-066"
+    },
+    {
+      "category": "simple",
+      "question": "Which customer is piloting Cirrus?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Foxborough Unified Schools"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-09-21 Cirrus pilot kickoff.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0187"
+      ],
+      "split": "test",
+      "id": "q-067"
+    },
+    {
+      "category": "simple",
+      "question": "What price per module did Tamarack Sensing give for the Cirrus sensor module?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "$5.70"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Quotes/Cirrus sensor module - Tamarack Sensing.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0181"
+      ],
+      "split": "test",
+      "id": "q-068"
+    },
+    {
+      "category": "simple",
+      "question": "Who is the main contact at Thornbury Unified Schools?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Wesley Mercer"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Thornbury Unified Schools.md"
+      ],
+      "entity": "customer-0012",
+      "refs": [
+        "fact-0146"
+      ],
+      "split": "test",
+      "id": "q-069"
+    },
+    {
+      "category": "simple",
+      "question": "Who is the main contact at Larchmont Regional Hospital?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Owen Kowalski"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Larchmont Regional Hospital.md"
+      ],
+      "entity": "customer-0008",
+      "refs": [
+        "fact-0122"
+      ],
+      "split": "test",
+      "id": "q-070"
+    },
+    {
+      "category": "simple",
+      "question": "What kind of customer is Foxborough Unified Schools?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "school district"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Customers/Foxborough Unified Schools.md"
+      ],
+      "entity": "customer-0002",
+      "refs": [
+        "fact-0085"
+      ],
+      "split": "test",
+      "id": "q-071"
+    },
+    {
+      "category": "simple",
+      "question": "Did the team decide on adding an e-ink display for Cirrus?",
+      "expected": {
+        "kind": "undecided"
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-05-14 Cirrus design review.md",
+        "Journal/Tessa Okafor/2025-05-16 Tessa Okafor journal.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "trap-0034"
+      ],
+      "split": "test",
+      "id": "q-072"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the contact at the lab behind the Ember launch delay?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Marcus Thorne"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Decisions/Ember launch date change.md",
+        "Meetings/2026-03-23 Ember schedule review.md",
+        "Suppliers/Anvil Test Labs.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0027"
+      ],
+      "split": "test",
+      "id": "q-073"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Maple Ridge University work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Chicago"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-26 Maple Ridge University quarterly review.md",
+        "Meetings/2025-09-22 Maple Ridge University account handoff.md",
+        "People/Leah Ashby.md"
+      ],
+      "entity": "customer-0004",
+      "refs": [
+        "chain-0004"
+      ],
+      "split": "test",
+      "id": "q-074"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Larchmont Regional Hospital work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Austin"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-04-30 Larchmont Regional Hospital quarterly review.md",
+        "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md",
+        "People/Luis Whitaker.md"
+      ],
+      "entity": "customer-0008",
+      "refs": [
+        "chain-0008"
+      ],
+      "split": "test",
+      "id": "q-075"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the main contact at the customer running the Granite pilot?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Dana Ortega"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-06-10 Granite DVT review.md",
+        "Meetings/2026-05-31 Granite pilot kickoff.md",
+        "Customers/Redwood Hills Realty Partners.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "chain-0036"
+      ],
+      "split": "test",
+      "id": "q-076"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Foxborough Unified Schools work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Austin"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md",
+        "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md",
+        "People/Luis Whitaker.md"
+      ],
+      "entity": "customer-0002",
+      "refs": [
+        "chain-0002"
+      ],
+      "split": "test",
+      "id": "q-077"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the contact at the lab behind the Cirrus launch delay?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Mei Lund"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Decisions/Cirrus launch date change.md",
+        "Meetings/2025-10-26 Cirrus schedule review.md",
+        "Suppliers/Halcyon Compliance Labs.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "chain-0019"
+      ],
+      "split": "test",
+      "id": "q-078"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Thornbury Unified Schools work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Portland"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-08-08 Thornbury Unified Schools quarterly review.md",
+        "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md",
+        "People/Tomas Mbeki.md"
+      ],
+      "entity": "customer-0012",
+      "refs": [
+        "chain-0012"
+      ],
+      "split": "test",
+      "id": "q-079"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Ember enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Isaac Sato"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Ember requirements.md",
+        "Meetings/2025-09-19 Ember tooling sign-off.md",
+        "Suppliers/Ironwood Plastics.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0025"
+      ],
+      "split": "test",
+      "id": "q-080"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the main contact at the customer running the Ember pilot?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Samir Navarro"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-02-26 Ember DVT review.md",
+        "Meetings/2026-02-16 Ember pilot kickoff.md",
+        "Customers/Maple Ridge University.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0028"
+      ],
+      "split": "test",
+      "id": "q-081"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Granite enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Vera Ibarra"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Granite requirements.md",
+        "Meetings/2026-01-08 Granite tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "chain-0033"
+      ],
+      "split": "test",
+      "id": "q-082"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is Larkspur's contact at the supplier building the Cirrus enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Vera Ibarra"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Cirrus requirements.md",
+        "Meetings/2025-05-29 Cirrus tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "chain-0017"
+      ],
+      "split": "test",
+      "id": "q-083"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Which office does the current account owner of Summit Park Workplace Group work from?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Chicago"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-01-17 Summit Park Workplace Group quarterly review.md",
+        "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md",
+        "People/Leah Ashby.md"
+      ],
+      "entity": "customer-0010",
+      "refs": [
+        "chain-0010"
+      ],
+      "split": "test",
+      "id": "q-084"
+    },
+    {
+      "category": "multi_hop",
+      "question": "In which city is the supplier of the Granite EVT enclosures based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Shenzhen"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-04-16 Granite EVT review.md",
+        "Meetings/2026-01-08 Granite tooling sign-off.md",
+        "Suppliers/Lattice Molding.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "chain-0034"
+      ],
+      "split": "test",
+      "id": "q-085"
+    },
+    {
+      "category": "multi_hop",
+      "question": "In which city is the supplier of the Ember EVT enclosures based?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Penang"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-01-02 Ember EVT review.md",
+        "Meetings/2025-09-19 Ember tooling sign-off.md",
+        "Suppliers/Ironwood Plastics.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "chain-0026"
+      ],
+      "split": "test",
+      "id": "q-086"
+    },
+    {
+      "category": "multi_hop",
+      "question": "Who is the main contact at the customer running the Cirrus pilot?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Mateo Quinlan"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-01 Cirrus DVT review.md",
+        "Meetings/2025-09-21 Cirrus pilot kickoff.md",
+        "Customers/Foxborough Unified Schools.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "chain-0020"
+      ],
+      "split": "test",
+      "id": "q-087"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Foxborough Unified Schools account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Luis Whitaker"
+        ]
+      },
+      "stale": [
+        "Anya Castillo"
+      ],
+      "sources": [
+        "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md"
+      ],
+      "entity": "customer-0002",
+      "refs": [
+        "fact-0088"
+      ],
+      "split": "test",
+      "id": "q-088"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Larchmont Regional Hospital account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Luis Whitaker"
+        ]
+      },
+      "stale": [
+        "Anya Castillo"
+      ],
+      "sources": [
+        "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md"
+      ],
+      "entity": "customer-0008",
+      "refs": [
+        "fact-0124"
+      ],
+      "split": "test",
+      "id": "q-089"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Maple Ridge University account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Leah Ashby"
+        ]
+      },
+      "stale": [
+        "Aisha Whitfield"
+      ],
+      "sources": [
+        "Meetings/2025-09-22 Maple Ridge University account handoff.md"
+      ],
+      "entity": "customer-0004",
+      "refs": [
+        "fact-0100"
+      ],
+      "split": "test",
+      "id": "q-090"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Thornbury Unified Schools account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Tomas Mbeki"
+        ]
+      },
+      "stale": [
+        "Lena Greer"
+      ],
+      "sources": [
+        "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md"
+      ],
+      "entity": "customer-0012",
+      "refs": [
+        "fact-0148"
+      ],
+      "split": "test",
+      "id": "q-091"
+    },
+    {
+      "category": "temporal",
+      "question": "When is Granite scheduled to launch?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "June 26, 2027",
+          "2027-06-26"
+        ]
+      },
+      "stale": [
+        "April 15, 2027"
+      ],
+      "sources": [
+        "Meetings/2026-07-05 Granite schedule review.md",
+        "Decisions/Granite launch date change.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "fact-0269"
+      ],
+      "split": "test",
+      "id": "q-092"
+    },
+    {
+      "category": "temporal",
+      "question": "What is Hector Haddad's current role?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Firmware Lead"
+        ]
+      },
+      "stale": [
+        "Firmware Engineer"
+      ],
+      "sources": [
+        "Meetings/2025-11-05 All-hands.md",
+        "Journal/Zoe Adeyemi/2025-11-09 Zoe Adeyemi journal.md"
+      ],
+      "entity": "person-0014",
+      "refs": [
+        "fact-0274"
+      ],
+      "split": "test",
+      "id": "q-093"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Redwood Hills Realty Partners account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Tomas Mbeki"
+        ]
+      },
+      "stale": [
+        "Lena Greer"
+      ],
+      "sources": [
+        "Meetings/2025-10-09 Redwood Hills Realty Partners account handoff.md"
+      ],
+      "entity": "customer-0006",
+      "refs": [
+        "fact-0112"
+      ],
+      "split": "test",
+      "id": "q-094"
+    },
+    {
+      "category": "temporal",
+      "question": "Who owns the Summit Park Workplace Group account?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Leah Ashby"
+        ]
+      },
+      "stale": [
+        "Aisha Whitfield"
+      ],
+      "sources": [
+        "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md"
+      ],
+      "entity": "customer-0010",
+      "refs": [
+        "fact-0136"
+      ],
+      "split": "test",
+      "id": "q-095"
+    },
+    {
+      "category": "temporal",
+      "question": "When is Cirrus scheduled to launch?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "June 27, 2027",
+          "2027-06-27"
+        ]
+      },
+      "stale": [
+        "March 31, 2027"
+      ],
+      "sources": [
+        "Meetings/2025-10-26 Cirrus schedule review.md",
+        "Decisions/Cirrus launch date change.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0189"
+      ],
+      "split": "test",
+      "id": "q-096"
+    },
+    {
+      "category": "temporal",
+      "question": "Which quote was selected for the Ember enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Ironwood Plastics"
+        ]
+      },
+      "stale": [
+        "Redstone Plastics"
+      ],
+      "sources": [
+        "Meetings/2025-09-19 Ember tooling sign-off.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "fact-0223"
+      ],
+      "split": "test",
+      "id": "q-097"
+    },
+    {
+      "category": "temporal",
+      "question": "Which quote was selected for the Cirrus enclosure?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "Lattice Molding"
+        ]
+      },
+      "stale": [
+        "Wexford Molding"
+      ],
+      "sources": [
+        "Meetings/2025-05-29 Cirrus tooling sign-off.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "fact-0183"
+      ],
+      "split": "test",
+      "id": "q-098"
+    },
+    {
+      "category": "temporal",
+      "question": "When is Ember scheduled to launch?",
+      "expected": {
+        "kind": "value",
+        "values": [
+          "March 16, 2027",
+          "2027-03-16"
+        ]
+      },
+      "stale": [
+        "January 4, 2027"
+      ],
+      "sources": [
+        "Meetings/2026-03-23 Ember schedule review.md",
+        "Decisions/Ember launch date change.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "fact-0229"
+      ],
+      "split": "test",
+      "id": "q-099"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Summit Park Workplace Group?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$172,000",
+          "$198,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-01-17 Summit Park Workplace Group quarterly review.md",
+        "Customers/Summit Park Workplace Group billing summary.md"
+      ],
+      "entity": "customer-0010",
+      "refs": [
+        "trap-0016"
+      ],
+      "split": "test",
+      "id": "q-100"
+    },
+    {
+      "category": "contradiction",
+      "question": "How many units did the Cirrus EVT build produce?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "65 units",
+          "70 units"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-08-07 Cirrus EVT review.md",
+        "Journal/Zoe Adeyemi/2025-08-09 Zoe Adeyemi journal.md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "trap-0033"
+      ],
+      "split": "test",
+      "id": "q-101"
+    },
+    {
+      "category": "contradiction",
+      "question": "How many units did the Ember EVT build produce?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "74 units",
+          "79 units"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-01-02 Ember EVT review.md",
+        "Journal/Rosa Novak/2026-01-04 Rosa Novak journal.md"
+      ],
+      "entity": "project-0004",
+      "refs": [
+        "trap-0047"
+      ],
+      "split": "test",
+      "id": "q-102"
+    },
+    {
+      "category": "contradiction",
+      "question": "What battery life do the Cirrus requirements call for?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "16 months",
+          "23 months"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Cirrus requirements.md",
+        "Specs/Cirrus requirements (copy).md"
+      ],
+      "entity": "project-0002",
+      "refs": [
+        "trap-0032"
+      ],
+      "split": "test",
+      "id": "q-103"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Foxborough Unified Schools?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$122,000",
+          "$144,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md",
+        "Customers/Foxborough Unified Schools billing summary.md"
+      ],
+      "entity": "customer-0002",
+      "refs": [
+        "trap-0003"
+      ],
+      "split": "test",
+      "id": "q-104"
+    },
+    {
+      "category": "contradiction",
+      "question": "What battery life do the Granite requirements call for?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "53 months",
+          "55 months"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Specs/Granite requirements.md",
+        "Specs/Granite requirements (copy).md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "trap-0060"
+      ],
+      "split": "test",
+      "id": "q-105"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Maple Ridge University?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$78,000",
+          "$101,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2025-10-26 Maple Ridge University quarterly review.md",
+        "Customers/Maple Ridge University billing summary.md"
+      ],
+      "entity": "customer-0004",
+      "refs": [
+        "trap-0006"
+      ],
+      "split": "test",
+      "id": "q-106"
+    },
+    {
+      "category": "contradiction",
+      "question": "How many units did the Granite EVT build produce?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "89 units",
+          "94 units"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-04-16 Granite EVT review.md",
+        "Journal/Zoe Adeyemi/2026-04-18 Zoe Adeyemi journal.md"
+      ],
+      "entity": "project-0006",
+      "refs": [
+        "trap-0061"
+      ],
+      "split": "test",
+      "id": "q-107"
+    },
+    {
+      "category": "contradiction",
+      "question": "What is the annual contract value with Larchmont Regional Hospital?",
+      "expected": {
+        "kind": "conflict",
+        "values": [
+          "$82,000",
+          "$122,000"
+        ]
+      },
+      "stale": [],
+      "sources": [
+        "Meetings/2026-04-30 Larchmont Regional Hospital quarterly review.md",
+        "Customers/Larchmont Regional Hospital billing summary.md"
+      ],
+      "entity": "customer-0008",
+      "refs": [
+        "trap-0013"
+      ],
+      "split": "test",
+      "id": "q-108"
+    },
+    {
+      "category": "no_answer",
+      "question": "Which LEED certification level does Thornbury Unified Schools target?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0012",
+      "refs": [
+        "absent-0019"
+      ],
+      "split": "test",
+      "id": "q-109"
+    },
+    {
+      "category": "no_answer",
+      "question": "At which trade show will Cirrus be shown?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0002",
+      "refs": [
+        "absent-0023"
+      ],
+      "split": "test",
+      "id": "q-110"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Larkspur filed a patent for Granite?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0006",
+      "refs": [
+        "absent-0030"
+      ],
+      "split": "test",
+      "id": "q-111"
+    },
+    {
+      "category": "no_answer",
+      "question": "What data-residency requirements does Redwood Hills Realty Partners have?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0006",
+      "refs": [
+        "absent-0013"
+      ],
+      "split": "test",
+      "id": "q-112"
+    },
+    {
+      "category": "no_answer",
+      "question": "When did Larkspur pass its SOC 2 audit?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "company:SOC 2 audit",
+      "refs": [
+        "absent-0032"
+      ],
+      "split": "test",
+      "id": "q-113"
+    },
+    {
+      "category": "no_answer",
+      "question": "Which LEED certification level does Maple Ridge University target?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0004",
+      "refs": [
+        "absent-0011"
+      ],
+      "split": "test",
+      "id": "q-114"
+    },
+    {
+      "category": "no_answer",
+      "question": "What data-residency requirements does Summit Park Workplace Group have?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0010",
+      "refs": [
+        "absent-0017"
+      ],
+      "split": "test",
+      "id": "q-115"
+    },
+    {
+      "category": "no_answer",
+      "question": "How much did the Ember crowdfunding campaign raise?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0004",
+      "refs": [
+        "absent-0026"
+      ],
+      "split": "test",
+      "id": "q-116"
+    },
+    {
+      "category": "no_answer",
+      "question": "Has Gemini Circuits sent its conflict minerals report?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "supplier-0006",
+      "refs": [
+        "absent-0006"
+      ],
+      "split": "test",
+      "id": "q-117"
+    },
+    {
+      "category": "no_answer",
+      "question": "What carbon footprint did Wexford Molding report?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "supplier-0002",
+      "refs": [
+        "absent-0002"
+      ],
+      "split": "test",
+      "id": "q-118"
+    },
+    {
+      "category": "no_answer",
+      "question": "When does Ember launch in Japan?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "project-0004",
+      "refs": [
+        "absent-0027"
+      ],
+      "split": "test",
+      "id": "q-119"
+    },
+    {
+      "category": "no_answer",
+      "question": "What data-residency requirements does Foxborough Unified Schools have?",
+      "expected": {
+        "kind": "abstain"
+      },
+      "stale": [],
+      "sources": [],
+      "entity": "customer-0002",
+      "refs": [
+        "absent-0009"
+      ],
+      "split": "test",
+      "id": "q-120"
+    }
+  ]
+}
