@@ -1294,7 +1294,7 @@ function loopRecord(
   return {
     ...makeRecord(n, { category: loop.category ?? "simple", calls }),
     loop: loopOf(loop.rule, loop.hops, loop.rewrites),
-  } as unknown as RunRecord
+  }
 }
 
 describe("AC3 — loop metrics (config B)", () => {
