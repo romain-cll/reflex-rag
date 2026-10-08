@@ -8,7 +8,7 @@ const ERROR_BODY_CHARS = 200
 
 const ResponseSchema = z.object({
   data: z.array(
-    z.object({ embedding: z.array(z.number()), index: z.number() })
+    z.object({ embedding: z.array(z.number()), index: z.number().int() })
   ),
   usage: z.object({ prompt_tokens: z.number() }),
 })
