@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod"
-import type { z } from "zod"
+import { z } from "zod"
 import {
   LLMCallError,
   type LLM,
@@ -132,12 +131,16 @@ function textOf(message: MessageResult): string {
  * `messages.parse` runs the `parse` of the output format on the text before
  * returning, whatever the `stop_reason`: a truncated or refused response would
  * fail there and hide its cause and its billed tokens. This format gives the
- * schema of `zodOutputFormat` with a `parse` that never throws, so that the
- * wrapper checks `stop_reason` first, then validates the parsed JSON itself.
+ * schema of `z.toJSONSchema` (the SDK's zod helper degrades the enums of zod 4)
+ * with a `parse` that never throws, so that the wrapper checks `stop_reason`
+ * first, then validates the parsed JSON itself.
  */
 function lenientOutputFormat<T>(schema: z.ZodType<T>) {
+  const jsonSchema: Record<string, unknown> = z.toJSONSchema(schema)
+  delete jsonSchema["$schema"]
   return {
-    ...zodOutputFormat(schema),
+    type: "json_schema" as const,
+    schema: strictObjects(jsonSchema),
     parse: (text: string): unknown => {
       try {
         return JSON.parse(text) as unknown
@@ -146,4 +149,25 @@ function lenientOutputFormat<T>(schema: z.ZodType<T>) {
       }
     },
   }
+}
+
+/**
+ * The structured output format wants every object closed and with all its
+ * properties required, at any depth.
+ */
+function strictObjects(node: unknown): Record<string, unknown> {
+  return walk(node) as Record<string, unknown>
+}
+
+function walk(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(walk)
+  if (typeof node !== "object" || node === null) return node
+  const copy = Object.fromEntries(
+    Object.entries(node).map(([key, child]) => [key, walk(child)])
+  )
+  if (copy["type"] === "object" && typeof copy["properties"] === "object") {
+    copy["required"] = Object.keys(copy["properties"] as object)
+    copy["additionalProperties"] = false
+  }
+  return copy
 }

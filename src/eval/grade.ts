@@ -51,7 +51,7 @@ function isCorrect({ expected, stale }: Question, output: Answer): boolean {
       return (
         output.status === "answered" &&
         expected.values.some((value) => contains(output.value, value)) &&
-        !stale.some((value) => contains(output.value, value))
+        !staleIn(output.value, expected.values, stale)
       )
     case "conflict":
       return (
@@ -83,7 +83,9 @@ function failureOf(
   if (output.status === "abstained" && question.expected.kind !== "abstain") {
     return "false_abstention"
   }
-  if (question.stale.some((value) => contains(output.value, value))) {
+  const expectedValues =
+    question.expected.kind === "value" ? question.expected.values : []
+  if (staleIn(output.value, expectedValues, question.stale)) {
     return "wrong_version"
   }
   if (question.expected.kind === "conflict" && output.status !== "conflict") {
@@ -104,4 +106,16 @@ function normalize(text: string): string {
 
 function contains(text: string, value: string): boolean {
   return normalize(text).includes(normalize(value))
+}
+
+/**
+ * A stale value that only appears inside a matched expected value does not
+ * count ("Product Manager" inside "Senior Product Manager").
+ */
+function staleIn(text: string, expected: string[], stale: string[]): boolean {
+  const remainder = expected
+    .map(normalize)
+    .filter((value) => value !== "")
+    .reduce((rest, value) => rest.replaceAll(value, " "), normalize(text))
+  return stale.some((value) => remainder.includes(normalize(value)))
 }
