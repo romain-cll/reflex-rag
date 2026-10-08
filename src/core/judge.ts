@@ -1,4 +1,4 @@
-import type { Chunk, Link, ModelCall } from "./types.ts"
+import type { DatedChunk, Link, ModelCall } from "./types.ts"
 
 export const MISSING = [
   "detail_in_linked_note",
@@ -33,6 +33,10 @@ export interface Assessment {
  * relevance question for each of 50 candidates plus the assessment.
  */
 export interface Judge {
-  relevance(question: string, chunks: Chunk[]): Promise<Relevance>
-  assess(question: string, chunks: Chunk[], links: Link[]): Promise<Assessment>
+  relevance(question: string, chunks: DatedChunk[]): Promise<Relevance>
+  assess(
+    question: string,
+    chunks: DatedChunk[],
+    links: Link[]
+  ): Promise<Assessment>
 }
