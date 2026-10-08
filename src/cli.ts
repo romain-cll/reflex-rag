@@ -9,7 +9,8 @@ const usage = `Usage: reflex <command> [options]
 Commands:
   index <vault>              Index an Obsidian vault
   ask "<question>"           Ask a question about the vault
-  eval [--config <A|B|C>]    Run the evals
+  eval --config <A|B|C>      Run the evals
+    [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
 
 Options:
   -h, --help                 Show this help`
@@ -34,6 +35,11 @@ function run(argv: string[]): number | Promise<number> {
       options: {
         help: { type: "boolean", short: "h" },
         config: { type: "string" },
+        split: { type: "string" },
+        limit: { type: "string" },
+        k: { type: "string" },
+        "max-cost": { type: "string" },
+        "dry-run": { type: "boolean" },
       },
       strict: true,
       allowPositionals: true,
@@ -61,10 +67,17 @@ function run(argv: string[]): number | Promise<number> {
         : askCommand(argument)
     case "eval": {
       const { config } = values
-      if (config !== undefined && !evalConfigs.includes(config)) {
+      if (config === undefined) return fail("eval: --config is required")
+      if (!evalConfigs.includes(config)) {
         return fail(`eval: invalid config "${config}", expected A, B or C`)
       }
-      return evalCommand(config as EvalConfig | undefined)
+      return evalCommand(config as EvalConfig, {
+        split: values.split,
+        limit: values.limit,
+        k: values.k,
+        maxCost: values["max-cost"],
+        dryRun: values["dry-run"],
+      })
     }
     default:
       return failWithUsage(`unknown command "${command}"`)

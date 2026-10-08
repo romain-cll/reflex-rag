@@ -1,0 +1,95 @@
+import type { Question } from "../../evals/schema.ts"
+import type { Answer } from "../answer/answerer.ts"
+
+/** In the order they are tried: a wrong answer gets the first that applies. */
+export const FAILURES = [
+  "retrieval_miss",
+  "false_abstention",
+  "wrong_version",
+  "missed_contradiction",
+  "unsupported_claim",
+  "wrong_answer",
+] as const
+
+export type Failure = (typeof FAILURES)[number]
+
+export interface Grade {
+  correct: boolean
+  /** `null` when the answer is correct. */
+  failure: Failure | null
+}
+
+const UNDECIDED_PHRASES = [
+  "no decision",
+  "not decided",
+  "undecided",
+  "has not been decided",
+  "still open",
+  "no final decision",
+]
+
+export function grade(
+  question: Question,
+  output: Answer,
+  contextNotes: string[]
+): Grade {
+  if (isCorrect(question, output)) return { correct: true, failure: null }
+  return { correct: false, failure: failureOf(question, output, contextNotes) }
+}
+
+function isCorrect({ expected }: Question, output: Answer): boolean {
+  switch (expected.kind) {
+    case "value":
+      return (
+        output.status === "answered" &&
+        expected.values.some((value) => contains(output.answer, value))
+      )
+    case "conflict":
+      return (
+        output.status === "conflict" &&
+        expected.values.every((value) => contains(output.answer, value))
+      )
+    case "undecided":
+      return (
+        output.status === "answered" &&
+        UNDECIDED_PHRASES.some((phrase) => contains(output.answer, phrase))
+      )
+    case "abstain":
+      return output.status === "abstained"
+  }
+}
+
+function failureOf(
+  question: Question,
+  output: Answer,
+  contextNotes: string[]
+): Failure {
+  const sourceRetrieved = question.sources.some((source) =>
+    contextNotes.includes(source)
+  )
+  if (question.sources.length > 0 && !sourceRetrieved) return "retrieval_miss"
+  if (output.status === "abstained" && question.expected.kind !== "abstain") {
+    return "false_abstention"
+  }
+  if (question.stale.some((value) => contains(output.answer, value))) {
+    return "wrong_version"
+  }
+  if (question.expected.kind === "conflict" && output.status !== "conflict") {
+    return "missed_contradiction"
+  }
+  if (question.expected.kind === "abstain") return "unsupported_claim"
+  return "wrong_answer"
+}
+
+/** Case-insensitive, whitespace collapsed, thousands separators ignored. */
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/(?<=\d),(?=\d{3}(?!\d))/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function contains(text: string, value: string): boolean {
+  return normalize(text).includes(normalize(value))
+}
