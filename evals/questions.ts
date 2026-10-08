@@ -36,6 +36,8 @@ const COUNTS: Record<Category, number> = {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
+type Chain = World["chains"][number]
+
 /** A question before it gets its split and its id. */
 type Candidate = Omit<Question, "id" | "split">
 
@@ -184,6 +186,66 @@ function simpleQuestions(ix: Index): Candidate[] {
   return [...values, ...undecided]
 }
 
+/** The value of the first superseded fact of a subject and attribute. */
+function supersededValue(
+  world: World,
+  subject: string | undefined,
+  attribute: string
+): string | undefined {
+  return world.facts.find(
+    (fact) =>
+      fact.subject === subject &&
+      fact.attribute === attribute &&
+      fact.supersededBy !== null
+  )?.value
+}
+
+/**
+ * The anchors of the answer the outdated path of a chain leads to, or none
+ * when the chain does not go through a superseded fact:
+ * - a supplier chain through a tooling sign-off ends at the decoy enclosure
+ *   vendor, the one of the superseded `enclosure_vendor` fact of the project;
+ * - an account-owner chain ends at the office of the former account owner.
+ */
+function outdatedAnswer(ix: Index, chain: Chain): string[] {
+  const { world } = ix
+  const [first, second] = chain.notes.map((id) => lookup(ix.notes, id))
+  const answerFact = lookup(ix.facts, chain.answer)
+  const current = (subject: string | undefined, attribute: string) =>
+    world.facts
+      .filter(
+        (fact) =>
+          fact.subject === subject &&
+          fact.attribute === attribute &&
+          fact.supersededBy === null
+      )
+      .flatMap((fact) => fact.anchors)
+
+  if (
+    second?.title.endsWith("tooling sign-off") &&
+    answerFact.subject.startsWith("supplier-")
+  ) {
+    const project = world.projects.find(
+      (p) => p.codename === second.frontmatter.project
+    )
+    const vendor = supersededValue(world, project?.id, "enclosure_vendor")
+    const supplier = world.suppliers.find((s) => s.name === vendor)
+    return current(supplier?.id, answerFact.attribute)
+  }
+  if (
+    answerFact.attribute === "office" &&
+    first?.title.endsWith("quarterly review")
+  ) {
+    const customer = world.customers.find(
+      (c) => c.name === first.frontmatter.customer
+    )
+    const owner = supersededValue(world, customer?.id, "account_owner")
+    const person = world.people.find((p) => p.name === owner)
+    return current(person?.id, "office")
+  }
+  return []
+}
+
 function multiHopQuestions(ix: Index): Candidate[] {
   const { chains, projects, customers } = ix.world
   return chains.flatMap((chain): Candidate[] => {
@@ -208,8 +270,9 @@ function multiHopQuestions(ix: Index): Candidate[] {
           kind: "value",
           values: answerForms(lookup(ix.facts, chain.answer)),
         },
-        stale: [],
-        sources: paths(ix, chain.notes),
+        stale: outdatedAnswer(ix, chain),
+        // The entry note is one way in, not a note the answer needs.
+        sources: paths(ix, chain.notes.slice(1)),
         entity,
         refs: [chain.id],
       },
@@ -287,6 +350,14 @@ function leaks(candidate: Candidate): boolean {
   )
 }
 
+/** Whether following the outdated path would give the right answer. */
+function overlaps(candidate: Candidate): boolean {
+  const { expected, stale } = candidate
+  if (!("values" in expected)) return false
+  const wrong = stale.map((value) => value.toLowerCase())
+  return expected.values.some((value) => wrong.includes(value.toLowerCase()))
+}
+
 const COLLECTORS: Record<Category, (ix: Index) => Candidate[]> = {
   simple: simpleQuestions,
   multi_hop: multiHopQuestions,
@@ -343,7 +414,7 @@ export function buildQuestions(world: World): QuestionSet {
   const ix = indexWorld(world)
   const rng = createRandom(world.meta.seed)
   const candidates = CATEGORIES.map((category) =>
-    COLLECTORS[category](ix).filter((q) => !leaks(q))
+    COLLECTORS[category](ix).filter((q) => !leaks(q) && !overlaps(q))
   )
   const splitOf = assignSplits(candidates.flat().map((q) => q.entity))
 
