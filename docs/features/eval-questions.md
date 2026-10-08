@@ -23,12 +23,14 @@ Phase 2. The question sets of the evals, derived by code from a corpus truth fil
 - **AC2 — schema**: the set passes `QuestionSetSchema`; question ids and question texts are unique.
 - **AC3 — counts**: on the scale-1 world of seed 42, each split holds exactly 12 `simple`, 15 `multi_hop`, 12 `temporal`, 9 `contradiction` and 12 `no_answer` questions. When a world cannot fill a category of a split, `buildQuestions` throws an error naming the category and the split.
 - **AC4 — disjoint splits**: no `entity` appears in both splits. Entities are assigned to splits alternately in id order.
-- **AC5 — sources**: every source is the path of a world note. A `value` question's sources state its fact; a `conflict` question's sources are the truth notes of its trap; a `multi_hop` question's sources are the notes of its chain, in order.
+- **AC5 — sources**: every source is the path of a world note. A `value` question's sources state its fact; a `conflict` question's sources are the truth notes of its trap; a `multi_hop` question's sources are the notes of its chain after the first one, in order (the entry note is one way in, not a note the answer needs).
 - **AC6 — expected values**:
   - `value`: the values come from the answer fact (its value or its anchors); dates are given both as a long date (`March 2, 2026`) and in ISO form;
   - `conflict`: the two values are anchors of the two facts of a `contradiction` or `divergent_duplicate` trap;
   - `temporal`: the expected value comes from the latest fact of a supersession chain, and `stale` holds the anchors of the superseded fact(s);
-  - `abstain`: the question is about an `absent` topic of the world.
+  - `abstain`: the question is about an `absent` topic of the world;
+  - `multi_hop`: when the chain goes through a superseded fact, `stale` holds the answer the outdated path leads to: the decoy enclosure vendor's contact or city for the supplier chains, the former account owner's office for the account-owner chains;
+  - a candidate whose expected values and stale values overlap is dropped: following the outdated path must not give the right answer.
 - **AC7 — categories**:
   - `multi_hop`: one question per selected chain, about the chain's answer fact;
   - `temporal`: questions about the current value of a superseded fact; the enclosure-vendor questions use the word "quote" (the vocabulary trap);
