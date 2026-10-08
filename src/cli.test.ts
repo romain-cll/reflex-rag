@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join, resolve } from "node:path"
 
@@ -160,24 +167,6 @@ describe("AC2 — reflex ask", () => {
   })
 })
 
-describe("AC3 — reflex eval", () => {
-  test("AC3 — without options reports not implemented and exits 1", () => {
-    const { stdout, stderr, exitCode } = runCli("eval")
-    expect(stderr).toContain("not implemented")
-    expect(stdout).toBe("")
-    expect(exitCode).toBe(1)
-  })
-
-  for (const config of ["A", "B", "C"]) {
-    test(`AC3 — with --config ${config} reports not implemented and exits 1`, () => {
-      const { stdout, stderr, exitCode } = runCli("eval", "--config", config)
-      expect(stderr).toContain("not implemented")
-      expect(stdout).toBe("")
-      expect(exitCode).toBe(1)
-    })
-  }
-})
-
 describe("AC4 — usage", () => {
   test("AC4 — no arguments prints usage listing the commands on stdout and exits 0", () => {
     const { stdout, stderr, exitCode } = runCli()
@@ -241,11 +230,129 @@ describe("AC6 — missing arguments", () => {
 describe("AC7 — invalid eval config", () => {
   for (const config of ["D", "a", ""]) {
     test(`AC7 — eval --config "${config}" prints an error on stderr and exits 1`, () => {
-      const { stdout, stderr, exitCode } = runCli("eval", "--config", config)
+      const cwd = makeTempDir("reflex-cli-eval-invalid-")
+      const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", config)
       expect(stderr).toMatch(/config/i)
       expect(stderr).not.toContain("not implemented")
       expect(stdout).toBe("")
       expect(exitCode).toBe(1)
     })
   }
+})
+
+const repoQuestions = resolve(repoRoot, "evals", "dev", "questions.json")
+
+/**
+ * Runs `reflex eval <args>` from `cwd` with dummy API keys. The proxy points to
+ * a closed local port, so that a request which slipped through would fail at
+ * once instead of reaching the network.
+ */
+function runEvalFrom(cwd: string, ...args: string[]) {
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    ANTHROPIC_API_KEY: "dummy-key",
+    MISTRAL_API_KEY: "dummy-key",
+    HTTPS_PROXY: "http://127.0.0.1:9",
+    HTTP_PROXY: "http://127.0.0.1:9",
+  }
+  const result = Bun.spawnSync(["bun", cliPath, "eval", ...args], {
+    cwd,
+    env,
+  })
+  return {
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+    exitCode: result.exitCode,
+  }
+}
+
+function nonEmptyLines(text: string): string[] {
+  return text.split("\n").filter((line) => line.trim() !== "")
+}
+
+describe("AC7 — reflex eval arguments and files", () => {
+  test("AC7 — reflex eval without --config exits 1 naming --config", () => {
+    const cwd = makeTempDir("reflex-cli-eval-noconfig-")
+    const { stdout, stderr, exitCode } = runEvalFrom(cwd)
+    expect(stderr).toContain("--config")
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const config of ["B", "C"]) {
+    test(`AC7 — --config ${config} reports not implemented and exits 1, before any file is read`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-config-")
+      const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", config)
+      expect(stderr).toContain("not implemented")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("AC7 — --split, --limit, --k, --max-cost and --dry-run are accepted options", () => {
+    const cwd = makeTempDir("reflex-cli-eval-options-")
+    const { stdout, stderr, exitCode } = runEvalFrom(
+      cwd,
+      "--config",
+      "B",
+      "--split",
+      "tuning",
+      "--limit",
+      "3",
+      "--k",
+      "5",
+      "--max-cost",
+      "0.5",
+      "--dry-run"
+    )
+    expect(stderr).toContain("not implemented")
+    expect(stderr).not.toMatch(/unknown option/i)
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const split of ["dev", "Test", ""]) {
+    test(`AC7 — --split "${split}" prints an error naming the split on stderr and exits 1`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-split-")
+      const { stdout, stderr, exitCode } = runEvalFrom(
+        cwd,
+        "--config",
+        "A",
+        "--split",
+        split
+      )
+      expect(stderr).toMatch(/split/i)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("AC7 — a missing evals/dev/questions.json gives a one-line error naming the file and exits 1", () => {
+    const cwd = makeTempDir("reflex-cli-eval-noquestions-")
+    mkdirSync(join(cwd, ".reflex"))
+    writeFileSync(join(cwd, ".reflex", "index.db"), "")
+    const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", "A")
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toContain("questions.json")
+    expect(stderr).not.toContain("not implemented")
+    expect(stderr).not.toMatch(/^\s+at /m)
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("AC7 — a missing .reflex/index.db gives a one-line error naming the file and exits 1", () => {
+    const cwd = makeTempDir("reflex-cli-eval-noindex-")
+    mkdirSync(join(cwd, "evals", "dev"), { recursive: true })
+    copyFileSync(repoQuestions, join(cwd, "evals", "dev", "questions.json"))
+    const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", "A")
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toContain("index.db")
+    expect(stderr).not.toContain("not implemented")
+    expect(stderr).not.toMatch(/^\s+at /m)
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
 })
