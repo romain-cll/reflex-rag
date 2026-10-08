@@ -84,6 +84,10 @@ function usd(amount: number): string {
   return `$${String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`
 }
 
+function article(word: string): string {
+  return /^[aeiou]/i.test(word) ? "an" : "a"
+}
+
 function at<T>(items: readonly T[], index: number): T {
   const item = items[index % items.length]
   if (item === undefined) throw new Error("index into an empty list")
@@ -128,6 +132,7 @@ class Builder {
   private readonly names = new Set<string>()
   private readonly firstNames = new Set<string>()
   private readonly lastNames = new Set<string>()
+  private readonly taken = new Map<string, Set<string>>()
 
   constructor(readonly rng: Random) {}
 
@@ -153,6 +158,23 @@ class Builder {
         this.firstNames.add(first)
         this.lastNames.add(last)
         return name
+      }
+    }
+  }
+
+  /**
+   * Draws values not yet used under `key`, so that two projects never share a
+   * figure: a wrong-project answer must not look right.
+   */
+  unique<T>(key: string, draw: () => T, render: (value: T) => string[]): T {
+    const taken = this.taken.get(key) ?? new Set<string>()
+    this.taken.set(key, taken)
+    for (let attempt = 0; ; attempt++) {
+      const value = draw()
+      const keys = render(value)
+      if (attempt > 500 || keys.every((k) => !taken.has(k))) {
+        keys.forEach((k) => taken.add(k))
+        return value
       }
     }
   }
@@ -255,7 +277,11 @@ interface Staff {
   allHands: { date: string; promoted: Person[] }[]
 }
 
-/** Hands out journal entries to the journalists in turn, never to `not`. */
+/**
+ * Hands out journal entries to the journalists in turn. A journal that
+ * reports on a meeting is never written by someone who was in it, so that it
+ * stays an independent source.
+ */
 class JournalDesk {
   private turn = 0
 
@@ -264,32 +290,38 @@ class JournalDesk {
     private readonly journalists: Person[]
   ) {}
 
-  write(
-    date: string,
-    states: Fact[],
-    links: { to: NoteSpec; intent: string }[],
-    context: string,
-    project?: string,
-    not?: Person
-  ): NoteSpec {
+  write(entry: {
+    date: string
+    states: Fact[]
+    links: { to: NoteSpec; intent: string }[]
+    context: string
+    project?: string
+    exclude?: Person[]
+  }): NoteSpec {
+    const excluded = new Set((entry.exclude ?? []).map((person) => person.id))
     let author = at(this.journalists, this.turn++)
-    if (author === not) author = at(this.journalists, this.turn++)
+    for (let tries = 0; excluded.has(author.id); tries++) {
+      if (tries > this.journalists.length) {
+        throw new Error("no journalist outside the meeting")
+      }
+      author = at(this.journalists, this.turn++)
+    }
     const frontmatter: Record<string, string> = {
       type: "journal",
-      date,
+      date: entry.date,
       author: author.name,
     }
-    if (project) frontmatter.project = project
+    if (entry.project) frontmatter.project = entry.project
     return this.b.note({
       folder: `Journal/${author.name}`,
-      title: `${date} ${author.name} journal`,
+      title: `${entry.date} ${author.name} journal`,
       type: "journal",
-      date,
+      date: entry.date,
       author,
       frontmatter,
-      context,
-      states,
-      links,
+      context: entry.context,
+      states: entry.states,
+      links: entry.links,
     })
   }
 }
@@ -302,8 +334,9 @@ export function generateWorld(options: GenerateOptions): World {
   const desk = new JournalDesk(b, staff.journalists)
   const suppliers = buildSuppliers(b, staff, scale)
   const customerNotes = buildCustomers(b, staff, scale)
+  const findings = b.rng.shuffle(pools.DVT_FINDINGS)
   for (let i = 0; i < 6 * scale; i++) {
-    buildProject(b, staff, desk, suppliers, customerNotes, i, scale)
+    buildProject(b, staff, desk, suppliers, customerNotes, findings, i, scale)
   }
   buildCompany(b, staff, desk, scale)
 
@@ -395,14 +428,15 @@ function hireStaff(b: Builder, scale: number): Staff {
 
   const personNotes = new Map<string, NoteSpec>()
   const offices = new Map<string, Fact>()
-  for (const person of b.people) {
+  b.people.forEach((person, index) => {
     const promotion = promotedAt.get(person.id)
     const latest = promotion
       ? daysBetween(START, promotion) - 10
       : Math.min(200, daysBetween(START, TODAY))
     const date = addDays(START, b.rng.int(5, Math.max(5, latest)))
     const role = roleAt(person, date)
-    const office = b.rng.pick(pools.OFFICES)
+    // Offices in turn, so that office answers stay spread out.
+    const office = at(pools.OFFICES, index)
     const roleFact = b.fact({
       subject: person.id,
       attribute: "role",
@@ -443,7 +477,7 @@ function hireStaff(b: Builder, scale: number): Staff {
         states: [roleFact, officeFact],
       })
     )
-  }
+  })
 
   const journalists = [
     ...byKey.me,
@@ -472,6 +506,12 @@ function personNote(staff: Staff, person: Person): NoteSpec {
   return note
 }
 
+function office(staff: Staff, person: Person): Fact {
+  const fact = staff.offices.get(person.id)
+  if (!fact) throw new Error(`no office for ${person.name}`)
+  return fact
+}
+
 // Suppliers: one note each with its city and Larkspur's contact there.
 
 interface SupplierEntry {
@@ -487,13 +527,18 @@ function buildSuppliers(
   scale: number
 ): SupplierEntry[] {
   const prefixes = b.rng.shuffle(pools.SUPPLIER_PREFIXES)
+  const overseas = b.rng.shuffle(pools.OVERSEAS_CITIES)
+  const labCities = b.rng.shuffle(pools.LAB_CITIES)
+  let overseasTurn = 0
+  let labTurn = 0
   const entries: SupplierEntry[] = []
   for (const category of pools.SUPPLIER_CATEGORIES) {
     for (let i = 0; i < category.perScale * scale; i++) {
       const name = `${at(prefixes, entries.length)} ${b.rng.pick(category.suffixes)}`
-      const city = b.rng.pick(
-        category.overseas ? pools.OVERSEAS_CITIES : pools.LAB_CITIES
-      )
+      // Cities in turn, so that suppliers rarely share one.
+      const city = category.overseas
+        ? at(overseas, overseasTurn++)
+        : at(labCities, labTurn++)
       const supplier: Supplier = {
         id: b.nextId("supplier"),
         name,
@@ -507,7 +552,7 @@ function buildSuppliers(
         subject: supplier.id,
         attribute: "city",
         value: city,
-        statement: `${name}, ${/^[aeiou]/i.test(category.label) ? "an" : "a"} ${category.label} supplier, is based in ${city}.`,
+        statement: `${name}, ${article(category.label)} ${category.label} supplier, is based in ${city}.`,
         anchors: [city],
         validFrom: date,
       })
@@ -545,7 +590,8 @@ function buildSuppliers(
 }
 
 // Customers: an account page that goes stale after a handoff, the handoff
-// meeting, and a quarterly review that often contradicts the contract value.
+// meeting, a quarterly review run by customer success, and for most of them a
+// billing summary written the same week that disagrees on the contract value.
 
 interface CustomerEntry {
   customer: Customer
@@ -562,6 +608,7 @@ function buildCustomers(
   const used = new Set<string>()
   const prefixes = b.rng.shuffle(pools.CUSTOMER_PREFIXES)
   const accountExecs = staff.byKey.ae
+  const finance = at(staff.byKey.finance, 0)
 
   for (let i = 0; i < 12 * scale; i++) {
     const segment = at(pools.CUSTOMER_SEGMENTS, i)
@@ -579,11 +626,10 @@ function buildCustomers(
     }
     b.customers.push(customer)
 
+    // Owners in turn, so that the owner chains spread over every executive.
     const first = at(accountExecs, i)
-    const second = at(
-      accountExecs,
-      i + 1 + b.rng.int(0, accountExecs.length - 2)
-    )
+    const second = at(accountExecs, i + 1)
+    const success = at(staff.byKey.csm, i)
     const opened = addDays(START, b.rng.int(20, 300))
     const handoff = addDays(opened, b.rng.int(90, 150))
     const review = addDays(handoff, b.rng.int(30, 80))
@@ -596,7 +642,7 @@ function buildCustomers(
       attribute: "segment",
       value: segment.segment,
       statement: `${name} is a ${segment.segment} customer based in ${city}.`,
-      anchors: [city],
+      anchors: [segment.segment, city],
       validFrom: opened,
     })
     const contact = b.fact({
@@ -678,60 +724,74 @@ function buildCustomers(
     })
 
     const contradicts = i % 3 !== 2
+    const deployed = String(b.rng.int(40, 400))
     const reviewFact = contradicts
-      ? b.fact({
-          subject: customer.id,
-          attribute: "annual_contract_value",
-          value: usd(value + b.rng.int(5, 40) * 1000),
-          statement: "",
-          anchors: [],
-          validFrom: review,
-        })
+      ? contract
       : b.fact({
           subject: customer.id,
           attribute: "sensors_deployed",
-          value: String(b.rng.int(40, 400)),
-          statement: "",
-          anchors: [],
+          value: deployed,
+          statement: `${name} has ${deployed} Larkspur sensors deployed.`,
+          anchors: [`${deployed} Larkspur sensors`],
           validFrom: review,
         })
-    if (contradicts) {
-      reviewFact.statement = `The annual contract with ${name} is worth ${reviewFact.value}.`
-      reviewFact.anchors = [reviewFact.value]
-    } else {
-      const sensors = `${reviewFact.value} Larkspur sensors`
-      reviewFact.statement = `${name} has ${sensors} deployed.`
-      reviewFact.anchors = [sensors]
-    }
+    // The quarterly review names neither account owner: the chain to the
+    // current owner has to go through the handoff.
     const reviewNote = b.note({
       folder: "Meetings",
       title: `${review} ${name} quarterly review`,
       type: "meeting",
       date: review,
-      author: second,
+      author: success,
       frontmatter: {
         type: "meeting",
         date: review,
         customer: name,
-        attendees: [second.name, contactName],
+        attendees: [success.name, contactName],
       },
       context: contradicts
-        ? `Quarterly business review with ${name}. The contract value comes from finance and is given as a plain figure, without mentioning any change.`
-        : `Quarterly business review with ${name}: deployment status and next steps.`,
+        ? `Quarterly business review with ${name}, run by customer success: deployment status, and the annual contract value as recorded on the account.`
+        : `Quarterly business review with ${name}, run by customer success: deployment status and next steps.`,
       states: [reviewFact],
       links: [
         {
           to: handoffNote,
-          intent: `${second.name} has run the account since the handoff`,
+          intent: "the account changed hands at the handoff",
         },
         { to: note, intent: "account background" },
       ],
     })
 
-    b.trap("stale_note", [owner, newOwner], [handoffNote], [note])
     if (contradicts) {
-      b.trap("contradiction", [contract, reviewFact], [note, reviewNote], [])
+      const billed = usd(value + b.rng.int(5, 40) * 1000)
+      const billedFact = b.fact({
+        subject: customer.id,
+        attribute: "annual_contract_value",
+        value: billed,
+        statement: `The annual contract with ${name} is worth ${billed}.`,
+        anchors: [billed],
+        validFrom: review,
+      })
+      const billingDate = addDays(review, b.rng.int(1, 5))
+      const billing = b.note({
+        folder: "Customers",
+        title: `${name} billing summary`,
+        type: "customer",
+        date: billingDate,
+        author: finance,
+        frontmatter: {
+          type: "customer",
+          customer: name,
+          updated: billingDate,
+        },
+        context: `Billing summary kept by finance, from the invoicing system. It gives the annual contract value as a plain figure, without commenting on any other source.`,
+        states: [billedFact],
+        links: [{ to: note, intent: "the customer this billing covers" }],
+      })
+      b.trap("contradiction", [contract, billedFact], [reviewNote, billing], [])
     }
+
+    b.trap("stale_note", [owner, newOwner], [handoffNote], [note])
     b.chain(
       [reviewNote, handoffNote, personNote(staff, second)],
       office(staff, second)
@@ -743,12 +803,6 @@ function buildCustomers(
   return entries
 }
 
-function office(staff: Staff, person: Person): Fact {
-  const fact = staff.offices.get(person.id)
-  if (!fact) throw new Error(`no office for ${person.name}`)
-  return fact
-}
-
 // Projects: the full lifecycle of a product, with most of the traps.
 
 function buildProject(
@@ -757,12 +811,13 @@ function buildProject(
   desk: JournalDesk,
   suppliers: SupplierEntry[],
   customers: CustomerEntry[],
+  findings: readonly { text: string; anchor: string }[],
   i: number,
   scale: number
 ): void {
   const { rng } = b
   const count = 6 * scale
-  const lastStart = addDays(TODAY, -200)
+  const lastStart = addDays(TODAY, -280)
   const step = Math.floor(daysBetween(START, lastStart) / count)
   const d0 = addDays(START, i * step + rng.int(0, Math.floor(step / 3)))
   const day = (offset: number) => addDays(d0, offset)
@@ -770,34 +825,46 @@ function buildProject(
   const codename = at(pools.CODENAMES, i)
   const line = at(pools.PRODUCT_LINES, i)
   const product = `Larkspur ${line} Gen ${2 + Math.floor(i / pools.PRODUCT_LINES.length)}`
-  const goal = rng.pick(pools.PROJECT_GOALS)
+  const goal = b.unique(
+    "goal",
+    () => ({
+      feature: rng.pick(pools.GOAL_FEATURES),
+      device: rng.pick(pools.GOAL_DEVICES),
+      place: rng.pick(pools.GOAL_PLACES),
+    }),
+    (g) => [`${g.device} for ${g.place}`]
+  )
+  const goalText = `${article(goal.feature)} ${goal.feature} ${goal.device} for ${goal.place}`
+  const goalAnchor = `${goal.device} for ${goal.place}`
   const pm = at(staff.byKey.pm, i)
   const me = at(staff.byKey.me, i)
   const ee = at(staff.byKey.ee, i)
   const fw = at(staff.byKey.fw, i)
   const buyer = at(staff.byKey.procurement, i)
   const qe = at(staff.byKey.qe, i)
-  const team = [pm, me, ee, fw, buyer].map((person) => person.name)
+  const team = [pm, me, ee, fw, buyer]
 
   const project: Project = {
     id: b.nextId("project"),
     codename,
     product,
-    goal: goal.goal,
+    goal: goalText,
     owner: pm.id,
     start: d0,
   }
   b.projects.push(project)
   const subject = project.id
 
-  const enclosures = rng.shuffle(
-    suppliers.filter((s) => s.supplier.category === "enclosure")
+  // Vendors in turn, so that no supplier wins most projects.
+  const enclosures = suppliers.filter(
+    (s) => s.supplier.category === "enclosure"
   )
-  const vendorA = at(enclosures, 0)
-  const vendorB = at(enclosures, 1)
+  const vendorA = at(enclosures, i)
+  const vendorB = at(enclosures, i + 1)
   const component = at(pools.COMPONENTS, i)
-  const componentVendor = rng.pick(
-    suppliers.filter((s) => s.supplier.category === component.category)
+  const componentVendor = at(
+    suppliers.filter((s) => s.supplier.category === component.category),
+    i
   )
   const lab = at(
     suppliers.filter((s) => s.supplier.category === "certification lab"),
@@ -811,9 +878,9 @@ function buildProject(
   const goalFact = b.fact({
     subject,
     attribute: "goal",
-    value: goal.goal,
-    statement: `${codename} is the project to build ${goal.goal}, sold as the ${product}.`,
-    anchors: [goal.anchor, product],
+    value: goalText,
+    statement: `${codename} is the project to build ${goalText}, sold as the ${product}.`,
+    anchors: [goalAnchor, product],
     validFrom: d0,
   })
   const ownerFact = b.fact({
@@ -824,7 +891,8 @@ function buildProject(
     anchors: [pm.name],
     validFrom: d0,
   })
-  const launch = day(300 + rng.int(0, 30))
+  // Launches lie after `today`, so "when does it launch" is still open.
+  const launch = addDays(TODAY, rng.int(40, 200))
   const launchFact = b.fact({
     subject,
     attribute: "launch_date",
@@ -833,8 +901,11 @@ function buildProject(
     anchors: [longDate(launch)],
     validFrom: d0,
   })
-  const months = rng.pick([12, 18, 24, 36])
-  const copyMonths = months === 36 ? 24 : months + 6
+  const [months, copyMonths] = b.unique(
+    "battery",
+    () => [rng.int(12, 60), rng.int(12, 60)] as const,
+    ([a, c]) => (a === c ? [String(a), "same"] : [String(a), String(c)])
+  )
   const battery = (value: number, from: string) =>
     b.fact({
       subject,
@@ -845,7 +916,7 @@ function buildProject(
       validFrom: from,
     })
   const batteryFact = battery(months, day(10))
-  const copyBatteryFact = battery(copyMonths, day(12))
+  const copyBatteryFact = battery(copyMonths, day(10))
   const cost = rng.int(28, 95)
   const costFact = b.fact({
     subject,
@@ -856,11 +927,15 @@ function buildProject(
     validFrom: day(10),
   })
 
-  const tooling = (vendor: SupplierEntry, from: string) => {
-    const price = rng.int(36, 70) * 1000 + rng.int(0, 9) * 100
+  // The preferred vendor is the cheaper one: the review leans on price.
+  const [cheaper, dearer] = [
+    rng.int(36, 52) * 1000 + rng.int(0, 9) * 100,
+    rng.int(54, 70) * 1000 + rng.int(0, 9) * 100,
+  ]
+  const tooling = (vendor: SupplierEntry, price: number, from: string) => {
     const weeks = rng.int(6, 14)
     const name = vendor.supplier.name
-    return [
+    const facts = [
       b.fact({
         subject,
         attribute: `enclosure_tooling_price:${vendor.supplier.id}`,
@@ -878,9 +953,10 @@ function buildProject(
         validFrom: from,
       }),
     ]
+    return { facts, weeks }
   }
-  const toolingA = tooling(vendorA, day(25))
-  const toolingB = tooling(vendorB, day(28))
+  const toolingA = tooling(vendorA, cheaper, day(25))
+  const toolingB = tooling(vendorB, dearer, day(28))
   const unitPrice = (rng.int(150, 1400) / 100).toFixed(2)
   const componentFact = b.fact({
     subject,
@@ -916,7 +992,17 @@ function buildProject(
     anchors: [open.anchor],
     validFrom: day(60),
   })
-  const evtUnits = rng.int(4, 12) * 5
+
+  // The EVT build waits for the selected vendor's tooling.
+  const evtDay = 75 + toolingB.weeks * 7 + 7
+  const pilotDay = evtDay + 45
+  const dvtDay = pilotDay + 10
+  const scheduleDay = dvtDay + 25
+  const evtUnits = b.unique(
+    "evt",
+    () => rng.int(12, 94),
+    (u) => [String(u), String(u + 5)]
+  )
   const evt = (units: number, from: string) =>
     b.fact({
       subject,
@@ -926,8 +1012,8 @@ function buildProject(
       anchors: [`${units} units`],
       validFrom: from,
     })
-  const evtFact = evt(evtUnits, day(95))
-  const evtJournalFact = evt(evtUnits + 5, day(97))
+  const evtFact = evt(evtUnits, day(evtDay))
+  const evtJournalFact = evt(evtUnits + 5, day(evtDay + 2))
   const pilotUnits = rng.int(3, 12) * 10
   const pilot = b.fact({
     subject,
@@ -935,16 +1021,16 @@ function buildProject(
     value: pilotCustomer.customer.name,
     statement: `${pilotCustomer.customer.name} is piloting ${codename} with ${pilotUnits} units.`,
     anchors: [pilotCustomer.customer.name, `${pilotUnits} units`],
-    validFrom: day(140),
+    validFrom: day(pilotDay),
   })
-  const finding = at(pools.DVT_FINDINGS, i)
+  const finding = at(findings, i)
   const dvt = b.fact({
     subject,
     attribute: "dvt_finding",
     value: finding.text,
     statement: `The ${codename} DVT units showed ${finding.text}.`,
     anchors: [finding.anchor],
-    validFrom: day(150),
+    validFrom: day(dvtDay),
   })
   const newLaunch = addDays(launch, 70 + rng.int(0, 20))
   const slipped = b.fact({
@@ -953,7 +1039,7 @@ function buildProject(
     value: newLaunch,
     statement: `${codename} will now launch on ${longDate(newLaunch)}.`,
     anchors: [longDate(newLaunch)],
-    validFrom: day(175),
+    validFrom: day(scheduleDay),
   })
   b.supersede(launchFact, slipped)
   const slipReason = b.fact({
@@ -962,7 +1048,7 @@ function buildProject(
     value: lab.supplier.name,
     statement: `The ${codename} launch slipped because of a certification retest at ${lab.supplier.name}.`,
     anchors: [lab.supplier.name],
-    validFrom: day(175),
+    validFrom: day(scheduleDay),
   })
 
   // Notes, in date order
@@ -970,14 +1056,19 @@ function buildProject(
     date: string,
     title: string,
     author: Person,
-    attendees: string[]
+    people: Person[]
   ) => ({
     folder: "Meetings",
     title: `${date} ${title}`,
     type: "meeting" as const,
     date,
     author,
-    frontmatter: { type: "meeting", date, project: codename, attendees },
+    frontmatter: {
+      type: "meeting",
+      date,
+      project: codename,
+      attendees: people.map((person) => person.name),
+    },
   })
 
   const kickoff = b.note({
@@ -985,10 +1076,7 @@ function buildProject(
     context: `Kickoff meeting of ${codename}: goal, owner and target launch date.`,
     states: [goalFact, ownerFact, launchFact],
     links: [
-      {
-        to: personNote(staff, pm),
-        intent: `${pm.name} owns the project`,
-      },
+      { to: personNote(staff, pm), intent: `${pm.name} owns the project` },
     ],
   })
   const requirements = b.note({
@@ -1004,7 +1092,7 @@ function buildProject(
       owner: pm.name,
       status: "approved",
     },
-    context: `Requirements document of ${codename}, with sections for power, cost and enclosure. A short "Decisions" section at the end was added later, after the enclosure vendor was settled.`,
+    context: `Requirements document of ${codename}, with sections for power, cost, the enclosure and the ${component.label}. A short "Decisions" section at the end was added later, after the enclosure vendor was settled; it does not name the vendor.`,
     states: [batteryFact, costFact],
     links: [
       {
@@ -1017,16 +1105,16 @@ function buildProject(
     folder: "Specs",
     title: `${codename} requirements (copy)`,
     type: "spec",
-    date: day(12),
+    date: day(10),
     author: me,
     frontmatter: {
       type: "spec",
-      date: day(12),
+      date: day(10),
       project: codename,
       owner: pm.name,
-      status: "draft",
+      status: "approved",
     },
-    context: `An old working copy of the ${codename} requirements that was never deleted. Same structure as the main requirements, but it asks for ${copyMonths} months of battery life.`,
+    context: `A duplicate of the ${codename} requirements made the same day and edited separately. It looks just as official, with the same sections, but asks for ${copyMonths} months of battery life.`,
     states: [copyBatteryFact],
     links: [{ to: kickoff, intent: "written right after the kickoff" }],
   })
@@ -1058,16 +1146,13 @@ function buildProject(
         { to: vendor.note, intent: "supplier details" },
       ],
     })
-  const quoteA = quote(vendorA, toolingA, day(25), "enclosure")
-  const quoteB = quote(vendorB, toolingB, day(28), "enclosure")
+  const quoteA = quote(vendorA, toolingA.facts, day(25), "enclosure")
+  const quoteB = quote(vendorB, toolingB.facts, day(28), "enclosure")
   quote(componentVendor, [componentFact], day(30), component.label)
+  const reviewPeople = [me, pm, buyer]
   const review = b.note({
-    ...meeting(day(40), `${codename} enclosure review`, me, [
-      me.name,
-      pm.name,
-      buyer.name,
-    ]),
-    context: `Enclosure vendor review comparing the two tooling quotes. The team leans toward ${A}, mainly on price.`,
+    ...meeting(day(40), `${codename} enclosure review`, me, reviewPeople),
+    context: `Enclosure vendor review comparing the two tooling quotes. The team leans toward ${A}, mainly because its tooling is cheaper.`,
     states: [preferred],
     links: [
       { to: quoteA, intent: `the offer from ${A}` },
@@ -1096,39 +1181,37 @@ function buildProject(
       { to: review, intent: "where the enclosure vendor was discussed" },
     ],
   })
-  desk.write(
-    day(50),
-    [preferred],
-    [{ to: review, intent: "what came out of the enclosure review" }],
-    `Personal note: heard in the hallway that ${codename} is going with ${A} for the enclosure.`,
-    codename
-  )
+  const rumor = desk.write({
+    date: day(50),
+    states: [preferred],
+    links: [{ to: review, intent: "what came out of the enclosure review" }],
+    context: `Personal note from someone who was not at the enclosure review: heard in the hallway that ${codename} is going with ${A} for the enclosure.`,
+    project: codename,
+    exclude: reviewPeople,
+  })
   const designReview = b.note({
-    ...meeting(day(60), `${codename} design review`, ee, [
-      ee.name,
-      me.name,
-      fw.name,
-      pm.name,
-    ]),
+    ...meeting(day(60), `${codename} design review`, ee, [ee, me, fw, pm]),
     context: `Design review of ${codename}. One open question is debated at length and left open.`,
     states: [undecided],
     links: [
       { to: hub, intent: "open questions are tracked on the project page" },
     ],
   })
-  const journalOpen = desk.write(
-    day(62),
-    [undecided],
-    [{ to: designReview, intent: "the question came up in the design review" }],
-    `Personal note: frustrated that the team still has not settled ${open.phrase} for ${codename}.`,
-    codename
-  )
+  const journalOpen = desk.write({
+    date: day(62),
+    states: [undecided],
+    links: [
+      { to: designReview, intent: "the question came up in the design review" },
+    ],
+    context: `Personal note: frustrated that the team still has not settled ${open.phrase} for ${codename}.`,
+    project: codename,
+  })
   const signoff = b.note({
     ...meeting(day(75), `${codename} tooling sign-off`, me, [
-      me.name,
-      pm.name,
-      buyer.name,
-      qe.name,
+      me,
+      pm,
+      buyer,
+      qe,
     ]),
     context: `Vendor validation after the drop tests: the team gives ${B} the tooling go-ahead for the ${codename} enclosure. Talk about sign-off, validation and go-ahead.`,
     states: [final],
@@ -1146,33 +1229,34 @@ function buildProject(
     signoff,
     "the enclosure supplier decision is recorded in the tooling sign-off"
   )
+  const evtPeople = [ee, me, fw, qe]
   const evtReview = b.note({
-    ...meeting(day(95), `${codename} EVT review`, ee, [
-      ee.name,
-      me.name,
-      fw.name,
-      qe.name,
-    ]),
-    context: `Review of the first engineering validation build of ${codename}.`,
+    ...meeting(day(evtDay), `${codename} EVT review`, ee, evtPeople),
+    context: `Review of the first engineering validation build of ${codename}, once the enclosure tooling was ready.`,
     states: [evtFact],
     links: [
       { to: signoff, intent: "enclosures built as agreed at the sign-off" },
     ],
   })
-  const journalEvt = desk.write(
-    day(97),
-    [evtJournalFact],
-    [{ to: evtReview, intent: "notes from the EVT review" }],
-    `Personal note after the ${codename} EVT build, counting the units on the bench.`,
-    codename
-  )
+  const journalEvt = desk.write({
+    date: day(evtDay + 2),
+    states: [evtJournalFact],
+    links: [{ to: evtReview, intent: "the build the EVT review was about" }],
+    context: `Personal note from someone who helped on the ${codename} EVT build but was not at the review: they counted the units themselves.`,
+    project: codename,
+    exclude: evtPeople,
+  })
+  // The pilot title leaves the customer out: the chain from the DVT review
+  // has to open the pilot note to learn who the customer is.
   const pilotMeeting = b.note({
-    ...meeting(
-      day(140),
-      `${codename} pilot kickoff with ${pilotCustomer.customer.name}`,
-      pm,
-      [pm.name, qe.name]
-    ),
+    ...meeting(day(pilotDay), `${codename} pilot kickoff`, pm, [pm, qe]),
+    frontmatter: {
+      type: "meeting",
+      date: day(pilotDay),
+      project: codename,
+      customer: pilotCustomer.customer.name,
+      attendees: [pm.name, qe.name],
+    },
     context: `Kickoff of the ${codename} pilot at ${pilotCustomer.customer.name}: scope and number of units.`,
     states: [pilot],
     links: [
@@ -1181,21 +1265,16 @@ function buildProject(
     ],
   })
   const dvtReview = b.note({
-    ...meeting(day(150), `${codename} DVT review`, qe, [
-      qe.name,
-      ee.name,
-      me.name,
-      pm.name,
-    ]),
+    ...meeting(day(dvtDay), `${codename} DVT review`, qe, [qe, ee, me, pm]),
     context: `Design validation review of ${codename}: the main issue found on the DVT units.`,
     states: [dvt],
     links: [{ to: pilotMeeting, intent: "DVT units also went to the pilot" }],
   })
   const schedule = b.note({
-    ...meeting(day(175), `${codename} schedule review`, pm, [
-      pm.name,
-      qe.name,
-      staff.coo.name,
+    ...meeting(day(scheduleDay), `${codename} schedule review`, pm, [
+      pm,
+      qe,
+      staff.coo,
     ]),
     context: `Schedule review of ${codename}: the launch moves because a certification test has to be run again.`,
     states: [slipped, slipReason],
@@ -1208,20 +1287,25 @@ function buildProject(
     folder: "Decisions",
     title: `${codename} launch date change`,
     type: "decision",
-    date: day(177),
+    date: day(scheduleDay + 2),
     author: pm,
     frontmatter: {
       type: "decision",
-      date: day(177),
+      date: day(scheduleDay + 2),
       project: codename,
       decided_by: pm.name,
     },
-    context: `Decision record of the new ${codename} launch date.`,
+    context: `Decision record of the new ${codename} launch date. The reasons are left to the schedule review.`,
     states: [slipped],
     links: [{ to: schedule, intent: "the reasons are in the schedule review" }],
   })
 
-  b.trap("revised_decision", [preferred, final], [signoff], [review])
+  b.trap(
+    "revised_decision",
+    [preferred, final],
+    [signoff],
+    [review, hub, rumor]
+  )
   b.trap("stale_note", [preferred, final], [signoff], [hub])
   b.trap("vocabulary_shift", [final], [signoff], [quoteA, quoteB, review])
   b.trap(
@@ -1244,12 +1328,13 @@ function buildProject(
   )
   b.trap("undecided", [undecided], [designReview, journalOpen], [])
 
+  // Chains whose first note does not name the end of the chain.
   b.chain([requirements, signoff, vendorB.note], vendorB.contact)
-  b.chain([review, quoteB, vendorB.note], vendorB.city)
+  b.chain([evtReview, signoff, vendorB.note], vendorB.city)
   b.chain([decision, schedule, lab.note], lab.contact)
   b.chain([dvtReview, pilotMeeting, pilotCustomer.note], pilotCustomer.contact)
 
-  for (const k of [i, i + 1]) {
+  for (const k of [2 * i, 2 * i + 1]) {
     const topic = at(pools.ABSENT_TOPICS.project, k)
     b.absentTopic(subject, `${codename} ${topic.topic}`, topic.terms)
   }
@@ -1298,14 +1383,13 @@ function buildCompany(
       })),
     })
     for (const { person, fact, old } of promotions) {
-      const gossip = desk.write(
-        addDays(meeting.date, b.rng.int(1, 6)),
-        [fact],
-        [{ to: note, intent: "announced at the all-hands" }],
-        `Personal note: thoughts on ${person.name}'s new role.`,
-        undefined,
-        person
-      )
+      const gossip = desk.write({
+        date: addDays(meeting.date, b.rng.int(1, 6)),
+        states: [fact],
+        links: [{ to: note, intent: "announced at the all-hands" }],
+        context: `Personal note: thoughts on ${person.name}'s new role.`,
+        exclude: [person],
+      })
       b.trap(
         "stale_note",
         [old, fact],
@@ -1315,7 +1399,8 @@ function buildCompany(
     }
   }
 
-  for (let i = 0; i < scale; i++) {
+  const priceDecisions = Math.min(scale, pools.PRODUCT_LINES.length)
+  for (let i = 0; i < priceDecisions; i++) {
     const line = at(pools.PRODUCT_LINES, i)
     const date = addDays(TODAY, -b.rng.int(30, 200))
     const effective = addDays(date, 30)
@@ -1334,11 +1419,7 @@ function buildCompany(
       type: "decision",
       date,
       author: staff.vpSales,
-      frontmatter: {
-        type: "decision",
-        date,
-        decided_by: staff.vpSales.name,
-      },
+      frontmatter: { type: "decision", date, decided_by: staff.vpSales.name },
       context: `Decision record of a list price change for the ${line} product line.`,
       states: [fact],
       links: [
@@ -1347,9 +1428,12 @@ function buildCompany(
     })
   }
 
-  for (let i = 0; i < 2 * scale; i++) {
+  const reviews = Math.min(2 * scale, pools.COMPANY_UNDECIDED.length)
+  const first = addDays(START, 60)
+  const step = Math.floor(daysBetween(first, addDays(TODAY, -30)) / reviews)
+  for (let i = 0; i < reviews; i++) {
     const open = at(pools.COMPANY_UNDECIDED, i)
-    const date = addDays(START, 150 + i * 90 + b.rng.int(0, 30))
+    const date = addDays(first, i * step + b.rng.int(0, Math.floor(step / 3)))
     const fact = b.fact({
       subject: "company",
       attribute: `open_question:${open.anchor}`,

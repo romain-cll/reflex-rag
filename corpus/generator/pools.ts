@@ -24,7 +24,8 @@ export const LAST_NAMES = [
   "Foley", "Greer", "Hart", "Keane", "Lund", "Mills", "Navarro", "Reyes",
 ] // prettier-ignore
 
-export const OFFICES = ["Portland", "Portland", "Denver", "Austin"]
+/** Larkspur offices, headquarters first. */
+export const OFFICES = ["Portland", "Denver", "Austin", "Boston", "Chicago"]
 
 export const EXECUTIVES = [
   { title: "Chief Executive Officer", team: "Executive" },
@@ -41,10 +42,11 @@ export const STAFF = {
   me: { title: "Mechanical Engineer", team: "Hardware Engineering", count: 2 },
   ee: { title: "Electrical Engineer", team: "Hardware Engineering", count: 2 },
   fw: { title: "Firmware Engineer", team: "Firmware", count: 2 },
-  ae: { title: "Account Executive", team: "Sales", count: 4 },
+  ae: { title: "Account Executive", team: "Sales", count: 6 },
   csm: { title: "Customer Success Manager", team: "Customer Success", count: 2 },
   procurement: { title: "Procurement Specialist", team: "Operations", count: 1 },
   qe: { title: "Quality Engineer", team: "Operations", count: 1 },
+  finance: { title: "Finance Manager", team: "Finance", count: 1 },
 } as const // prettier-ignore
 
 export type StaffKey = keyof typeof STAFF
@@ -60,7 +62,7 @@ export const PROMOTIONS: { from: StaffKey; title: string; team: string }[] = [
 export const CUSTOMER_PREFIXES = [
   "Harborview", "Maple Ridge", "Cedar Point", "Riverside", "Summit Park",
   "Lakeshore", "Oak Hollow", "Pine Valley", "Westgate", "Silver Creek",
-  "Fairhaven", "Crescent Bay", "Stonebridge", "Granite Falls", "Clearwater",
+  "Fairhaven", "Crescent Bay", "Stonebridge", "Elk Grove", "Clearwater",
   "Highland", "Meadowbrook", "Bayside", "Northgate", "Redwood Hills",
   "Sunridge", "Copper Canyon", "Bellmont", "Ashford", "Glenwood", "Kingsley",
   "Larchmont", "Marlowe", "Newbury", "Orchard Hill", "Prescott", "Quarry Lake",
@@ -101,12 +103,12 @@ export const SUPPLIER_PREFIXES = [
 ] // prettier-ignore
 
 export const SUPPLIER_CATEGORIES = [
-  { category: "enclosure", label: "enclosure", suffixes: ["Plastics", "Molding"], perScale: 3, overseas: true },
+  { category: "enclosure", label: "enclosure", suffixes: ["Plastics", "Molding"], perScale: 4, overseas: true },
   { category: "pcb assembly", label: "circuit board", suffixes: ["Circuits", "Electronics"], perScale: 2, overseas: true },
   { category: "sensor", label: "sensor module", suffixes: ["Sensing", "Photonics"], perScale: 2, overseas: true },
   { category: "battery", label: "battery pack", suffixes: ["Power", "Energy"], perScale: 1, overseas: true },
   { category: "packaging", label: "packaging", suffixes: ["Packaging"], perScale: 1, overseas: true },
-  { category: "certification lab", label: "certification testing", suffixes: ["Compliance Labs", "Test Labs"], perScale: 1, overseas: false },
+  { category: "certification lab", label: "certification testing", suffixes: ["Compliance Labs", "Test Labs"], perScale: 3, overseas: false },
 ] // prettier-ignore
 
 export const OVERSEAS_CITIES = [
@@ -124,7 +126,7 @@ export const CODENAMES = [
   "Jasper", "Mesa", "Nova", "Onyx", "Pebble", "Rook", "Sable", "Talon",
   "Ursa", "Vega", "Wren", "Yucca", "Zinc", "Amber", "Birch", "Cinder",
   "Drift", "Flint", "Gale", "Ion", "Kite", "Lynx", "Mica", "Nectar", "Opal",
-  "Reef", "Slate", "Thistle", "Umbra", "Vale", "Wisp", "Cobalt Bay", "Solstice",
+  "Reef", "Slate", "Thistle", "Umbra", "Vale", "Wisp", "Solstice",
 ] // prettier-ignore
 
 export const PRODUCT_LINES = [
@@ -132,15 +134,21 @@ export const PRODUCT_LINES = [
   "Haven", "Strata",
 ] // prettier-ignore
 
-export const PROJECT_GOALS = [
-  { goal: "a battery-powered CO2 monitor for classrooms", anchor: "CO2 monitor" },
-  { goal: "a hospital-grade particulate sensor for patient rooms", anchor: "particulate sensor" },
-  { goal: "an outdoor-rated air-quality station for building entrances", anchor: "air-quality station" },
-  { goal: "a low-cost sensor for open-plan offices", anchor: "low-cost sensor" },
-  { goal: "a ceiling-mounted sensor for retrofit projects", anchor: "ceiling-mounted sensor" },
-  { goal: "a gateway that collects readings across a multi-floor building", anchor: "gateway" },
-  { goal: "a radon and VOC monitor for basements", anchor: "radon" },
-  { goal: "a sensor kit for school gyms and auditoriums", anchor: "sensor kit" },
+/** Project goals are drawn as feature + device + place, unique per world. */
+export const GOAL_FEATURES = [
+  "battery-powered", "wired", "ceiling-mounted", "outdoor-rated", "low-cost",
+  "hospital-grade", "wall-mounted", "portable",
+] // prettier-ignore
+
+export const GOAL_DEVICES = [
+  "CO2 monitor", "particulate sensor", "VOC monitor", "radon monitor",
+  "multi-gas sensor", "humidity sensor",
+] // prettier-ignore
+
+export const GOAL_PLACES = [
+  "classrooms", "patient rooms", "open-plan offices", "building entrances",
+  "basements", "school gyms", "laboratories", "warehouses", "hotel rooms",
+  "meeting rooms",
 ] // prettier-ignore
 
 export const COMPONENTS = [
@@ -153,9 +161,17 @@ export const DVT_FINDINGS = [
   { text: "condensation inside the humidity sensor channel", anchor: "condensation" },
   { text: "a cracked battery door after the drop test", anchor: "battery door" },
   { text: "Wi-Fi dropouts near metal ceiling grids", anchor: "Wi-Fi dropouts" },
-  { text: "a CO2 reading drift above 35 degrees Celsius", anchor: "reading drift" },
+  { text: "a CO2 reading drift in warm rooms", anchor: "reading drift" },
   { text: "a loose light pipe over the status LED", anchor: "light pipe" },
   { text: "firmware resets when the gateway reboots", anchor: "firmware resets" },
+  { text: "a rattling mounting plate", anchor: "mounting plate" },
+  { text: "dust building up on the particulate inlet", anchor: "particulate inlet" },
+  { text: "a faded label after the UV exposure test", anchor: "faded label" },
+  { text: "a buzzing noise from the power supply", anchor: "buzzing noise" },
+  { text: "a warped enclosure lid after the heat soak", anchor: "warped enclosure lid" },
+  { text: "a sticky reset button", anchor: "reset button" },
+  { text: "slow pairing with the mobile app", anchor: "slow pairing" },
+  { text: "a clock that drifts after a power cut", anchor: "clock that drifts" },
 ] // prettier-ignore
 
 export const PROJECT_UNDECIDED = [
@@ -171,6 +187,9 @@ export const COMPANY_UNDECIDED = [
   { phrase: "opening a second warehouse in Reno", anchor: "second warehouse" },
   { phrase: "moving the sales team to a new CRM", anchor: "CRM" },
   { phrase: "launching a hardware-as-a-service plan", anchor: "hardware-as-a-service" },
+  { phrase: "offering a leasing option to school districts", anchor: "leasing option" },
+  { phrase: "moving support to a follow-the-sun model", anchor: "follow-the-sun" },
+  { phrase: "setting up a customer advisory board", anchor: "advisory board" },
 ] // prettier-ignore
 
 /** Topics the vault must never mention, for the "no answer" questions. */
@@ -179,29 +198,29 @@ export const ABSENT_TOPICS = {
     { topic: "patent filing", terms: ["patent", "patents", "patented"] },
     { topic: "crowdfunding campaign", terms: ["crowdfunding", "Kickstarter", "Indiegogo"] },
     { topic: "launch in Japan", terms: ["Japan", "Japanese"] },
+    { topic: "trade show booth", terms: ["trade show", "tradeshow"] },
+    { topic: "Amazon storefront", terms: ["Amazon"] },
   ],
   customer: [
     { topic: "Net Promoter Score", terms: ["NPS", "Net Promoter"] },
     { topic: "data-residency requirements", terms: ["data residency", "data-residency"] },
+    { topic: "cyber insurance policy", terms: ["cyber insurance"] },
+    { topic: "LEED certification", terms: ["LEED"] },
   ],
   supplier: [
     { topic: "ISO 14001 certification", terms: ["ISO 14001"] },
     { topic: "carbon footprint report", terms: ["carbon footprint"] },
+    { topic: "conflict minerals report", terms: ["conflict minerals"] },
   ],
   company: [
     { topic: "SOC 2 audit", terms: ["SOC 2"] },
     { topic: "Series C funding round", terms: ["Series C"] },
     { topic: "holiday party venue", terms: ["holiday party"] },
     { topic: "four-day work week trial", terms: ["four-day"] },
-    { topic: "office in Seattle", terms: ["Seattle"] },
   ],
 } // prettier-ignore
 
 export const QUOTE_TERMS = [
-  "quote",
-  "quotes",
-  "quoted",
-  "quotation",
-  "bid",
-  "bids",
-]
+  "quote", "quotes", "quoted", "quoting", "quotation", "quotations",
+  "bid", "bids", "bidding", "bidder", "bidders",
+] // prettier-ignore
