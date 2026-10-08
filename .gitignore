@@ -1,0 +1,16 @@
+# Local planning brief (not versioned)
+reflex-rag-plan.md
+
+# Dependencies
+node_modules/
+
+# Derived index (rebuild with `reflex index`)
+.reflex/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
