@@ -4,10 +4,13 @@ Retrieval layer over an Obsidian vault. A system-one decision model (Clef-flash)
 
 The full brief is `reflex-rag-plan.md` at the repo root (French, local only, gitignored). Read it before starting a phase.
 
+`reflex-rag-preuves.md` at the repo root (French, local only, gitignored) is the review grid: what the project must prove and the work order. It overrides the brief where they diverge (MCP, threshold sweep, order of the headline metrics).
+
 ## Rules
 
 - One phase at a time. Stop at the end of each phase, summarise, wait for Romain's go.
 - Nothing outside the brief's scope: write ideas to `IDEAS.md` and move on.
+- Before adding anything, ask: does it change a figure of the results table or a line of the failure diagnosis? If not, it waits in `IDEAS.md`.
 - No invented numbers in `README.md` or `REPORT.md`: every figure comes from a traced run in `runs/`.
 - Code, comments, docs, README and report in English.
 - Never write to the vault. The index under `.reflex/` is derived and disposable.
