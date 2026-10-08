@@ -33,6 +33,27 @@ Company: Larkspur Devices, Inc. (Portland, OR, about 150 people), designs connec
 - **AC12 — briefs**: `renderBatches(world, size)` returns batches named `batch-01`, `batch-02`… with at most `size` notes each, every note in exactly one batch, grouped so that notes of the same project or customer stay together as much as the size allows. Each batch's markdown starts with a cast section naming every author of its notes with their role at the note date, then for each note: its path, its frontmatter as a fenced YAML block, the statement and anchors of every fact it states, every link target written as `[[<target title>]]` with its intent, its forbidden terms, its context and its word range.
 - **AC13 — CLI**: `bun corpus/generator/cli.ts generate --name <name> --seed <n> --scale <k> [--out <dir>]` writes `<dir>/<name>/world.json` and `<dir>/<name>/briefs/batch-NN.md` (`--out` defaults to `corpus`). It refuses, with exit code 1, when `<dir>/<name>/vault` already exists, unless `--force` is passed.
 
+## Revision 2 — traps that test what they claim
+
+The review of the first version found traps that do not test what they claim (chains whose first note already names the answer's entity, "contradictions" that read as dated updates, answers repeated across many chains, facts shared by several projects). The world is regenerated from this revision; the ACs above still hold, extended as follows.
+
+- **AC6 (extended)**: holds at every scale from 1 to 10.
+- **AC9 (extended)**: the two facts of a `contradiction` trap are stated by notes with different authors, dated at most 7 days apart. The two facts of a `divergent_duplicate` trap are stated by two notes of the same date, the duplicate's title ending with `(copy)`.
+- **AC10 (extended)**: the first note of a chain does not reveal the end of the chain: neither the title of the last note nor any anchor of the answer fact appears in the first note's title, context, link intents, frontmatter values, the statements of the facts it states, or the titles of the notes it links to.
+- **AC12 (extended)**: with batches of 20 at scale 1, the notes of each project fall in at most 2 batches.
+- **AC14 — diverse answers**: at scale 1, chain answers (the value of the answer fact) take at least 18 distinct values, and no value answers more than 4 chains.
+- **AC15 — no shared facts between projects**: at scales 1 and 2, no two projects share a goal anchor, a battery-life value, an EVT unit count or a DVT finding.
+- **AC16 — independent sources**: the journal note of an `evt_units` contradiction, and every journal note stating a superseded enclosure vendor, is written by someone who is neither the author nor an attendee of the meeting it links to.
+- **AC17 — future launches**: the value of every `launch_date` fact is after `meta.today`.
+- **AC18 — coherent preference**: in each project, the vendor preferred at the enclosure review has the lower enclosure tooling price of the two offers.
+- **AC19 — coherent timeline**: the EVT review of a project is dated at least the selected vendor's tooling lead time after the tooling sign-off.
+- **AC20 — absent topics**: at scale 1, absent topics use at least 15 distinct `forbiddenTerms` sets, and none is a city.
+- **AC21 — vocabulary trap**: the forbidden terms of a sign-off include `quote`, `quotes`, `quoted`, `quoting`, `quotation`, `quotations`, `bid`, `bids`, `bidding`, `bidder`, `bidders`.
+- **AC22 — complete decoys**: every note stating a superseded enclosure-vendor fact is a truth or decoy note of that project's `revised_decision` trap on the vendor.
+- **AC23 — scale**: generation succeeds at every scale from 1 to 10, with unique project codenames and at most one price decision per product line.
+
+A fact `subject` is an entity id, or `company` / `line:<product line>` for company-wide facts.
+
 ## Technical plan
 
 Files (all under `corpus/generator/`):
