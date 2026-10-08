@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { renderBatches } from "./briefs.ts"
 import type { World } from "./schema.ts"
-import { generateWorld } from "./world.ts"
+import { generateWorld, roleAt } from "./world.ts"
 
 type Fact = World["facts"][number]
 type Note = World["notes"][number]
@@ -606,6 +606,78 @@ describe("AC23 — scale", () => {
         .filter(([, count]) => count > 1)
         .map(([line, count]) => `${line}: ${count} decisions`)
       expect(repeated).toEqual([])
+    })
+  }
+})
+
+/** Both values of a divergent_duplicate trap must differ. */
+function sameValueDuplicates(w: World): string[] {
+  const facts = byId(w.facts)
+  return w.traps
+    .filter((trap) => trap.kind === "divergent_duplicate")
+    .filter((trap) => {
+      const values = trap.facts.map((id) => facts.get(id)?.value)
+      return new Set(values).size < 2
+    })
+    .map((trap) => trap.id)
+}
+
+describe("AC9 (extended again) — divergent duplicates differ in value", () => {
+  for (const scale of SCALES) {
+    test(`AC9 — scale ${scale}: the two facts of each divergent_duplicate have different values`, () => {
+      const w = worldAt(scale)
+      expect(
+        w.traps.filter((trap) => trap.kind === "divergent_duplicate").length
+      ).toBeGreaterThan(0)
+      expect(sameValueDuplicates(w)).toEqual([])
+    })
+  }
+
+  test("AC9 — scale 1: the two facts of each divergent_duplicate have different values for seeds 1 to 20", () => {
+    const bad: string[] = []
+    for (let seed = 1; seed <= 20; seed++) {
+      const w = generateWorld({ seed, scale: 1 })
+      for (const id of sameValueDuplicates(w)) bad.push(`seed ${seed}: ${id}`)
+    }
+    expect(bad).toEqual([])
+  })
+})
+
+describe("AC24 — quarterly reviews by customer success", () => {
+  for (const scale of [1, 2]) {
+    test(`AC24 — scale ${scale}: every quarterly review is written by a Customer Success person who does not own the account`, () => {
+      const w = worldAt(scale)
+      const people = byId(w.people)
+      const reviews = w.notes.filter((note) =>
+        note.title.endsWith("quarterly review")
+      )
+      expect(reviews.length).toBeGreaterThan(0)
+      const bad: string[] = []
+      for (const review of reviews) {
+        const author = people.get(review.author)
+        const customer = w.customers.find(
+          (candidate) => candidate.name === review.frontmatter.customer
+        )
+        if (!author || !customer) {
+          bad.push(`${review.id}: unknown author or customer`)
+          continue
+        }
+        const team = roleAt(author, review.date).team
+        if (team !== "Customer Success") {
+          bad.push(`${review.id}: ${author.name} is on ${team}`)
+        }
+        const owners = w.facts
+          .filter(
+            (fact) =>
+              fact.subject === customer.id && fact.attribute === "account_owner"
+          )
+          .map((fact) => fact.value)
+        if (owners.length === 0) bad.push(`${review.id}: no account owner`)
+        if (owners.includes(author.name)) {
+          bad.push(`${review.id}: ${author.name} owns the account`)
+        }
+      }
+      expect(bad).toEqual([])
     })
   }
 })
