@@ -50,19 +50,64 @@ const MONTHS = [
   "December",
 ]
 
-// A date or an amount is one token: "2027-09-01" must not also count as 2027.
-const QUANTITY = new RegExp(
+const NUMBER = String.raw`\d+(?:,\d{3})*(?:\.\d+)?`
+const ONES = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+]
+const TENS = [
+  "twenty",
+  "thirty",
+  "forty",
+  "fifty",
+  "sixty",
+  "seventy",
+  "eighty",
+  "ninety",
+]
+// "zero" to "ninety-nine", hyphenated compounds included.
+const NUMBER_WORD = String.raw`(?:(?:${TENS.join("|")})(?:-(?:${ONES.slice(1, 10).join("|")}))?|${ONES.join("|")})`
+const UNITS = "day|week|month|year|unit|board|module|pack|sensor|hour"
+
+const DATE = new RegExp(
   [
     String.raw`(?<iso>\d{4}-\d{2}-\d{2})`,
-    String.raw`(?<month>${MONTHS.join("|")}) (?:(?<day>\d{1,2}), )?(?<year>\d{4})`,
-    String.raw`\$\d+(?:,\d{3})*(?:\.\d+)?`,
-    String.raw`\d+(?:\.\d+)?%`,
-    String.raw`\d+(?:,\d{3})*(?:\.\d+)?`,
+    String.raw`\b(?<month>${MONTHS.join("|")}) (?:(?<day>\d{1,2})(?!\d)(?:, (?<year>\d{4}))?|(?<yearOnly>\d{4}))`,
   ].join("|"),
   "g"
 )
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-const WIKILINK = /!?\[\[[^\]]*\]\]/g
+const MONEY = new RegExp(String.raw`\$${NUMBER}`, "g")
+const PERCENTAGE = /(?<value>\d+(?:\.\d+)?)(?:%| percent\b)/g
+// A hyphen is accepted too: "six-week".
+const QUANTITY = new RegExp(
+  String.raw`\b(?<count>${NUMBER}|${NUMBER_WORD})[ -](?<unit>${UNITS})s?\b`,
+  "gi"
+)
+const YEAR = /(?<![\d.,])(?:19|20)\d{2}(?!\d|[.,]\d)/g
+const BARE_NUMBER = new RegExp(
+  String.raw`(?<digits>${NUMBER})|\b(?<word>${NUMBER_WORD})\b`,
+  "gi"
+)
+// Group 2 is the alias, which stays: only the target is dropped.
+const WIKILINK = /(!)?\[\[[^\]|]*(?:\|([^\]]*))?\]\]/g
 // The second word is a lookahead so that "Yesterday Marcus Okafor" still
 // yields "Marcus Okafor".
 const NAME_START = /\b([A-Z][a-z]+)(?= ([A-Z][a-z]+)\b)/g
@@ -251,34 +296,119 @@ function absentTopics(
   )
 }
 
-interface Quantity {
+interface Figure {
   text: string
-  /** Equal for two spellings of the same value: "March 15, 2026" and "2026-03-15". */
+  index: number
+  /** Equal for two spellings of the same figure: "March 15, 2026" and "2026-03-15". */
   key: string
-  /** Numbers up to 10 are always allowed. */
+  /** Other keys the figure covers when it is in a planned text. */
+  covers: string[]
+  /** Numbers up to 10 with no unit are always allowed. */
   checked: boolean
 }
 
-function quantities(text: string): Quantity[] {
-  return [...text.matchAll(QUANTITY)].map((match) => {
-    const [token] = match
-    const { iso, month, day, year } = match.groups!
-    if (iso) return { text: token, key: iso, checked: true }
-    if (month) {
-      const number = String(MONTHS.indexOf(month) + 1).padStart(2, "0")
-      const date = day ? `-${day.padStart(2, "0")}` : ""
-      return { text: token, key: `${year}-${number}${date}`, checked: true }
-    }
-    const key = token.replace(/,/g, "")
-    const plain = !key.startsWith("$") && !key.endsWith("%")
-    return { text: token, key, checked: !plain || Number(key) > 10 }
+function figure(
+  match: RegExpMatchArray,
+  key: string,
+  covers: string[] = [],
+  checked = true
+): Figure {
+  return { text: match[0], index: match.index!, key, covers, checked }
+}
+
+function wordValue(word: string): number {
+  return word
+    .toLowerCase()
+    .split("-")
+    .reduce((sum, part) => {
+      const tens = TENS.indexOf(part)
+      return sum + (tens >= 0 ? (tens + 2) * 10 : ONES.indexOf(part))
+    }, 0)
+}
+
+/** The value of a number written in digits or in words. */
+function valueOf(token: string): number {
+  return /^\d/.test(token) ? Number(token.replace(/,/g, "")) : wordValue(token)
+}
+
+function dateFigures(text: string): Figure[] {
+  return [...text.matchAll(DATE)].map((match) => {
+    const { iso, month, day, year, yearOnly } = match.groups!
+    const [isoYear, isoMonth, isoDay] = iso?.split("-") ?? []
+    const y = isoYear ?? year ?? yearOnly
+    const m = isoMonth ?? String(MONTHS.indexOf(month!) + 1).padStart(2, "0")
+    const d = isoDay ?? day?.padStart(2, "0")
+    if (!y) return figure(match, `monthday:${m}-${d}`)
+    if (!d) return figure(match, `month:${y}-${m}`, [`year:${y}`])
+    return figure(match, `date:${y}-${m}-${d}`, [
+      `month:${y}-${m}`,
+      `monthday:${m}-${d}`,
+      `year:${y}`,
+    ])
   })
 }
 
-/** An ISO date also covers the month it falls in: "June 2025". */
-function coveredKeys(text: string): string[] {
-  return quantities(text).flatMap(({ key }) =>
-    ISO_DATE.test(key) ? [key, key.slice(0, 7)] : [key]
+function moneyFigures(text: string): Figure[] {
+  return [...text.matchAll(MONEY)].map((match) =>
+    figure(match, `money:${match[0].replace(/,/g, "")}`)
+  )
+}
+
+function percentageFigures(text: string): Figure[] {
+  return [...text.matchAll(PERCENTAGE)].map((match) =>
+    figure(match, `percent:${Number(match.groups!.value)}`)
+  )
+}
+
+function quantityFigures(text: string): Figure[] {
+  return [...text.matchAll(QUANTITY)].map((match) => {
+    const { count, unit } = match.groups!
+    return figure(match, `quantity:${valueOf(count!)} ${unit!.toLowerCase()}`)
+  })
+}
+
+function yearFigures(text: string): Figure[] {
+  return [...text.matchAll(YEAR)].map((match) =>
+    figure(match, `year:${match[0]}`)
+  )
+}
+
+function numberFigures(text: string): Figure[] {
+  return [...text.matchAll(BARE_NUMBER)].map((match) => {
+    const value = valueOf(match.groups!.digits ?? match.groups!.word!)
+    return figure(match, `number:${value}`, [], value > 10)
+  })
+}
+
+// In priority order: a date or an amount is one figure, "2027-09-01" must not
+// also count as 2027, nor "12 weeks" as 12.
+const FIGURE_FINDERS = [
+  dateFigures,
+  moneyFigures,
+  percentageFigures,
+  quantityFigures,
+  yearFigures,
+  numberFigures,
+]
+
+function figures(text: string): Figure[] {
+  const found: Figure[] = []
+  for (const find of FIGURE_FINDERS) {
+    for (const candidate of find(text)) {
+      const end = candidate.index + candidate.text.length
+      const overlaps = found.some(
+        (other) =>
+          candidate.index < other.index + other.text.length && other.index < end
+      )
+      if (!overlaps) found.push(candidate)
+    }
+  }
+  return found
+}
+
+function withoutLinkTargets(body: string): string {
+  return body.replace(WIKILINK, (_, embed?: string, alias?: string) =>
+    embed || !alias ? " " : ` ${alias} `
   )
 }
 
@@ -296,8 +426,10 @@ function unplannedNumbers(context: Context, note: WrittenNote): Issue[] {
     spec.context,
     ...linkedTitles,
   ]
-  const covered = new Set(texts.flatMap(coveredKeys))
-  return quantities(body.replace(WIKILINK, " "))
+  const covered = new Set(
+    texts.flatMap(figures).flatMap(({ key, covers }) => [key, ...covers])
+  )
+  return figures(withoutLinkTargets(body))
     .filter(({ checked, key }) => checked && !covered.has(key))
     .map(({ text }) =>
       issue(spec.path, "unplanned-number", `"${text}" is in no planned text`)
