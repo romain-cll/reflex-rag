@@ -13,6 +13,8 @@ Phase 1. The derived SQLite index of a vault: notes, section chunks, labelled li
 - **AC7 — metadata**: `meta()` returns the vault path, the embedder model and dimensions, the build time (ISO 8601) and the counts of notes, chunks, links and unresolved links.
 - **AC8 — vault untouched**: building leaves every file and folder of the vault unchanged.
 - **AC9 — rebuild**: building the same vault twice into the same `dbPath` gives the same notes, chunks, links and search results.
+- **AC11 — index outside the vault**: `reflex index <vault>` exits with code 1 and an error on stderr naming the vault, without writing anything, when the index file (`.reflex/index.db` resolved from the working directory) would land inside the vault folder.
+- **AC12 — readable failures**: when parsing the vault or embedding fails (for example a note with invalid frontmatter, or an API error), `reflex index` prints one line `reflex index: <message>` on stderr, with no stack trace, and exits with code 1.
 - **AC10 — CLI errors**: `reflex index <vault>` exits with code 1 and an error on stderr naming the path when `<vault>` is not a directory, and naming `MISTRAL_API_KEY` when that variable is missing or empty. (This replaces the "not implemented" answer of `reflex index` from the CLI skeleton.)
 
 ## Technical plan
