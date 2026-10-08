@@ -164,14 +164,21 @@ class Builder {
 
   /**
    * Draws values not yet used under `key`, so that two projects never share a
-   * figure: a wrong-project answer must not look right.
+   * figure: a wrong-project answer must not look right. `render` returns null
+   * for a draw that is never acceptable. Once the pool runs dry (large
+   * scales), values may repeat across entities; see "Known limits" in the spec.
    */
-  unique<T>(key: string, draw: () => T, render: (value: T) => string[]): T {
+  unique<T>(
+    key: string,
+    draw: () => T,
+    render: (value: T) => string[] | null
+  ): T {
     const taken = this.taken.get(key) ?? new Set<string>()
     this.taken.set(key, taken)
     for (let attempt = 0; ; attempt++) {
       const value = draw()
       const keys = render(value)
+      if (keys === null) continue
       if (attempt > 500 || keys.every((k) => !taken.has(k))) {
         keys.forEach((k) => taken.add(k))
         return value
@@ -629,10 +636,15 @@ function buildCustomers(
     // Owners in turn, so that the owner chains spread over every executive.
     const first = at(accountExecs, i)
     const second = at(accountExecs, i + 1)
-    const success = at(staff.byKey.csm, i)
     const opened = addDays(START, b.rng.int(20, 300))
     const handoff = addDays(opened, b.rng.int(90, 150))
     const review = addDays(handoff, b.rng.int(30, 80))
+    // Reviews are run by customer success: someone promoted out of the team
+    // would read as a third account owner.
+    const inSuccess = staff.byKey.csm.filter(
+      (person) => roleAt(person, review).team === "Customer Success"
+    )
+    const success = inSuccess.length > 0 ? at(inSuccess, i) : staff.successHead
     const contactName = b.personName()
     const contactTitle = b.rng.pick(pools.CONTACT_TITLES)
     const value = b.rng.int(24, 180) * 1000
@@ -904,7 +916,7 @@ function buildProject(
   const [months, copyMonths] = b.unique(
     "battery",
     () => [rng.int(12, 60), rng.int(12, 60)] as const,
-    ([a, c]) => (a === c ? [String(a), "same"] : [String(a), String(c)])
+    ([a, c]) => (a === c ? null : [String(a), String(c)])
   )
   const battery = (value: number, from: string) =>
     b.fact({
