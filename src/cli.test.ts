@@ -1,7 +1,11 @@
-import { describe, expect, test } from "bun:test"
-import { resolve } from "node:path"
+import { afterAll, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 
 const repoRoot = resolve(import.meta.dir, "..")
+const cliPath = resolve(import.meta.dir, "cli.ts")
+const fixtureVault = resolve(import.meta.dir, "index", "fixtures", "vault")
 
 function runCli(...args: string[]) {
   const result = Bun.spawnSync(["bun", "src/cli.ts", ...args], {
@@ -20,10 +24,66 @@ function expectListsCommands(text: string) {
   expect(text).toContain("eval")
 }
 
-describe("AC1 — reflex index", () => {
-  test("AC1 — reports not implemented on stderr and exits 1", () => {
-    const { stdout, stderr, exitCode } = runCli("index", "some-vault")
-    expect(stderr).toContain("not implemented")
+const tempDirs: string[] = []
+
+afterAll(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
+})
+
+/**
+ * Runs the CLI from an empty temporary folder, so that Bun does not load the
+ * repository's `.env`. `apiKey` is always set explicitly: `undefined` removes
+ * the variable from the environment.
+ */
+function runIndex(vault: string, apiKey: string | undefined) {
+  const cwd = mkdtempSync(join(tmpdir(), "reflex-cli-test-"))
+  tempDirs.push(cwd)
+  const env: Record<string, string | undefined> = { ...process.env }
+  if (apiKey === undefined) delete env.MISTRAL_API_KEY
+  else env.MISTRAL_API_KEY = apiKey
+  const result = Bun.spawnSync(["bun", cliPath, "index", vault], { cwd, env })
+  return {
+    cwd,
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+    exitCode: result.exitCode,
+  }
+}
+
+describe("AC10 — reflex index errors", () => {
+  test("AC10 — a vault that does not exist names the path on stderr and exits 1", () => {
+    const vault = join(tmpdir(), "reflex-no-such-vault", "missing")
+    const { stdout, stderr, exitCode } = runIndex(vault, "dummy-key")
+    expect(stderr).toContain(vault)
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("AC10 — a vault that is a file names the path on stderr and exits 1", () => {
+    const dir = mkdtempSync(join(tmpdir(), "reflex-cli-file-"))
+    tempDirs.push(dir)
+    const file = join(dir, "note.md")
+    writeFileSync(file, "# Not a folder\n")
+    const { stdout, stderr, exitCode } = runIndex(file, "dummy-key")
+    expect(stderr).toContain(file)
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("AC10 — an empty MISTRAL_API_KEY names the variable on stderr and exits 1", () => {
+    const { stdout, stderr, exitCode } = runIndex(fixtureVault, "")
+    expect(stderr).toContain("MISTRAL_API_KEY")
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("AC10 — a missing MISTRAL_API_KEY names the variable on stderr and exits 1", () => {
+    const { stdout, stderr, exitCode } = runIndex(fixtureVault, undefined)
+    expect(stderr).toContain("MISTRAL_API_KEY")
+    expect(stderr).not.toContain("not implemented")
     expect(stdout).toBe("")
     expect(exitCode).toBe(1)
   })
