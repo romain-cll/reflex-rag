@@ -211,7 +211,11 @@ describe("AC1 — grading of undecided questions", () => {
     "not decided",
     "undecided",
     "has not been decided",
+    "not been settled",
+    "not settled",
     "still open",
+    "left open",
+    "remains open",
     "no final decision",
   ]
   for (const phrase of phrases) {

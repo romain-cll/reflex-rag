@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 import { describe, expect, test } from "bun:test"
 import { z } from "zod"
 import type { LLM } from "../core/llm.ts"
+import type { ModelCall } from "../core/types.ts"
 import { AnthropicLLM } from "./anthropic-llm.ts"
 
 /** The part of a request to `messages.create` / `messages.parse` we check. */
@@ -12,7 +13,11 @@ interface RecordedParams {
   messages: { role: string; content: unknown }[]
   output_config?: {
     effort?: string
-    format?: { type: string; schema: { properties?: Record<string, unknown> } }
+    format?: {
+      type: string
+      schema: { properties?: Record<string, unknown> }
+      parse?: (text: string) => unknown
+    }
   }
   [key: string]: unknown
 }
@@ -69,6 +74,57 @@ function setup(script: { create?: Responder; parse?: Responder }) {
     },
   } as unknown as Anthropic
   return { client, created, parsed }
+}
+
+/**
+ * Wraps a scripted response so that it behaves like `messages.parse` of the
+ * SDK (0.132): the `parse` of the output format, or `JSON.parse` without one,
+ * is applied to the text of every text block before the message is returned,
+ * and a throw becomes `Failed to parse structured output: ...`, whatever the
+ * `stop_reason` is.
+ */
+function sdkParse(respond: Responder): Responder {
+  return async (params) => {
+    const response = (await respond(params)) as ReturnType<typeof message>
+    const format = params.output_config?.format
+    let firstParsed: unknown = null
+    if (format?.type === "json_schema") {
+      for (const block of response.content) {
+        if (block.type !== "text") continue
+        try {
+          const parsedOutput =
+            typeof format.parse === "function"
+              ? format.parse(block.text)
+              : (JSON.parse(block.text) as unknown)
+          if (firstParsed === null) firstParsed = parsedOutput
+        } catch (error) {
+          throw new Error(
+            `Failed to parse structured output: ${String(error)}`,
+            { cause: error }
+          )
+        }
+      }
+    }
+    return { ...response, parsed_output: firstParsed }
+  }
+}
+
+/** The `ModelCall` an error carries in `error.call`, if any. */
+function callOf(error: Error): ModelCall | undefined {
+  return (error as Error & { call?: ModelCall }).call
+}
+
+/** The error carries the call of the response, with its billed tokens. */
+function expectCall(
+  error: Error,
+  tokens: { inputTokens: number; outputTokens: number }
+): void {
+  const call = callOf(error)
+  expect(call).toBeDefined()
+  expect(call?.model).toBe(DEFAULT_MODEL)
+  expect(call?.inputTokens).toBe(tokens.inputTokens)
+  expect(call?.outputTokens).toBe(tokens.outputTokens)
+  expect(Number.isFinite(call?.latencyMs)).toBe(true)
 }
 
 /** The text of the single user message, whatever its content shape. */
@@ -392,6 +448,166 @@ describe("AnthropicLLM", () => {
     expect(error.message).toMatch(/invalid|validat|schema/i)
   })
 
+  test("AC2 — complete: the refusal error carries the ModelCall in error.call", async () => {
+    const { client } = setup({
+      create: () =>
+        message({
+          stopReason: "refusal",
+          text: "",
+          inputTokens: 120,
+          outputTokens: 4,
+        }),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(llm.complete({ prompt: "Hi", maxTokens: 50 }))
+
+    expectCall(error, { inputTokens: 120, outputTokens: 4 })
+  })
+
+  test("AC2 — complete: the truncation error carries the ModelCall in error.call", async () => {
+    const { client } = setup({
+      create: () =>
+        message({
+          stopReason: "max_tokens",
+          text: "Paris is",
+          inputTokens: 120,
+          outputTokens: 50,
+        }),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(llm.complete({ prompt: "Hi", maxTokens: 50 }))
+
+    expectCall(error, { inputTokens: 120, outputTokens: 50 })
+  })
+})
+
+describe("AnthropicLLM.completeJson with the parsing of the SDK", () => {
+  test("AC1 — returns the value parsed from the text and its ModelCall", async () => {
+    const { client } = setup({
+      parse: sdkParse(() =>
+        message({
+          text: JSON.stringify(good),
+          inputTokens: 300,
+          outputTokens: 60,
+        })
+      ),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const result = await llm.completeJson(
+      { prompt: "Hi", maxTokens: 50 },
+      Schema
+    )
+
+    expect(result.value).toEqual(good)
+    expect(result.call.inputTokens).toBe(300)
+    expect(result.call.outputTokens).toBe(60)
+  })
+
+  test("AC2 — a max_tokens response with cut JSON gives a truncation error, not a parse failure", async () => {
+    const { client } = setup({
+      parse: sdkParse(() =>
+        message({
+          stopReason: "max_tokens",
+          text: '{"city": "Ly',
+          inputTokens: 200,
+          outputTokens: 50,
+        })
+      ),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(
+      llm.completeJson({ prompt: "Hi", maxTokens: 50 }, Schema)
+    )
+
+    expect(error.message).toMatch(/max_tokens|truncat/i)
+    expect(error.message).not.toMatch(/parse structured output/i)
+    expectCall(error, { inputTokens: 200, outputTokens: 50 })
+  })
+
+  test("AC2 — a refusal with free text gives a refusal error, not a parse failure", async () => {
+    const { client } = setup({
+      parse: sdkParse(() =>
+        message({
+          stopReason: "refusal",
+          text: "I can't help with that request.",
+          inputTokens: 90,
+          outputTokens: 9,
+        })
+      ),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(
+      llm.completeJson({ prompt: "Hi", maxTokens: 50 }, Schema)
+    )
+
+    expect(error.message).toMatch(/refus/i)
+    expect(error.message).not.toMatch(/parse structured output/i)
+    expectCall(error, { inputTokens: 90, outputTokens: 9 })
+  })
+
+  test("AC2 — a complete JSON that does not validate gives a validation error carrying the call", async () => {
+    const { client } = setup({
+      parse: sdkParse(() =>
+        message({
+          text: JSON.stringify({ city: "Lyon", population: "many" }),
+          inputTokens: 150,
+          outputTokens: 20,
+        })
+      ),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(
+      llm.completeJson({ prompt: "Hi", maxTokens: 50 }, Schema)
+    )
+
+    expect(error.message).toMatch(/invalid|validat|schema/i)
+    expectCall(error, { inputTokens: 150, outputTokens: 20 })
+  })
+
+  test("AC2 — a text that is not JSON, with a normal stop, gives a parse error carrying the call", async () => {
+    const { client } = setup({
+      parse: sdkParse(() =>
+        message({
+          text: "not json at all",
+          inputTokens: 80,
+          outputTokens: 5,
+        })
+      ),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(
+      llm.completeJson({ prompt: "Hi", maxTokens: 50 }, Schema)
+    )
+
+    expect(error.message).toMatch(/pars|invalid|validat/i)
+    expectCall(error, { inputTokens: 80, outputTokens: 5 })
+  })
+
+  test("AC2 — an API error does not invent a ModelCall", async () => {
+    const { client } = setup({
+      parse: sdkParse(() => {
+        throw new Error("529 overloaded_error: servers are busy")
+      }),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    const error = await rejection(
+      llm.completeJson({ prompt: "Hi", maxTokens: 50 }, Schema)
+    )
+
+    expect(error.message).toContain("overloaded_error")
+    expect(callOf(error)).toBeUndefined()
+  })
+})
+
+describe("AnthropicLLM (no network)", () => {
   test("AC6 — a fake client is enough: no call leaves the process", async () => {
     const originalFetch = globalThis.fetch
     let fetched = 0

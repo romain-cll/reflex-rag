@@ -27,6 +27,18 @@ interface Step {
   retrievalCalls?: ModelCall[]
   output: Output
   answerCall?: ModelCall
+  /** The answerer throws this instead of answering. */
+  answerError?: { message: string; call?: ModelCall }
+}
+
+/** An error of the answerer; `call` is the call the API billed, if any. */
+class AnswerError extends Error {
+  constructor(
+    message: string,
+    readonly call?: ModelCall
+  ) {
+    super(message)
+  }
 }
 
 const MILLION = 1_000_000
@@ -110,6 +122,10 @@ function fakes(steps: Map<string, Step>) {
       answerCalls.push({ question, context })
       const step = steps.get(question)
       if (!step) throw new Error(`unscripted question: ${question}`)
+      if (step.answerError) {
+        const { message, call } = step.answerError
+        return Promise.reject(new AnswerError(message, call))
+      }
       return Promise.resolve({
         output: step.output,
         call: step.answerCall ?? call("claude-haiku-5-5", 0, 0, 0),
@@ -352,6 +368,176 @@ describe("AC3 — run records", () => {
   })
 })
 
+/** A record or a failure as plain data, for fields the types do not know yet. */
+function plain(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>
+}
+
+describe("AC2b — answer errors", () => {
+  const FAILING_CALL = call("claude-sonnet-5-5", MILLION, 0, 250)
+
+  function failing(
+    question: Question,
+    answerError: Step["answerError"]
+  ): Map<string, Step> {
+    return new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          output: answered("unused"),
+          answerError,
+        } satisfies Step,
+      ],
+    ])
+  }
+
+  test("AC2b — an answer that throws is recorded with a null output, the error message and an answer_error failure", async () => {
+    const question = makeQuestion(1)
+    const overrides = failing(question, {
+      message: "Anthropic output truncated (stop_reason max_tokens)",
+      call: FAILING_CALL,
+    })
+    const { records } = await runWith([question], { overrides }).result
+    const record = plain(records[0])
+    expect(record.id).toBe("q-001")
+    expect(record.output).toBeNull()
+    expect(record.error).toBe(
+      "Anthropic output truncated (stop_reason max_tokens)"
+    )
+    expect(plain(records[0]!.grade)).toEqual({
+      correct: false,
+      failure: "answer_error",
+    })
+  })
+
+  test("AC2b — costUsd includes the call the error carries and the retrieval calls", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          // 0.10 USD for the retrieval.
+          retrievalCalls: [call("mistral-embed", MILLION, 0, 10)],
+          output: answered("unused"),
+          // 2 USD for the call of the failed answer.
+          answerError: { message: "output truncated", call: FAILING_CALL },
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    expect(records[0]!.costUsd).toBeCloseTo(2.1, 9)
+  })
+
+  test("AC2b — an error without a call costs only the retrieval", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          retrievalCalls: [call("mistral-embed", MILLION, 0, 10)],
+          output: answered("unused"),
+          answerError: { message: "529 overloaded_error" },
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    const record = plain(records[0])
+    expect(record.output).toBeNull()
+    expect(record.error).toBe("529 overloaded_error")
+    expect(plain(record.grade).failure).toBe("answer_error")
+    expect(records[0]!.costUsd).toBeCloseTo(0.1, 9)
+  })
+
+  test("AC2b — the run goes on with the next questions", async () => {
+    const questions = [1, 2, 3].map((n) => makeQuestion(n))
+    const overrides = failing(questions[1]!, {
+      message: "output truncated",
+      call: FAILING_CALL,
+    })
+    const { fake, result } = runWith(questions, { overrides })
+    const { records, skipped } = await result
+    expect(fake.answerCalls.map((a) => a.question)).toEqual(
+      questions.map((q) => q.question)
+    )
+    expect(records.map((r) => r.id)).toEqual(["q-001", "q-002", "q-003"])
+    expect(skipped).toBe(0)
+    expect(records[0]!.grade).toEqual({ correct: true, failure: null })
+    expect(plain(records[1]).output).toBeNull()
+    expect(records[2]!.grade).toEqual({ correct: true, failure: null })
+    expect(records[2]!.output).toEqual(answered("Denver"))
+  })
+
+  test("AC2b — the cost of a failed answer counts toward the cost cap", async () => {
+    const questions = [1, 2, 3].map((n) => makeQuestion(n))
+    const overrides = failing(questions[0]!, {
+      message: "output truncated",
+      call: FAILING_CALL,
+    })
+    const { result } = runWith(questions, { maxCostUsd: 2, overrides })
+    const { records, skipped } = await result
+    expect(records.map((r) => r.id)).toEqual(["q-001"])
+    expect(skipped).toBe(2)
+  })
+
+  test("AC2b — answer_error is counted in the failures of the summary, overall and by category", async () => {
+    const questions = [
+      makeQuestion(1),
+      makeQuestion(2, { category: "temporal" }),
+      makeQuestion(3, { category: "temporal" }),
+    ]
+    const overrides = new Map([
+      ...failing(questions[1]!, { message: "refusal", call: FAILING_CALL }),
+      ...failing(questions[2]!, { message: "output truncated" }),
+    ])
+    const { records, summary } = await runWith(questions, { overrides }).result
+    const overall = plain(summary.overall.failures)
+    const temporal = plain(summary.byCategory.temporal!.failures)
+    expect(overall.answer_error).toBe(2)
+    expect(temporal.answer_error).toBe(2)
+    expect(plain(summary.byCategory.simple!.failures).answer_error).toBe(0)
+    expect(summary.overall.accuracy).toBeCloseTo(1 / 3, 9)
+    expect(summary).toEqual(summarize(records))
+  })
+
+  test("AC2b — summarize counts the answer_error of the records", () => {
+    const failed = {
+      ...makeRecord(2),
+      output: null,
+      error: "output truncated",
+      grade: { correct: false, failure: "answer_error" },
+      calls: [],
+    } as unknown as RunRecord
+    const summary = summarize([makeRecord(1), failed])
+    expect(summary.overall.n).toBe(2)
+    expect(summary.overall.accuracy).toBeCloseTo(0.5, 9)
+    expect(plain(summary.overall.failures).answer_error).toBe(1)
+    expect(plain(summary.overall.failures).wrong_answer).toBe(0)
+  })
+
+  test("AC2b — the trace keeps the failed question with its error and its cost", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const overrides = failing(questions[0]!, {
+      message: "output truncated",
+      call: FAILING_CALL,
+    })
+    const { result, runsDir } = runWith(questions, { overrides })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    expect(lines).toHaveLength(3)
+    const traced = plain(JSON.parse(lines[1]!))
+    expect(traced.id).toBe("q-001")
+    expect(traced.output).toBeNull()
+    expect(traced.error).toBe("output truncated")
+    expect(plain(traced.grade).failure).toBe("answer_error")
+    expect(traced.costUsd as number).toBeCloseTo(2, 9)
+  })
+})
+
 describe("AC4 — cost cap", () => {
   /** Each question costs exactly 2 USD (one million sonnet input tokens). */
   function expensive(questions: Question[]): Map<string, Step> {
@@ -568,21 +754,23 @@ describe("AC5 — metrics", () => {
       makeRecord(5, { category: "temporal", grade: wrong("false_abstention") }),
     ]
     const summary = summarize(records)
-    expect(summary.overall.failures).toEqual({
+    expect(plain(summary.overall.failures)).toEqual({
       retrieval_miss: 2,
       false_abstention: 1,
       wrong_version: 0,
       missed_contradiction: 0,
       unsupported_claim: 0,
       wrong_answer: 1,
+      answer_error: 0,
     })
-    expect(summary.byCategory.simple!.failures).toEqual({
+    expect(plain(summary.byCategory.simple!.failures)).toEqual({
       retrieval_miss: 2,
       false_abstention: 0,
       wrong_version: 0,
       missed_contradiction: 0,
       unsupported_claim: 0,
       wrong_answer: 1,
+      answer_error: 0,
     })
     expect(summary.byCategory.temporal!.failures.false_abstention).toBe(1)
   })

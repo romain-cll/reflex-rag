@@ -84,6 +84,11 @@ async function rejection(promise: Promise<unknown>): Promise<Error> {
   throw new Error("expected the promise to reject")
 }
 
+/** The sentences and bullet lines of a prompt. */
+function sentencesOf(text: string): string[] {
+  return text.split(/(?<=[.!?:])\s+|\n+/)
+}
+
 describe("AnswerSchema", () => {
   test("AC3 — accepts the three statuses with an answer and citations", () => {
     for (const status of ["answered", "conflict", "abstained"]) {
@@ -243,6 +248,50 @@ describe("answerQuestion", () => {
     expect(system).toMatch(/supersed|replace|outdated|newer/i)
     expect(system).toMatch(/each value/i)
     expect(system).toMatch(/source/i)
+  })
+
+  test("AC4 — the system prompt tells the model never to infer a no from the absence of a mention", async () => {
+    const { llm, calls } = fakeLLM()
+    await answerQuestion(QUESTION, CONTEXT, llm)
+    const system = (calls[0] as JsonCall).request.system ?? ""
+
+    const sentence = sentencesOf(system).find((part) =>
+      /\b(infer|assum|conclud)/i.test(part)
+    )
+    expect(sentence).toBeDefined()
+    expect(sentence).toMatch(/\b(never|not|n't)\b/i)
+    expect(sentence).toMatch(/absen|mention|silen/i)
+    expect(sentence).toMatch(/\bno\b/i)
+    expect(system).toContain("abstained")
+  })
+
+  test("AC4 — the system prompt tells the model to answer that no decision was made when a question was discussed but left open", async () => {
+    const { llm, calls } = fakeLLM()
+    await answerQuestion(QUESTION, CONTEXT, llm)
+    const system = (calls[0] as JsonCall).request.system ?? ""
+
+    const sentence = sentencesOf(system).find((part) => /discuss/i.test(part))
+    expect(sentence).toBeDefined()
+    expect(sentence).toMatch(
+      /\b(open|unresolved|undecided|not (been )?settled)/i
+    )
+    expect(sentence).toMatch(/no decision/i)
+    expect(sentence).toMatch(/\banswer/i)
+  })
+
+  test("AC4 — the system prompt tells the model to copy names, dates and amounts exactly as written", async () => {
+    const { llm, calls } = fakeLLM()
+    await answerQuestion(QUESTION, CONTEXT, llm)
+    const system = (calls[0] as JsonCall).request.system ?? ""
+
+    const sentence = sentencesOf(system).find((part) =>
+      /\b(copy|verbatim)/i.test(part)
+    )
+    expect(sentence).toBeDefined()
+    expect(sentence).toMatch(/\bnames\b/i)
+    expect(sentence).toMatch(/\bdates\b/i)
+    expect(sentence).toMatch(/\bamounts\b/i)
+    expect(sentence).toMatch(/exactly|verbatim|as (they are )?written/i)
   })
 
   test("AC4 — the system prompt tells the model to cite the note paths it used", async () => {
