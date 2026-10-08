@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
 
 const repoRoot = resolve(import.meta.dir, "..")
 const cliPath = resolve(import.meta.dir, "cli.ts")
@@ -84,6 +84,68 @@ describe("AC10 — reflex index errors", () => {
     const { stdout, stderr, exitCode } = runIndex(fixtureVault, undefined)
     expect(stderr).toContain("MISTRAL_API_KEY")
     expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+})
+
+/**
+ * Runs `reflex index <vaultArg>` with `cwd` as working directory and a dummy
+ * API key. The proxy points to a closed local port, so that a request which
+ * slipped through would fail at once instead of reaching the network.
+ */
+function runIndexFrom(cwd: string, vaultArg: string) {
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    MISTRAL_API_KEY: "dummy-key",
+    HTTPS_PROXY: "http://127.0.0.1:9",
+    HTTP_PROXY: "http://127.0.0.1:9",
+  }
+  const result = Bun.spawnSync(["bun", cliPath, "index", vaultArg], {
+    cwd,
+    env,
+  })
+  return {
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+    exitCode: result.exitCode,
+  }
+}
+
+function makeTempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  tempDirs.push(dir)
+  return dir
+}
+
+describe("AC11 — index outside the vault", () => {
+  test("AC11 — run from inside the vault, exits 1 naming the vault and writes no .reflex folder", () => {
+    // The note is empty: it produces no chunk, so even an implementation that
+    // goes on to build the index makes no embedding request.
+    const vault = makeTempDir("reflex-cli-inside-")
+    writeFileSync(join(vault, "empty.md"), "")
+    const { stdout, stderr, exitCode } = runIndexFrom(vault, ".")
+    // macOS reports the temporary folder both as /var and as /private/var.
+    expect(stderr).toContain(basename(vault))
+    expect(stdout).toBe("")
+    expect(existsSync(join(vault, ".reflex"))).toBe(false)
+    expect(exitCode).toBe(1)
+  })
+})
+
+describe("AC12 — readable failures", () => {
+  test("AC12 — a note with invalid frontmatter prints one reflex index line without stack trace and exits 1", () => {
+    const vault = makeTempDir("reflex-cli-broken-")
+    writeFileSync(
+      join(vault, "broken.md"),
+      "---\ntitle: [unclosed\n---\nBody\n"
+    )
+    const cwd = makeTempDir("reflex-cli-cwd-")
+    const { stdout, stderr, exitCode } = runIndexFrom(cwd, vault)
+    const lines = stderr.split("\n").filter((line) => line.trim() !== "")
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toStartWith("reflex index:")
+    expect(stderr).not.toMatch(/^\s+at /m)
     expect(stdout).toBe("")
     expect(exitCode).toBe(1)
   })
