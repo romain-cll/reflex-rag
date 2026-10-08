@@ -5,247 +5,393 @@ Write each of the 18 notes below as a markdown file of the vault, following corp
 ## Cast
 
 - Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver and Austin.
-- Carmen Iverson: Product Manager, Product team
+- Diego Bishop: Product Manager, Product team
+- Tessa Okafor: Mechanical Engineer, Hardware Engineering team
+- Omar Hart: Procurement Specialist, Operations team
 - Rosa Novak: Mechanical Engineer, Hardware Engineering team
-- Ines Fitzgerald: Procurement Specialist, Operations team
-- Zoe Adeyemi: Electrical Engineer, Hardware Engineering team
 - Ruth Holloway: Electrical Engineer, Hardware Engineering team
-- Naomi Boyle: Quality Engineer, Operations team
+- Zoe Adeyemi: Electrical Engineer, Hardware Engineering team
+- Claire Gallagher: Quality Engineer, Operations team
 
 ## Notes
 
-### `Meetings/2025-06-20 Dune kickoff.md`
+### `Meetings/2025-03-15 Cirrus kickoff.md`
 
 - Type: meeting
-- Date: 2025-06-20
-- Author: Carmen Iverson (Product Manager)
+- Date: 2025-03-15
+- Author: Diego Bishop (Product Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-06-20
-project: Dune
+date: 2025-03-15
+project: Cirrus
 attendees:
-  - Carmen Iverson
-  - Rosa Novak
-  - Zoe Adeyemi
-  - Hector Haddad
-  - Ines Fitzgerald
+  - Diego Bishop
+  - Tessa Okafor
+  - Ruth Holloway
+  - Rafael Nakamura
+  - Omar Hart
 ```
 
-Situation: Kickoff meeting of Dune: goal, owner and target launch date.
+Situation: Kickoff meeting of Cirrus: goal, owner and target launch date.
 
 Facts to state, keeping every anchor word for word:
 
-- Dune is the project to build a ceiling-mounted sensor for retrofit projects, sold as the Larkspur Halo Gen 2. Anchors: "ceiling-mounted sensor", "Larkspur Halo Gen 2".
-- Carmen Iverson is the product owner of Dune. Anchors: "Carmen Iverson".
-- Dune is scheduled to launch on May 4, 2026. Anchors: "May 4, 2026".
+- Cirrus is the project to build a hospital-grade radon monitor for meeting rooms, sold as the Larkspur Vista Gen 2. Anchors: "radon monitor for meeting rooms", "Larkspur Vista Gen 2".
+- Diego Bishop is the product owner of Cirrus. Anchors: "Diego Bishop".
+- Cirrus is scheduled to launch on March 31, 2027. Anchors: "March 31, 2027".
 
 Links, each inside a real sentence of the note:
 
-- [[Carmen Iverson]]: Carmen Iverson owns the project
+- [[Diego Bishop]]: Diego Bishop owns the project
 
-### `Specs/Dune requirements.md`
+### `Specs/Cirrus requirements.md`
 
 - Type: spec
-- Date: 2025-06-30
-- Author: Carmen Iverson (Product Manager)
+- Date: 2025-03-25
+- Author: Diego Bishop (Product Manager)
 - Length: 300 to 600 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: spec
-date: 2025-06-30
-project: Dune
-owner: Carmen Iverson
+date: 2025-03-25
+project: Cirrus
+owner: Diego Bishop
 status: approved
 ```
 
-Situation: Requirements document of Dune, with sections for power, cost and enclosure. A short "Decisions" section at the end was added later, after the enclosure vendor was settled.
+Situation: Requirements document of Cirrus, with sections for power, cost, the enclosure and the sensor module. A short "Decisions" section at the end was added later, after the enclosure vendor was settled; it does not name the vendor.
 
 Facts to state, keeping every anchor word for word:
 
-- The Dune requirements call for a battery life of 12 months. Anchors: "12 months".
-- The target unit cost for Dune is $37. Anchors: "$37".
+- The Cirrus requirements call for a battery life of 16 months. Anchors: "16 months".
+- The target unit cost for Cirrus is $90. Anchors: "$90".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-06-20 Dune kickoff]]: the requirements build on what the kickoff agreed
-- [[2025-09-03 Dune tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
+- [[2025-03-15 Cirrus kickoff]]: the requirements build on what the kickoff agreed
+- [[2025-05-29 Cirrus tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
 
-### `Specs/Dune requirements (copy).md`
+### `Specs/Cirrus requirements (copy).md`
 
 - Type: spec
-- Date: 2025-07-02
-- Author: Rosa Novak (Mechanical Engineer)
+- Date: 2025-03-25
+- Author: Tessa Okafor (Mechanical Engineer)
 - Length: 300 to 600 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: spec
-date: 2025-07-02
-project: Dune
-owner: Carmen Iverson
-status: draft
+date: 2025-03-25
+project: Cirrus
+owner: Diego Bishop
+status: approved
 ```
 
-Situation: An old working copy of the Dune requirements that was never deleted. Same structure as the main requirements, but it asks for 18 months of battery life.
+Situation: A duplicate of the Cirrus requirements made the same day and edited separately. It looks just as official, with the same sections, but asks for 23 months of battery life.
 
 Facts to state, keeping every anchor word for word:
 
-- The Dune requirements call for a battery life of 18 months. Anchors: "18 months".
+- The Cirrus requirements call for a battery life of 23 months. Anchors: "23 months".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-06-20 Dune kickoff]]: written right after the kickoff
+- [[2025-03-15 Cirrus kickoff]]: written right after the kickoff
 
-### `Quotes/Dune enclosure - Pacifica Plastics.md`
+### `Quotes/Cirrus enclosure - Wexford Molding.md`
 
 - Type: quote
-- Date: 2025-07-15
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-04-09
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-07-15
-project: Dune
-supplier: Pacifica Plastics
+date: 2025-04-09
+project: Cirrus
+supplier: Wexford Molding
 ```
 
-Situation: Summary of the quote Pacifica Plastics sent for the Dune enclosure.
+Situation: Summary of the quote Wexford Molding sent for the Cirrus enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- Pacifica Plastics quoted $60,700 for the Dune enclosure tooling. Anchors: "$60,700".
-- Pacifica Plastics needs 8 weeks to deliver the Dune enclosure tooling. Anchors: "8 weeks".
+- Wexford Molding quoted $42,700 for the Cirrus enclosure tooling. Anchors: "$42,700".
+- Wexford Molding needs 8 weeks to deliver the Cirrus enclosure tooling. Anchors: "8 weeks".
 
 Links, each inside a real sentence of the note:
 
-- [[Dune requirements]]: answers the enclosure section of the requirements
-- [[Pacifica Plastics]]: supplier details
+- [[Cirrus requirements]]: answers the enclosure section of the requirements
+- [[Wexford Molding]]: supplier details
 
-### `Quotes/Dune enclosure - Cobalt Molding.md`
+### `Quotes/Cirrus enclosure - Lattice Molding.md`
 
 - Type: quote
-- Date: 2025-07-18
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-04-12
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-07-18
-project: Dune
-supplier: Cobalt Molding
+date: 2025-04-12
+project: Cirrus
+supplier: Lattice Molding
 ```
 
-Situation: Summary of the quote Cobalt Molding sent for the Dune enclosure.
+Situation: Summary of the quote Lattice Molding sent for the Cirrus enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- Cobalt Molding quoted $68,900 for the Dune enclosure tooling. Anchors: "$68,900".
-- Cobalt Molding needs 9 weeks to deliver the Dune enclosure tooling. Anchors: "9 weeks".
+- Lattice Molding quoted $63,400 for the Cirrus enclosure tooling. Anchors: "$63,400".
+- Lattice Molding needs 9 weeks to deliver the Cirrus enclosure tooling. Anchors: "9 weeks".
 
 Links, each inside a real sentence of the note:
 
-- [[Dune requirements]]: answers the enclosure section of the requirements
-- [[Cobalt Molding]]: supplier details
+- [[Cirrus requirements]]: answers the enclosure section of the requirements
+- [[Lattice Molding]]: supplier details
 
-### `Quotes/Dune battery pack - Lodestar Energy.md`
+### `Quotes/Cirrus sensor module - Tamarack Sensing.md`
 
 - Type: quote
-- Date: 2025-07-20
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-04-14
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-07-20
-project: Dune
-supplier: Lodestar Energy
+date: 2025-04-14
+project: Cirrus
+supplier: Tamarack Sensing
 ```
 
-Situation: Summary of the quote Lodestar Energy sent for the Dune battery pack.
+Situation: Summary of the quote Tamarack Sensing sent for the Cirrus sensor module.
 
 Facts to state, keeping every anchor word for word:
 
-- Lodestar Energy quoted $8.96 per pack for the Dune battery pack. Anchors: "$8.96".
+- Tamarack Sensing quoted $5.70 per module for the Cirrus sensor module. Anchors: "$5.70".
 
 Links, each inside a real sentence of the note:
 
-- [[Dune requirements]]: answers the battery pack section of the requirements
-- [[Lodestar Energy]]: supplier details
+- [[Cirrus requirements]]: answers the sensor module section of the requirements
+- [[Tamarack Sensing]]: supplier details
 
-### `Meetings/2025-07-30 Dune enclosure review.md`
+### `Meetings/2025-04-24 Cirrus enclosure review.md`
 
 - Type: meeting
-- Date: 2025-07-30
-- Author: Rosa Novak (Mechanical Engineer)
+- Date: 2025-04-24
+- Author: Tessa Okafor (Mechanical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-07-30
-project: Dune
+date: 2025-04-24
+project: Cirrus
 attendees:
-  - Rosa Novak
-  - Carmen Iverson
-  - Ines Fitzgerald
+  - Tessa Okafor
+  - Diego Bishop
+  - Omar Hart
 ```
 
-Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Pacifica Plastics, mainly on price.
+Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Wexford Molding, mainly because its tooling is cheaper.
 
 Facts to state, keeping every anchor word for word:
 
-- The team chose to move forward with Pacifica Plastics for the Dune enclosure. Anchors: "Pacifica Plastics".
+- The team chose to move forward with Wexford Molding for the Cirrus enclosure. Anchors: "Wexford Molding".
 
 Links, each inside a real sentence of the note:
 
-- [[Dune enclosure - Pacifica Plastics]]: the offer from Pacifica Plastics
-- [[Dune enclosure - Cobalt Molding]]: the offer from Cobalt Molding
-- [[Dune requirements]]: the enclosure requirements being checked
+- [[Cirrus enclosure - Wexford Molding]]: the offer from Wexford Molding
+- [[Cirrus enclosure - Lattice Molding]]: the offer from Lattice Molding
+- [[Cirrus requirements]]: the enclosure requirements being checked
 
-### `Projects/Dune.md`
+### `Projects/Cirrus.md`
 
 - Type: project
-- Date: 2025-08-04
-- Author: Carmen Iverson (Product Manager)
+- Date: 2025-04-29
+- Author: Diego Bishop (Product Manager)
 - Length: 150 to 300 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: project
-product: Larkspur Halo Gen 2
-owner: Carmen Iverson
+product: Larkspur Vista Gen 2
+owner: Diego Bishop
 status: active
-updated: 2025-08-04
+updated: 2025-04-29
 ```
 
-Situation: Project page of Dune, last edited on 2025-08-04 and never updated since: it still shows Pacifica Plastics as the enclosure vendor and the original launch date.
+Situation: Project page of Cirrus, last edited on 2025-04-29 and never updated since: it still shows Wexford Molding as the enclosure vendor and the original launch date.
 
 Facts to state, keeping every anchor word for word:
 
-- Dune is scheduled to launch on May 4, 2026. Anchors: "May 4, 2026".
-- The team chose to move forward with Pacifica Plastics for the Dune enclosure. Anchors: "Pacifica Plastics".
+- Cirrus is scheduled to launch on March 31, 2027. Anchors: "March 31, 2027".
+- The team chose to move forward with Wexford Molding for the Cirrus enclosure. Anchors: "Wexford Molding".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-06-20 Dune kickoff]]: how the project started
-- [[Dune requirements]]: the requirements
-- [[2025-07-30 Dune enclosure review]]: where the enclosure vendor was discussed
+- [[2025-03-15 Cirrus kickoff]]: how the project started
+- [[Cirrus requirements]]: the requirements
+- [[2025-04-24 Cirrus enclosure review]]: where the enclosure vendor was discussed
+
+### `Journal/Rosa Novak/2025-05-04 Rosa Novak journal.md`
+
+- Type: journal
+- Date: 2025-05-04
+- Author: Rosa Novak (Mechanical Engineer)
+- Length: 80 to 200 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: journal
+date: 2025-05-04
+author: Rosa Novak
+project: Cirrus
+```
+
+Situation: Personal note from someone who was not at the enclosure review: heard in the hallway that Cirrus is going with Wexford Molding for the enclosure.
+
+Facts to state, keeping every anchor word for word:
+
+- The team chose to move forward with Wexford Molding for the Cirrus enclosure. Anchors: "Wexford Molding".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-04-24 Cirrus enclosure review]]: what came out of the enclosure review
+
+### `Meetings/2025-05-14 Cirrus design review.md`
+
+- Type: meeting
+- Date: 2025-05-14
+- Author: Ruth Holloway (Electrical Engineer)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2025-05-14
+project: Cirrus
+attendees:
+  - Ruth Holloway
+  - Tessa Okafor
+  - Rafael Nakamura
+  - Diego Bishop
+```
+
+Situation: Design review of Cirrus. One open question is debated at length and left open.
+
+Facts to state, keeping every anchor word for word:
+
+- The team discussed adding an e-ink display for Cirrus but made no decision. Anchors: "e-ink".
+
+Links, each inside a real sentence of the note:
+
+- [[Cirrus]]: open questions are tracked on the project page
+
+### `Journal/Tessa Okafor/2025-05-16 Tessa Okafor journal.md`
+
+- Type: journal
+- Date: 2025-05-16
+- Author: Tessa Okafor (Mechanical Engineer)
+- Length: 80 to 200 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: journal
+date: 2025-05-16
+author: Tessa Okafor
+project: Cirrus
+```
+
+Situation: Personal note: frustrated that the team still has not settled adding an e-ink display for Cirrus.
+
+Facts to state, keeping every anchor word for word:
+
+- The team discussed adding an e-ink display for Cirrus but made no decision. Anchors: "e-ink".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-05-14 Cirrus design review]]: the question came up in the design review
+
+### `Meetings/2025-05-29 Cirrus tooling sign-off.md`
+
+- Type: meeting
+- Date: 2025-05-29
+- Author: Tessa Okafor (Mechanical Engineer)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2025-05-29
+project: Cirrus
+attendees:
+  - Tessa Okafor
+  - Diego Bishop
+  - Omar Hart
+  - Claire Gallagher
+```
+
+Situation: Vendor validation after the drop tests: the team gives Lattice Molding the tooling go-ahead for the Cirrus enclosure. Talk about sign-off, validation and go-ahead.
+
+Facts to state, keeping every anchor word for word:
+
+- Lattice Molding received the tooling go-ahead for the Cirrus enclosure after the drop tests. Anchors: "Lattice Molding".
+
+Links, each inside a real sentence of the note:
+
+- [[Cirrus requirements]]: this settles the enclosure section of the requirements
+- [[Lattice Molding]]: Lattice Molding is now the validated vendor
+
+Never use these words: quote, quotes, quoted, quoting, quotation, quotations, bid, bids, bidding, bidder, bidders.
+
+### `Meetings/2025-08-07 Cirrus EVT review.md`
+
+- Type: meeting
+- Date: 2025-08-07
+- Author: Ruth Holloway (Electrical Engineer)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2025-08-07
+project: Cirrus
+attendees:
+  - Ruth Holloway
+  - Tessa Okafor
+  - Rafael Nakamura
+  - Claire Gallagher
+```
+
+Situation: Review of the first engineering validation build of Cirrus, once the enclosure tooling was ready.
+
+Facts to state, keeping every anchor word for word:
+
+- The Cirrus EVT build produced 65 units. Anchors: "65 units".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-05-29 Cirrus tooling sign-off]]: enclosures built as agreed at the sign-off
 
 ### `Journal/Zoe Adeyemi/2025-08-09 Zoe Adeyemi journal.md`
 
@@ -260,276 +406,132 @@ Frontmatter, copied exactly:
 type: journal
 date: 2025-08-09
 author: Zoe Adeyemi
-project: Dune
+project: Cirrus
 ```
 
-Situation: Personal note: heard in the hallway that Dune is going with Pacifica Plastics for the enclosure.
+Situation: Personal note from someone who helped on the Cirrus EVT build but was not at the review: they counted the units themselves.
 
 Facts to state, keeping every anchor word for word:
 
-- The team chose to move forward with Pacifica Plastics for the Dune enclosure. Anchors: "Pacifica Plastics".
+- The Cirrus EVT build produced 70 units. Anchors: "70 units".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-07-30 Dune enclosure review]]: what came out of the enclosure review
+- [[2025-08-07 Cirrus EVT review]]: the build the EVT review was about
 
-### `Meetings/2025-08-19 Dune design review.md`
+### `Meetings/2025-09-21 Cirrus pilot kickoff.md`
 
 - Type: meeting
-- Date: 2025-08-19
-- Author: Zoe Adeyemi (Electrical Engineer)
+- Date: 2025-09-21
+- Author: Diego Bishop (Product Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-08-19
-project: Dune
+date: 2025-09-21
+project: Cirrus
+customer: Foxborough Unified Schools
 attendees:
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hector Haddad
-  - Carmen Iverson
+  - Diego Bishop
+  - Claire Gallagher
 ```
 
-Situation: Design review of Dune. One open question is debated at length and left open.
+Situation: Kickoff of the Cirrus pilot at Foxborough Unified Schools: scope and number of units.
 
 Facts to state, keeping every anchor word for word:
 
-- The team discussed offering the wall-mount bracket in white for Dune but made no decision. Anchors: "wall-mount bracket".
+- Foxborough Unified Schools is piloting Cirrus with 110 units. Anchors: "Foxborough Unified Schools", "110 units".
 
 Links, each inside a real sentence of the note:
 
-- [[Dune]]: open questions are tracked on the project page
+- [[Foxborough Unified Schools]]: who the customer is
+- [[Cirrus]]: the project page
 
-### `Journal/Ruth Holloway/2025-08-21 Ruth Holloway journal.md`
-
-- Type: journal
-- Date: 2025-08-21
-- Author: Ruth Holloway (Electrical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-08-21
-author: Ruth Holloway
-project: Dune
-```
-
-Situation: Personal note: frustrated that the team still has not settled offering the wall-mount bracket in white for Dune.
-
-Facts to state, keeping every anchor word for word:
-
-- The team discussed offering the wall-mount bracket in white for Dune but made no decision. Anchors: "wall-mount bracket".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-08-19 Dune design review]]: the question came up in the design review
-
-### `Meetings/2025-09-03 Dune tooling sign-off.md`
+### `Meetings/2025-10-01 Cirrus DVT review.md`
 
 - Type: meeting
-- Date: 2025-09-03
-- Author: Rosa Novak (Mechanical Engineer)
+- Date: 2025-10-01
+- Author: Claire Gallagher (Quality Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-09-03
-project: Dune
+date: 2025-10-01
+project: Cirrus
 attendees:
-  - Rosa Novak
-  - Carmen Iverson
-  - Ines Fitzgerald
-  - Naomi Boyle
+  - Claire Gallagher
+  - Ruth Holloway
+  - Tessa Okafor
+  - Diego Bishop
 ```
 
-Situation: Vendor validation after the drop tests: the team gives Cobalt Molding the tooling go-ahead for the Dune enclosure. Talk about sign-off, validation and go-ahead.
+Situation: Design validation review of Cirrus: the main issue found on the DVT units.
 
 Facts to state, keeping every anchor word for word:
 
-- Cobalt Molding received the tooling go-ahead for the Dune enclosure after the drop tests. Anchors: "Cobalt Molding".
+- The Cirrus DVT units showed a clock that drifts after a power cut. Anchors: "clock that drifts".
 
 Links, each inside a real sentence of the note:
 
-- [[Dune requirements]]: this settles the enclosure section of the requirements
-- [[Cobalt Molding]]: Cobalt Molding is now the validated vendor
+- [[2025-09-21 Cirrus pilot kickoff]]: DVT units also went to the pilot
 
-Never use these words: quote, quotes, quoted, quotation, bid, bids.
-
-### `Meetings/2025-09-23 Dune EVT review.md`
+### `Meetings/2025-10-26 Cirrus schedule review.md`
 
 - Type: meeting
-- Date: 2025-09-23
-- Author: Zoe Adeyemi (Electrical Engineer)
+- Date: 2025-10-26
+- Author: Diego Bishop (Product Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-09-23
-project: Dune
+date: 2025-10-26
+project: Cirrus
 attendees:
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hector Haddad
-  - Naomi Boyle
-```
-
-Situation: Review of the first engineering validation build of Dune.
-
-Facts to state, keeping every anchor word for word:
-
-- The Dune EVT build produced 35 units. Anchors: "35 units".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-09-03 Dune tooling sign-off]]: enclosures built as agreed at the sign-off
-
-### `Journal/Rosa Novak/2025-09-25 Rosa Novak journal.md`
-
-- Type: journal
-- Date: 2025-09-25
-- Author: Rosa Novak (Mechanical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-09-25
-author: Rosa Novak
-project: Dune
-```
-
-Situation: Personal note after the Dune EVT build, counting the units on the bench.
-
-Facts to state, keeping every anchor word for word:
-
-- The Dune EVT build produced 40 units. Anchors: "40 units".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-09-23 Dune EVT review]]: notes from the EVT review
-
-### `Meetings/2025-11-07 Dune pilot kickoff with Riverside Regional Hospital.md`
-
-- Type: meeting
-- Date: 2025-11-07
-- Author: Carmen Iverson (Product Manager)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-11-07
-project: Dune
-attendees:
-  - Carmen Iverson
-  - Naomi Boyle
-```
-
-Situation: Kickoff of the Dune pilot at Riverside Regional Hospital: scope and number of units.
-
-Facts to state, keeping every anchor word for word:
-
-- Riverside Regional Hospital is piloting Dune with 90 units. Anchors: "Riverside Regional Hospital", "90 units".
-
-Links, each inside a real sentence of the note:
-
-- [[Riverside Regional Hospital]]: who the customer is
-- [[Dune]]: the project page
-
-### `Meetings/2025-11-17 Dune DVT review.md`
-
-- Type: meeting
-- Date: 2025-11-17
-- Author: Naomi Boyle (Quality Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-11-17
-project: Dune
-attendees:
-  - Naomi Boyle
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Carmen Iverson
-```
-
-Situation: Design validation review of Dune: the main issue found on the DVT units.
-
-Facts to state, keeping every anchor word for word:
-
-- The Dune DVT units showed Wi-Fi dropouts near metal ceiling grids. Anchors: "Wi-Fi dropouts".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-11-07 Dune pilot kickoff with Riverside Regional Hospital]]: DVT units also went to the pilot
-
-### `Meetings/2025-12-12 Dune schedule review.md`
-
-- Type: meeting
-- Date: 2025-12-12
-- Author: Carmen Iverson (Product Manager)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-12-12
-project: Dune
-attendees:
-  - Carmen Iverson
-  - Naomi Boyle
+  - Diego Bishop
+  - Claire Gallagher
   - Emeka Nordin
 ```
 
-Situation: Schedule review of Dune: the launch moves because a certification test has to be run again.
+Situation: Schedule review of Cirrus: the launch moves because a certification test has to be run again.
 
 Facts to state, keeping every anchor word for word:
 
-- Dune will now launch on August 2, 2026. Anchors: "August 2, 2026".
-- The Dune launch slipped because of a certification retest at Redstone Compliance Labs. Anchors: "Redstone Compliance Labs".
+- Cirrus will now launch on June 27, 2027. Anchors: "June 27, 2027".
+- The Cirrus launch slipped because of a certification retest at Halcyon Compliance Labs. Anchors: "Halcyon Compliance Labs".
 
 Links, each inside a real sentence of the note:
 
-- [[Redstone Compliance Labs]]: the lab running the retest
-- [[Dune]]: the project page
+- [[Halcyon Compliance Labs]]: the lab running the retest
+- [[Cirrus]]: the project page
 
-### `Decisions/Dune launch date change.md`
+### `Decisions/Cirrus launch date change.md`
 
 - Type: decision
-- Date: 2025-12-14
-- Author: Carmen Iverson (Product Manager)
+- Date: 2025-10-28
+- Author: Diego Bishop (Product Manager)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: decision
-date: 2025-12-14
-project: Dune
-decided_by: Carmen Iverson
+date: 2025-10-28
+project: Cirrus
+decided_by: Diego Bishop
 ```
 
-Situation: Decision record of the new Dune launch date.
+Situation: Decision record of the new Cirrus launch date. The reasons are left to the schedule review.
 
 Facts to state, keeping every anchor word for word:
 
-- Dune will now launch on August 2, 2026. Anchors: "August 2, 2026".
+- Cirrus will now launch on June 27, 2027. Anchors: "June 27, 2027".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-12-12 Dune schedule review]]: the reasons are in the schedule review
+- [[2025-10-26 Cirrus schedule review]]: the reasons are in the schedule review

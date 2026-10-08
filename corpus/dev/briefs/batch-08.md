@@ -5,397 +5,253 @@ Write each of the 18 notes below as a markdown file of the vault, following corp
 ## Cast
 
 - Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver and Austin.
-- Hazel Osei: Senior Product Manager, Product team
-- Tessa Okafor: Mechanical Engineer, Hardware Engineering team
-- Ines Fitzgerald: Procurement Specialist, Operations team
+- Carmen Iverson: Product Manager, Product team
+- Rosa Novak: Mechanical Engineer, Hardware Engineering team
+- Omar Hart: Procurement Specialist, Operations team
 - Ruth Holloway: Electrical Engineer, Hardware Engineering team
 - Zoe Adeyemi: Electrical Engineer, Hardware Engineering team
-- Naomi Boyle: Quality Engineer, Operations team
+- Tessa Okafor: Mechanical Engineer, Hardware Engineering team
+- Claire Gallagher: Quality Engineer, Operations team
 
 ## Notes
 
-### `Meetings/2025-09-01 Ember kickoff.md`
+### `Meetings/2025-05-06 Dune kickoff.md`
 
 - Type: meeting
-- Date: 2025-09-01
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-05-06
+- Author: Carmen Iverson (Product Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-09-01
-project: Ember
+date: 2025-05-06
+project: Dune
 attendees:
-  - Hazel Osei
-  - Tessa Okafor
-  - Ruth Holloway
-  - Rafael Nakamura
-  - Ines Fitzgerald
+  - Carmen Iverson
+  - Rosa Novak
+  - Zoe Adeyemi
+  - Hector Haddad
+  - Omar Hart
 ```
 
-Situation: Kickoff meeting of Ember: goal, owner and target launch date.
+Situation: Kickoff meeting of Dune: goal, owner and target launch date.
 
 Facts to state, keeping every anchor word for word:
 
-- Ember is the project to build a gateway that collects readings across a multi-floor building, sold as the Larkspur Breeze Gen 2. Anchors: "gateway", "Larkspur Breeze Gen 2".
-- Hazel Osei is the product owner of Ember. Anchors: "Hazel Osei".
-- Ember is scheduled to launch on July 26, 2026. Anchors: "July 26, 2026".
+- Dune is the project to build a low-cost VOC monitor for school gyms, sold as the Larkspur Halo Gen 2. Anchors: "VOC monitor for school gyms", "Larkspur Halo Gen 2".
+- Carmen Iverson is the product owner of Dune. Anchors: "Carmen Iverson".
+- Dune is scheduled to launch on March 6, 2027. Anchors: "March 6, 2027".
 
 Links, each inside a real sentence of the note:
 
-- [[Hazel Osei]]: Hazel Osei owns the project
+- [[Carmen Iverson]]: Carmen Iverson owns the project
 
-### `Specs/Ember requirements.md`
+### `Specs/Dune requirements.md`
 
 - Type: spec
-- Date: 2025-09-11
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-05-16
+- Author: Carmen Iverson (Product Manager)
 - Length: 300 to 600 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: spec
-date: 2025-09-11
-project: Ember
-owner: Hazel Osei
+date: 2025-05-16
+project: Dune
+owner: Carmen Iverson
 status: approved
 ```
 
-Situation: Requirements document of Ember, with sections for power, cost and enclosure. A short "Decisions" section at the end was added later, after the enclosure vendor was settled.
+Situation: Requirements document of Dune, with sections for power, cost, the enclosure and the battery pack. A short "Decisions" section at the end was added later, after the enclosure vendor was settled; it does not name the vendor.
 
 Facts to state, keeping every anchor word for word:
 
-- The Ember requirements call for a battery life of 12 months. Anchors: "12 months".
-- The target unit cost for Ember is $38. Anchors: "$38".
+- The Dune requirements call for a battery life of 40 months. Anchors: "40 months".
+- The target unit cost for Dune is $95. Anchors: "$95".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-09-01 Ember kickoff]]: the requirements build on what the kickoff agreed
-- [[2025-11-15 Ember tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
+- [[2025-05-06 Dune kickoff]]: the requirements build on what the kickoff agreed
+- [[2025-07-20 Dune tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
 
-### `Specs/Ember requirements (copy).md`
+### `Specs/Dune requirements (copy).md`
 
 - Type: spec
-- Date: 2025-09-13
-- Author: Tessa Okafor (Mechanical Engineer)
+- Date: 2025-05-16
+- Author: Rosa Novak (Mechanical Engineer)
 - Length: 300 to 600 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: spec
-date: 2025-09-13
-project: Ember
-owner: Hazel Osei
-status: draft
+date: 2025-05-16
+project: Dune
+owner: Carmen Iverson
+status: approved
 ```
 
-Situation: An old working copy of the Ember requirements that was never deleted. Same structure as the main requirements, but it asks for 18 months of battery life.
+Situation: A duplicate of the Dune requirements made the same day and edited separately. It looks just as official, with the same sections, but asks for 32 months of battery life.
 
 Facts to state, keeping every anchor word for word:
 
-- The Ember requirements call for a battery life of 18 months. Anchors: "18 months".
+- The Dune requirements call for a battery life of 32 months. Anchors: "32 months".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-09-01 Ember kickoff]]: written right after the kickoff
+- [[2025-05-06 Dune kickoff]]: written right after the kickoff
 
-### `Quotes/Ember enclosure - Pacifica Plastics.md`
+### `Quotes/Dune enclosure - Lattice Molding.md`
 
 - Type: quote
-- Date: 2025-09-26
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-05-31
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-09-26
-project: Ember
-supplier: Pacifica Plastics
+date: 2025-05-31
+project: Dune
+supplier: Lattice Molding
 ```
 
-Situation: Summary of the quote Pacifica Plastics sent for the Ember enclosure.
+Situation: Summary of the quote Lattice Molding sent for the Dune enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- Pacifica Plastics quoted $47,900 for the Ember enclosure tooling. Anchors: "$47,900".
-- Pacifica Plastics needs 10 weeks to deliver the Ember enclosure tooling. Anchors: "10 weeks".
+- Lattice Molding quoted $39,400 for the Dune enclosure tooling. Anchors: "$39,400".
+- Lattice Molding needs 6 weeks to deliver the Dune enclosure tooling. Anchors: "6 weeks".
 
 Links, each inside a real sentence of the note:
 
-- [[Ember requirements]]: answers the enclosure section of the requirements
-- [[Pacifica Plastics]]: supplier details
+- [[Dune requirements]]: answers the enclosure section of the requirements
+- [[Lattice Molding]]: supplier details
 
-### `Quotes/Ember enclosure - Cobalt Molding.md`
+### `Quotes/Dune enclosure - Redstone Plastics.md`
 
 - Type: quote
-- Date: 2025-09-29
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-06-03
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-09-29
-project: Ember
-supplier: Cobalt Molding
+date: 2025-06-03
+project: Dune
+supplier: Redstone Plastics
 ```
 
-Situation: Summary of the quote Cobalt Molding sent for the Ember enclosure.
+Situation: Summary of the quote Redstone Plastics sent for the Dune enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- Cobalt Molding quoted $70,000 for the Ember enclosure tooling. Anchors: "$70,000".
-- Cobalt Molding needs 11 weeks to deliver the Ember enclosure tooling. Anchors: "11 weeks".
+- Redstone Plastics quoted $54,100 for the Dune enclosure tooling. Anchors: "$54,100".
+- Redstone Plastics needs 7 weeks to deliver the Dune enclosure tooling. Anchors: "7 weeks".
 
 Links, each inside a real sentence of the note:
 
-- [[Ember requirements]]: answers the enclosure section of the requirements
-- [[Cobalt Molding]]: supplier details
+- [[Dune requirements]]: answers the enclosure section of the requirements
+- [[Redstone Plastics]]: supplier details
 
-### `Quotes/Ember circuit board assembly - Trident Electronics.md`
+### `Quotes/Dune battery pack - Everest Energy.md`
 
 - Type: quote
-- Date: 2025-10-01
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-06-05
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-10-01
-project: Ember
-supplier: Trident Electronics
+date: 2025-06-05
+project: Dune
+supplier: Everest Energy
 ```
 
-Situation: Summary of the quote Trident Electronics sent for the Ember circuit board assembly.
+Situation: Summary of the quote Everest Energy sent for the Dune battery pack.
 
 Facts to state, keeping every anchor word for word:
 
-- Trident Electronics quoted $9.04 per board for the Ember circuit board assembly. Anchors: "$9.04".
+- Everest Energy quoted $5.74 per pack for the Dune battery pack. Anchors: "$5.74".
 
 Links, each inside a real sentence of the note:
 
-- [[Ember requirements]]: answers the circuit board assembly section of the requirements
-- [[Trident Electronics]]: supplier details
+- [[Dune requirements]]: answers the battery pack section of the requirements
+- [[Everest Energy]]: supplier details
 
-### `Meetings/2025-10-11 Ember enclosure review.md`
+### `Meetings/2025-06-15 Dune enclosure review.md`
 
 - Type: meeting
-- Date: 2025-10-11
-- Author: Tessa Okafor (Mechanical Engineer)
+- Date: 2025-06-15
+- Author: Rosa Novak (Mechanical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-10-11
-project: Ember
+date: 2025-06-15
+project: Dune
 attendees:
-  - Tessa Okafor
-  - Hazel Osei
-  - Ines Fitzgerald
+  - Rosa Novak
+  - Carmen Iverson
+  - Omar Hart
 ```
 
-Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Pacifica Plastics, mainly on price.
+Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Lattice Molding, mainly because its tooling is cheaper.
 
 Facts to state, keeping every anchor word for word:
 
-- The team chose to move forward with Pacifica Plastics for the Ember enclosure. Anchors: "Pacifica Plastics".
+- The team chose to move forward with Lattice Molding for the Dune enclosure. Anchors: "Lattice Molding".
 
 Links, each inside a real sentence of the note:
 
-- [[Ember enclosure - Pacifica Plastics]]: the offer from Pacifica Plastics
-- [[Ember enclosure - Cobalt Molding]]: the offer from Cobalt Molding
-- [[Ember requirements]]: the enclosure requirements being checked
+- [[Dune enclosure - Lattice Molding]]: the offer from Lattice Molding
+- [[Dune enclosure - Redstone Plastics]]: the offer from Redstone Plastics
+- [[Dune requirements]]: the enclosure requirements being checked
 
-### `Projects/Ember.md`
+### `Projects/Dune.md`
 
 - Type: project
-- Date: 2025-10-16
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-06-20
+- Author: Carmen Iverson (Product Manager)
 - Length: 150 to 300 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: project
-product: Larkspur Breeze Gen 2
-owner: Hazel Osei
+product: Larkspur Halo Gen 2
+owner: Carmen Iverson
 status: active
-updated: 2025-10-16
+updated: 2025-06-20
 ```
 
-Situation: Project page of Ember, last edited on 2025-10-16 and never updated since: it still shows Pacifica Plastics as the enclosure vendor and the original launch date.
+Situation: Project page of Dune, last edited on 2025-06-20 and never updated since: it still shows Lattice Molding as the enclosure vendor and the original launch date.
 
 Facts to state, keeping every anchor word for word:
 
-- Ember is scheduled to launch on July 26, 2026. Anchors: "July 26, 2026".
-- The team chose to move forward with Pacifica Plastics for the Ember enclosure. Anchors: "Pacifica Plastics".
+- Dune is scheduled to launch on March 6, 2027. Anchors: "March 6, 2027".
+- The team chose to move forward with Lattice Molding for the Dune enclosure. Anchors: "Lattice Molding".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-09-01 Ember kickoff]]: how the project started
-- [[Ember requirements]]: the requirements
-- [[2025-10-11 Ember enclosure review]]: where the enclosure vendor was discussed
+- [[2025-05-06 Dune kickoff]]: how the project started
+- [[Dune requirements]]: the requirements
+- [[2025-06-15 Dune enclosure review]]: where the enclosure vendor was discussed
 
-### `Journal/Tessa Okafor/2025-10-21 Tessa Okafor journal.md`
+### `Journal/Ruth Holloway/2025-06-25 Ruth Holloway journal.md`
 
 - Type: journal
-- Date: 2025-10-21
-- Author: Tessa Okafor (Mechanical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-10-21
-author: Tessa Okafor
-project: Ember
-```
-
-Situation: Personal note: heard in the hallway that Ember is going with Pacifica Plastics for the enclosure.
-
-Facts to state, keeping every anchor word for word:
-
-- The team chose to move forward with Pacifica Plastics for the Ember enclosure. Anchors: "Pacifica Plastics".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-10-11 Ember enclosure review]]: what came out of the enclosure review
-
-### `Meetings/2025-10-31 Ember design review.md`
-
-- Type: meeting
-- Date: 2025-10-31
-- Author: Ruth Holloway (Electrical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-10-31
-project: Ember
-attendees:
-  - Ruth Holloway
-  - Tessa Okafor
-  - Rafael Nakamura
-  - Hazel Osei
-```
-
-Situation: Design review of Ember. One open question is debated at length and left open.
-
-Facts to state, keeping every anchor word for word:
-
-- The team discussed using recycled plastic for the enclosure for Ember but made no decision. Anchors: "recycled plastic".
-
-Links, each inside a real sentence of the note:
-
-- [[Ember]]: open questions are tracked on the project page
-
-### `Journal/Zoe Adeyemi/2025-11-02 Zoe Adeyemi journal.md`
-
-- Type: journal
-- Date: 2025-11-02
-- Author: Zoe Adeyemi (Electrical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-11-02
-author: Zoe Adeyemi
-project: Ember
-```
-
-Situation: Personal note: frustrated that the team still has not settled using recycled plastic for the enclosure for Ember.
-
-Facts to state, keeping every anchor word for word:
-
-- The team discussed using recycled plastic for the enclosure for Ember but made no decision. Anchors: "recycled plastic".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-10-31 Ember design review]]: the question came up in the design review
-
-### `Meetings/2025-11-15 Ember tooling sign-off.md`
-
-- Type: meeting
-- Date: 2025-11-15
-- Author: Tessa Okafor (Mechanical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-11-15
-project: Ember
-attendees:
-  - Tessa Okafor
-  - Hazel Osei
-  - Ines Fitzgerald
-  - Naomi Boyle
-```
-
-Situation: Vendor validation after the drop tests: the team gives Cobalt Molding the tooling go-ahead for the Ember enclosure. Talk about sign-off, validation and go-ahead.
-
-Facts to state, keeping every anchor word for word:
-
-- Cobalt Molding received the tooling go-ahead for the Ember enclosure after the drop tests. Anchors: "Cobalt Molding".
-
-Links, each inside a real sentence of the note:
-
-- [[Ember requirements]]: this settles the enclosure section of the requirements
-- [[Cobalt Molding]]: Cobalt Molding is now the validated vendor
-
-Never use these words: quote, quotes, quoted, quotation, bid, bids.
-
-### `Meetings/2025-12-05 Ember EVT review.md`
-
-- Type: meeting
-- Date: 2025-12-05
-- Author: Ruth Holloway (Electrical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-12-05
-project: Ember
-attendees:
-  - Ruth Holloway
-  - Tessa Okafor
-  - Rafael Nakamura
-  - Naomi Boyle
-```
-
-Situation: Review of the first engineering validation build of Ember.
-
-Facts to state, keeping every anchor word for word:
-
-- The Ember EVT build produced 60 units. Anchors: "60 units".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-11-15 Ember tooling sign-off]]: enclosures built as agreed at the sign-off
-
-### `Journal/Ruth Holloway/2025-12-07 Ruth Holloway journal.md`
-
-- Type: journal
-- Date: 2025-12-07
+- Date: 2025-06-25
 - Author: Ruth Holloway (Electrical Engineer)
 - Length: 80 to 200 words
 
@@ -403,133 +259,279 @@ Frontmatter, copied exactly:
 
 ```yaml
 type: journal
-date: 2025-12-07
+date: 2025-06-25
 author: Ruth Holloway
-project: Ember
+project: Dune
 ```
 
-Situation: Personal note after the Ember EVT build, counting the units on the bench.
+Situation: Personal note from someone who was not at the enclosure review: heard in the hallway that Dune is going with Lattice Molding for the enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- The Ember EVT build produced 65 units. Anchors: "65 units".
+- The team chose to move forward with Lattice Molding for the Dune enclosure. Anchors: "Lattice Molding".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-12-05 Ember EVT review]]: notes from the EVT review
+- [[2025-06-15 Dune enclosure review]]: what came out of the enclosure review
 
-### `Meetings/2026-01-19 Ember pilot kickoff with Larchmont College.md`
+### `Meetings/2025-07-05 Dune design review.md`
 
 - Type: meeting
-- Date: 2026-01-19
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-07-05
+- Author: Zoe Adeyemi (Electrical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2026-01-19
-project: Ember
+date: 2025-07-05
+project: Dune
 attendees:
-  - Hazel Osei
-  - Naomi Boyle
+  - Zoe Adeyemi
+  - Rosa Novak
+  - Hector Haddad
+  - Carmen Iverson
 ```
 
-Situation: Kickoff of the Ember pilot at Larchmont College: scope and number of units.
+Situation: Design review of Dune. One open question is debated at length and left open.
 
 Facts to state, keeping every anchor word for word:
 
-- Larchmont College is piloting Ember with 50 units. Anchors: "Larchmont College", "50 units".
+- The team discussed offering the wall-mount bracket in white for Dune but made no decision. Anchors: "wall-mount bracket".
 
 Links, each inside a real sentence of the note:
 
-- [[Larchmont College]]: who the customer is
-- [[Ember]]: the project page
+- [[Dune]]: open questions are tracked on the project page
 
-### `Meetings/2026-01-29 Ember DVT review.md`
+### `Journal/Rosa Novak/2025-07-07 Rosa Novak journal.md`
+
+- Type: journal
+- Date: 2025-07-07
+- Author: Rosa Novak (Mechanical Engineer)
+- Length: 80 to 200 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: journal
+date: 2025-07-07
+author: Rosa Novak
+project: Dune
+```
+
+Situation: Personal note: frustrated that the team still has not settled offering the wall-mount bracket in white for Dune.
+
+Facts to state, keeping every anchor word for word:
+
+- The team discussed offering the wall-mount bracket in white for Dune but made no decision. Anchors: "wall-mount bracket".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-07-05 Dune design review]]: the question came up in the design review
+
+### `Meetings/2025-07-20 Dune tooling sign-off.md`
 
 - Type: meeting
-- Date: 2026-01-29
-- Author: Naomi Boyle (Quality Engineer)
+- Date: 2025-07-20
+- Author: Rosa Novak (Mechanical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2026-01-29
-project: Ember
+date: 2025-07-20
+project: Dune
 attendees:
-  - Naomi Boyle
-  - Ruth Holloway
-  - Tessa Okafor
-  - Hazel Osei
+  - Rosa Novak
+  - Carmen Iverson
+  - Omar Hart
+  - Claire Gallagher
 ```
 
-Situation: Design validation review of Ember: the main issue found on the DVT units.
+Situation: Vendor validation after the drop tests: the team gives Redstone Plastics the tooling go-ahead for the Dune enclosure. Talk about sign-off, validation and go-ahead.
 
 Facts to state, keeping every anchor word for word:
 
-- The Ember DVT units showed a CO2 reading drift above 35 degrees Celsius. Anchors: "reading drift".
+- Redstone Plastics received the tooling go-ahead for the Dune enclosure after the drop tests. Anchors: "Redstone Plastics".
 
 Links, each inside a real sentence of the note:
 
-- [[2026-01-19 Ember pilot kickoff with Larchmont College]]: DVT units also went to the pilot
+- [[Dune requirements]]: this settles the enclosure section of the requirements
+- [[Redstone Plastics]]: Redstone Plastics is now the validated vendor
 
-### `Meetings/2026-02-23 Ember schedule review.md`
+Never use these words: quote, quotes, quoted, quoting, quotation, quotations, bid, bids, bidding, bidder, bidders.
+
+### `Meetings/2025-09-14 Dune EVT review.md`
 
 - Type: meeting
-- Date: 2026-02-23
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-09-14
+- Author: Zoe Adeyemi (Electrical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2026-02-23
-project: Ember
+date: 2025-09-14
+project: Dune
 attendees:
-  - Hazel Osei
-  - Naomi Boyle
+  - Zoe Adeyemi
+  - Rosa Novak
+  - Hector Haddad
+  - Claire Gallagher
+```
+
+Situation: Review of the first engineering validation build of Dune, once the enclosure tooling was ready.
+
+Facts to state, keeping every anchor word for word:
+
+- The Dune EVT build produced 75 units. Anchors: "75 units".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-07-20 Dune tooling sign-off]]: enclosures built as agreed at the sign-off
+
+### `Journal/Tessa Okafor/2025-09-16 Tessa Okafor journal.md`
+
+- Type: journal
+- Date: 2025-09-16
+- Author: Tessa Okafor (Mechanical Engineer)
+- Length: 80 to 200 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: journal
+date: 2025-09-16
+author: Tessa Okafor
+project: Dune
+```
+
+Situation: Personal note from someone who helped on the Dune EVT build but was not at the review: they counted the units themselves.
+
+Facts to state, keeping every anchor word for word:
+
+- The Dune EVT build produced 80 units. Anchors: "80 units".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-09-14 Dune EVT review]]: the build the EVT review was about
+
+### `Meetings/2025-10-29 Dune pilot kickoff.md`
+
+- Type: meeting
+- Date: 2025-10-29
+- Author: Carmen Iverson (Product Manager)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2025-10-29
+project: Dune
+customer: Pine Valley Medical Center
+attendees:
+  - Carmen Iverson
+  - Claire Gallagher
+```
+
+Situation: Kickoff of the Dune pilot at Pine Valley Medical Center: scope and number of units.
+
+Facts to state, keeping every anchor word for word:
+
+- Pine Valley Medical Center is piloting Dune with 80 units. Anchors: "Pine Valley Medical Center", "80 units".
+
+Links, each inside a real sentence of the note:
+
+- [[Pine Valley Medical Center]]: who the customer is
+- [[Dune]]: the project page
+
+### `Meetings/2025-11-08 Dune DVT review.md`
+
+- Type: meeting
+- Date: 2025-11-08
+- Author: Claire Gallagher (Quality Engineer)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2025-11-08
+project: Dune
+attendees:
+  - Claire Gallagher
+  - Zoe Adeyemi
+  - Rosa Novak
+  - Carmen Iverson
+```
+
+Situation: Design validation review of Dune: the main issue found on the DVT units.
+
+Facts to state, keeping every anchor word for word:
+
+- The Dune DVT units showed firmware resets when the gateway reboots. Anchors: "firmware resets".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-10-29 Dune pilot kickoff]]: DVT units also went to the pilot
+
+### `Meetings/2025-12-03 Dune schedule review.md`
+
+- Type: meeting
+- Date: 2025-12-03
+- Author: Carmen Iverson (Product Manager)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2025-12-03
+project: Dune
+attendees:
+  - Carmen Iverson
+  - Claire Gallagher
   - Emeka Nordin
 ```
 
-Situation: Schedule review of Ember: the launch moves because a certification test has to be run again.
+Situation: Schedule review of Dune: the launch moves because a certification test has to be run again.
 
 Facts to state, keeping every anchor word for word:
 
-- Ember will now launch on October 24, 2026. Anchors: "October 24, 2026".
-- The Ember launch slipped because of a certification retest at Redstone Compliance Labs. Anchors: "Redstone Compliance Labs".
+- Dune will now launch on May 24, 2027. Anchors: "May 24, 2027".
+- The Dune launch slipped because of a certification retest at Cobalt Test Labs. Anchors: "Cobalt Test Labs".
 
 Links, each inside a real sentence of the note:
 
-- [[Redstone Compliance Labs]]: the lab running the retest
-- [[Ember]]: the project page
+- [[Cobalt Test Labs]]: the lab running the retest
+- [[Dune]]: the project page
 
-### `Decisions/Ember launch date change.md`
+### `Decisions/Dune launch date change.md`
 
 - Type: decision
-- Date: 2026-02-25
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-12-05
+- Author: Carmen Iverson (Product Manager)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: decision
-date: 2026-02-25
-project: Ember
-decided_by: Hazel Osei
+date: 2025-12-05
+project: Dune
+decided_by: Carmen Iverson
 ```
 
-Situation: Decision record of the new Ember launch date.
+Situation: Decision record of the new Dune launch date. The reasons are left to the schedule review.
 
 Facts to state, keeping every anchor word for word:
 
-- Ember will now launch on October 24, 2026. Anchors: "October 24, 2026".
+- Dune will now launch on May 24, 2027. Anchors: "May 24, 2027".
 
 Links, each inside a real sentence of the note:
 
-- [[2026-02-23 Ember schedule review]]: the reasons are in the schedule review
+- [[2025-12-03 Dune schedule review]]: the reasons are in the schedule review

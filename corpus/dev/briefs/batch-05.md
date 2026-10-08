@@ -1,536 +1,214 @@
 # Writing brief batch-05
 
-Write each of the 18 notes below as a markdown file of the vault, following corpus/WRITING.md.
+Write each of the 7 notes below as a markdown file of the vault, following corpus/WRITING.md.
 
 ## Cast
 
 - Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver and Austin.
-- Hazel Osei: Product Manager, Product team
-- Rosa Novak: Mechanical Engineer, Hardware Engineering team
-- Ines Fitzgerald: Procurement Specialist, Operations team
-- Zoe Adeyemi: Electrical Engineer, Hardware Engineering team
-- Tessa Okafor: Mechanical Engineer, Hardware Engineering team
-- Hazel Osei: Senior Product Manager, Product team
-- Naomi Boyle: Quality Engineer, Operations team
+- Leah Ashby: Account Executive, Sales team
+- Lena Greer: Account Executive, Sales team
+- Ines Fitzgerald: Account Executive, Sales team
+- Theo Ramsey: Finance Manager, Finance team
+- Tomas Mbeki: Account Executive, Sales team
+- Naomi Boyle: Customer Success Manager, Customer Success team
 
 ## Notes
 
-### `Meetings/2025-01-25 Atlas kickoff.md`
-
-- Type: meeting
-- Date: 2025-01-25
-- Author: Hazel Osei (Product Manager)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-01-25
-project: Atlas
-attendees:
-  - Hazel Osei
-  - Rosa Novak
-  - Zoe Adeyemi
-  - Hector Haddad
-  - Ines Fitzgerald
-```
-
-Situation: Kickoff meeting of Atlas: goal, owner and target launch date.
-
-Facts to state, keeping every anchor word for word:
-
-- Atlas is the project to build a low-cost sensor for open-plan offices, sold as the Larkspur Aura Gen 2. Anchors: "low-cost sensor", "Larkspur Aura Gen 2".
-- Hazel Osei is the product owner of Atlas. Anchors: "Hazel Osei".
-- Atlas is scheduled to launch on December 9, 2025. Anchors: "December 9, 2025".
-
-Links, each inside a real sentence of the note:
-
-- [[Hazel Osei]]: Hazel Osei owns the project
-
-### `Specs/Atlas requirements.md`
-
-- Type: spec
-- Date: 2025-02-04
-- Author: Hazel Osei (Product Manager)
-- Length: 300 to 600 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: spec
-date: 2025-02-04
-project: Atlas
-owner: Hazel Osei
-status: approved
-```
-
-Situation: Requirements document of Atlas, with sections for power, cost and enclosure. A short "Decisions" section at the end was added later, after the enclosure vendor was settled.
-
-Facts to state, keeping every anchor word for word:
-
-- The Atlas requirements call for a battery life of 12 months. Anchors: "12 months".
-- The target unit cost for Atlas is $94. Anchors: "$94".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-01-25 Atlas kickoff]]: the requirements build on what the kickoff agreed
-- [[2025-04-10 Atlas tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
-
-### `Specs/Atlas requirements (copy).md`
-
-- Type: spec
-- Date: 2025-02-06
-- Author: Rosa Novak (Mechanical Engineer)
-- Length: 300 to 600 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: spec
-date: 2025-02-06
-project: Atlas
-owner: Hazel Osei
-status: draft
-```
-
-Situation: An old working copy of the Atlas requirements that was never deleted. Same structure as the main requirements, but it asks for 18 months of battery life.
-
-Facts to state, keeping every anchor word for word:
-
-- The Atlas requirements call for a battery life of 18 months. Anchors: "18 months".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-01-25 Atlas kickoff]]: written right after the kickoff
-
-### `Quotes/Atlas enclosure - Pacifica Plastics.md`
-
-- Type: quote
-- Date: 2025-02-19
-- Author: Ines Fitzgerald (Procurement Specialist)
-- Length: 120 to 250 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: quote
-date: 2025-02-19
-project: Atlas
-supplier: Pacifica Plastics
-```
-
-Situation: Summary of the quote Pacifica Plastics sent for the Atlas enclosure.
-
-Facts to state, keeping every anchor word for word:
-
-- Pacifica Plastics quoted $42,600 for the Atlas enclosure tooling. Anchors: "$42,600".
-- Pacifica Plastics needs 12 weeks to deliver the Atlas enclosure tooling. Anchors: "12 weeks".
-
-Links, each inside a real sentence of the note:
-
-- [[Atlas requirements]]: answers the enclosure section of the requirements
-- [[Pacifica Plastics]]: supplier details
-
-### `Quotes/Atlas enclosure - Cobalt Molding.md`
-
-- Type: quote
-- Date: 2025-02-22
-- Author: Ines Fitzgerald (Procurement Specialist)
-- Length: 120 to 250 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: quote
-date: 2025-02-22
-project: Atlas
-supplier: Cobalt Molding
-```
-
-Situation: Summary of the quote Cobalt Molding sent for the Atlas enclosure.
-
-Facts to state, keeping every anchor word for word:
-
-- Cobalt Molding quoted $55,500 for the Atlas enclosure tooling. Anchors: "$55,500".
-- Cobalt Molding needs 11 weeks to deliver the Atlas enclosure tooling. Anchors: "11 weeks".
-
-Links, each inside a real sentence of the note:
-
-- [[Atlas requirements]]: answers the enclosure section of the requirements
-- [[Cobalt Molding]]: supplier details
-
-### `Quotes/Atlas circuit board assembly - Vantage Electronics.md`
-
-- Type: quote
-- Date: 2025-02-24
-- Author: Ines Fitzgerald (Procurement Specialist)
-- Length: 120 to 250 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: quote
-date: 2025-02-24
-project: Atlas
-supplier: Vantage Electronics
-```
-
-Situation: Summary of the quote Vantage Electronics sent for the Atlas circuit board assembly.
-
-Facts to state, keeping every anchor word for word:
-
-- Vantage Electronics quoted $12.70 per board for the Atlas circuit board assembly. Anchors: "$12.70".
-
-Links, each inside a real sentence of the note:
-
-- [[Atlas requirements]]: answers the circuit board assembly section of the requirements
-- [[Vantage Electronics]]: supplier details
-
-### `Meetings/2025-03-06 Atlas enclosure review.md`
-
-- Type: meeting
-- Date: 2025-03-06
-- Author: Rosa Novak (Mechanical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-03-06
-project: Atlas
-attendees:
-  - Rosa Novak
-  - Hazel Osei
-  - Ines Fitzgerald
-```
-
-Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Pacifica Plastics, mainly on price.
-
-Facts to state, keeping every anchor word for word:
-
-- The team chose to move forward with Pacifica Plastics for the Atlas enclosure. Anchors: "Pacifica Plastics".
-
-Links, each inside a real sentence of the note:
-
-- [[Atlas enclosure - Pacifica Plastics]]: the offer from Pacifica Plastics
-- [[Atlas enclosure - Cobalt Molding]]: the offer from Cobalt Molding
-- [[Atlas requirements]]: the enclosure requirements being checked
-
-### `Projects/Atlas.md`
-
-- Type: project
-- Date: 2025-03-11
-- Author: Hazel Osei (Product Manager)
+### `Customers/Northgate Realty Partners.md`
+
+- Type: customer
+- Date: 2025-10-03
+- Author: Leah Ashby (Account Executive)
 - Length: 150 to 300 words
 
 Frontmatter, copied exactly:
 
 ```yaml
-type: project
-product: Larkspur Aura Gen 2
-owner: Hazel Osei
-status: active
-updated: 2025-03-11
+type: customer
+segment: property management
+city: Burlington
+account_owner: Leah Ashby
 ```
 
-Situation: Project page of Atlas, last edited on 2025-03-11 and never updated since: it still shows Pacifica Plastics as the enclosure vendor and the original launch date.
+Situation: Account page written when the deal closed. It still names Leah Ashby as the account owner: nobody updated it after the handoff.
 
 Facts to state, keeping every anchor word for word:
 
-- Atlas is scheduled to launch on December 9, 2025. Anchors: "December 9, 2025".
-- The team chose to move forward with Pacifica Plastics for the Atlas enclosure. Anchors: "Pacifica Plastics".
+- Northgate Realty Partners is a property management customer based in Burlington. Anchors: "property management", "Burlington".
+- Bennett Calloway, Head of Building Services, is the main contact at Northgate Realty Partners. Anchors: "Bennett Calloway".
+- Leah Ashby owns the Northgate Realty Partners account. Anchors: "Leah Ashby".
+- Northgate Realty Partners has an annual contract worth $60,000. Anchors: "$60,000".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-01-25 Atlas kickoff]]: how the project started
-- [[Atlas requirements]]: the requirements
-- [[2025-03-06 Atlas enclosure review]]: where the enclosure vendor was discussed
+- [[Leah Ashby]]: Leah Ashby owns the relationship
 
-### `Journal/Rosa Novak/2025-03-16 Rosa Novak journal.md`
-
-- Type: journal
-- Date: 2025-03-16
-- Author: Rosa Novak (Mechanical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-03-16
-author: Rosa Novak
-project: Atlas
-```
-
-Situation: Personal note: heard in the hallway that Atlas is going with Pacifica Plastics for the enclosure.
-
-Facts to state, keeping every anchor word for word:
-
-- The team chose to move forward with Pacifica Plastics for the Atlas enclosure. Anchors: "Pacifica Plastics".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-03-06 Atlas enclosure review]]: what came out of the enclosure review
-
-### `Meetings/2025-03-26 Atlas design review.md`
+### `Meetings/2026-02-12 Northgate Realty Partners account handoff.md`
 
 - Type: meeting
-- Date: 2025-03-26
-- Author: Zoe Adeyemi (Electrical Engineer)
+- Date: 2026-02-12
+- Author: Lena Greer (Account Executive)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-03-26
-project: Atlas
+date: 2026-02-12
+customer: Northgate Realty Partners
 attendees:
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hector Haddad
-  - Hazel Osei
+  - Leah Ashby
+  - Lena Greer
 ```
 
-Situation: Design review of Atlas. One open question is debated at length and left open.
+Situation: Handoff meeting: Leah Ashby passes the Northgate Realty Partners account to Lena Greer.
 
 Facts to state, keeping every anchor word for word:
 
-- The team discussed switching to USB-C power for Atlas but made no decision. Anchors: "USB-C".
+- Lena Greer took over the Northgate Realty Partners account from Leah Ashby. Anchors: "Lena Greer".
 
 Links, each inside a real sentence of the note:
 
-- [[Atlas]]: open questions are tracked on the project page
+- [[Northgate Realty Partners]]: the account page has the background
+- [[Lena Greer]]: Lena Greer is the new account owner
 
-### `Journal/Tessa Okafor/2025-03-28 Tessa Okafor journal.md`
-
-- Type: journal
-- Date: 2025-03-28
-- Author: Tessa Okafor (Mechanical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-03-28
-author: Tessa Okafor
-project: Atlas
-```
-
-Situation: Personal note: frustrated that the team still has not settled switching to USB-C power for Atlas.
-
-Facts to state, keeping every anchor word for word:
-
-- The team discussed switching to USB-C power for Atlas but made no decision. Anchors: "USB-C".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-03-26 Atlas design review]]: the question came up in the design review
-
-### `Meetings/2025-04-10 Atlas tooling sign-off.md`
+### `Meetings/2026-03-31 Northgate Realty Partners quarterly review.md`
 
 - Type: meeting
-- Date: 2025-04-10
-- Author: Rosa Novak (Mechanical Engineer)
+- Date: 2026-03-31
+- Author: Ines Fitzgerald (Account Executive)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-04-10
-project: Atlas
+date: 2026-03-31
+customer: Northgate Realty Partners
 attendees:
-  - Rosa Novak
-  - Hazel Osei
   - Ines Fitzgerald
-  - Naomi Boyle
+  - Bennett Calloway
 ```
 
-Situation: Vendor validation after the drop tests: the team gives Cobalt Molding the tooling go-ahead for the Atlas enclosure. Talk about sign-off, validation and go-ahead.
+Situation: Quarterly business review with Northgate Realty Partners, run by customer success: deployment status, and the annual contract value as recorded on the account.
 
 Facts to state, keeping every anchor word for word:
 
-- Cobalt Molding received the tooling go-ahead for the Atlas enclosure after the drop tests. Anchors: "Cobalt Molding".
+- Northgate Realty Partners has an annual contract worth $60,000. Anchors: "$60,000".
 
 Links, each inside a real sentence of the note:
 
-- [[Atlas requirements]]: this settles the enclosure section of the requirements
-- [[Cobalt Molding]]: Cobalt Molding is now the validated vendor
+- [[2026-02-12 Northgate Realty Partners account handoff]]: the account changed hands at the handoff
+- [[Northgate Realty Partners]]: account background
 
-Never use these words: quote, quotes, quoted, quotation, bid, bids.
+### `Customers/Northgate Realty Partners billing summary.md`
 
-### `Meetings/2025-04-30 Atlas EVT review.md`
+- Type: customer
+- Date: 2026-04-05
+- Author: Theo Ramsey (Finance Manager)
+- Length: 150 to 300 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: customer
+customer: Northgate Realty Partners
+updated: 2026-04-05
+```
+
+Situation: Billing summary kept by finance, from the invoicing system. It gives the annual contract value as a plain figure, without commenting on any other source.
+
+Facts to state, keeping every anchor word for word:
+
+- The annual contract with Northgate Realty Partners is worth $76,000. Anchors: "$76,000".
+
+Links, each inside a real sentence of the note:
+
+- [[Northgate Realty Partners]]: the customer this billing covers
+
+### `Customers/Thornbury Unified Schools.md`
+
+- Type: customer
+- Date: 2025-01-31
+- Author: Lena Greer (Account Executive)
+- Length: 150 to 300 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: customer
+segment: school district
+city: Burlington
+account_owner: Lena Greer
+```
+
+Situation: Account page written when the deal closed. It still names Lena Greer as the account owner: nobody updated it after the handoff.
+
+Facts to state, keeping every anchor word for word:
+
+- Thornbury Unified Schools is a school district customer based in Burlington. Anchors: "school district", "Burlington".
+- Wesley Mercer, Facilities Manager, is the main contact at Thornbury Unified Schools. Anchors: "Wesley Mercer".
+- Lena Greer owns the Thornbury Unified Schools account. Anchors: "Lena Greer".
+- Thornbury Unified Schools has an annual contract worth $57,000. Anchors: "$57,000".
+
+Links, each inside a real sentence of the note:
+
+- [[Lena Greer]]: Lena Greer owns the relationship
+
+### `Meetings/2025-06-09 Thornbury Unified Schools account handoff.md`
 
 - Type: meeting
-- Date: 2025-04-30
-- Author: Zoe Adeyemi (Electrical Engineer)
+- Date: 2025-06-09
+- Author: Tomas Mbeki (Account Executive)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-04-30
-project: Atlas
+date: 2025-06-09
+customer: Thornbury Unified Schools
 attendees:
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hector Haddad
-  - Naomi Boyle
+  - Lena Greer
+  - Tomas Mbeki
 ```
 
-Situation: Review of the first engineering validation build of Atlas.
+Situation: Handoff meeting: Lena Greer passes the Thornbury Unified Schools account to Tomas Mbeki.
 
 Facts to state, keeping every anchor word for word:
 
-- The Atlas EVT build produced 50 units. Anchors: "50 units".
+- Tomas Mbeki took over the Thornbury Unified Schools account from Lena Greer. Anchors: "Tomas Mbeki".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-04-10 Atlas tooling sign-off]]: enclosures built as agreed at the sign-off
+- [[Thornbury Unified Schools]]: the account page has the background
+- [[Tomas Mbeki]]: Tomas Mbeki is the new account owner
 
-### `Journal/Zoe Adeyemi/2025-05-02 Zoe Adeyemi journal.md`
-
-- Type: journal
-- Date: 2025-05-02
-- Author: Zoe Adeyemi (Electrical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-05-02
-author: Zoe Adeyemi
-project: Atlas
-```
-
-Situation: Personal note after the Atlas EVT build, counting the units on the bench.
-
-Facts to state, keeping every anchor word for word:
-
-- The Atlas EVT build produced 55 units. Anchors: "55 units".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-04-30 Atlas EVT review]]: notes from the EVT review
-
-### `Meetings/2025-06-14 Atlas pilot kickoff with Sheridan Realty Partners.md`
+### `Meetings/2025-08-08 Thornbury Unified Schools quarterly review.md`
 
 - Type: meeting
-- Date: 2025-06-14
-- Author: Hazel Osei (Senior Product Manager)
+- Date: 2025-08-08
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-06-14
-project: Atlas
-attendees:
-  - Hazel Osei
-  - Naomi Boyle
-```
-
-Situation: Kickoff of the Atlas pilot at Sheridan Realty Partners: scope and number of units.
-
-Facts to state, keeping every anchor word for word:
-
-- Sheridan Realty Partners is piloting Atlas with 30 units. Anchors: "Sheridan Realty Partners", "30 units".
-
-Links, each inside a real sentence of the note:
-
-- [[Sheridan Realty Partners]]: who the customer is
-- [[Atlas]]: the project page
-
-### `Meetings/2025-06-24 Atlas DVT review.md`
-
-- Type: meeting
-- Date: 2025-06-24
-- Author: Naomi Boyle (Quality Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-06-24
-project: Atlas
+date: 2025-08-08
+customer: Thornbury Unified Schools
 attendees:
   - Naomi Boyle
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hazel Osei
+  - Wesley Mercer
 ```
 
-Situation: Design validation review of Atlas: the main issue found on the DVT units.
+Situation: Quarterly business review with Thornbury Unified Schools, run by customer success: deployment status and next steps.
 
 Facts to state, keeping every anchor word for word:
 
-- The Atlas DVT units showed condensation inside the humidity sensor channel. Anchors: "condensation".
+- Thornbury Unified Schools has 140 Larkspur sensors deployed. Anchors: "140 Larkspur sensors".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-06-14 Atlas pilot kickoff with Sheridan Realty Partners]]: DVT units also went to the pilot
-
-### `Meetings/2025-07-19 Atlas schedule review.md`
-
-- Type: meeting
-- Date: 2025-07-19
-- Author: Hazel Osei (Senior Product Manager)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-07-19
-project: Atlas
-attendees:
-  - Hazel Osei
-  - Naomi Boyle
-  - Emeka Nordin
-```
-
-Situation: Schedule review of Atlas: the launch moves because a certification test has to be run again.
-
-Facts to state, keeping every anchor word for word:
-
-- Atlas will now launch on February 18, 2026. Anchors: "February 18, 2026".
-- The Atlas launch slipped because of a certification retest at Redstone Compliance Labs. Anchors: "Redstone Compliance Labs".
-
-Links, each inside a real sentence of the note:
-
-- [[Redstone Compliance Labs]]: the lab running the retest
-- [[Atlas]]: the project page
-
-### `Decisions/Atlas launch date change.md`
-
-- Type: decision
-- Date: 2025-07-21
-- Author: Hazel Osei (Senior Product Manager)
-- Length: 120 to 250 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: decision
-date: 2025-07-21
-project: Atlas
-decided_by: Hazel Osei
-```
-
-Situation: Decision record of the new Atlas launch date.
-
-Facts to state, keeping every anchor word for word:
-
-- Atlas will now launch on February 18, 2026. Anchors: "February 18, 2026".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-07-19 Atlas schedule review]]: the reasons are in the schedule review
+- [[2025-06-09 Thornbury Unified Schools account handoff]]: the account changed hands at the handoff
+- [[Thornbury Unified Schools]]: account background

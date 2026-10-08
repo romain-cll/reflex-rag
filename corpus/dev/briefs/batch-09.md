@@ -5,397 +5,253 @@ Write each of the 18 notes below as a markdown file of the vault, following corp
 ## Cast
 
 - Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver and Austin.
-- Diego Bishop: Product Manager, Product team
-- Rosa Novak: Mechanical Engineer, Hardware Engineering team
-- Ines Fitzgerald: Procurement Specialist, Operations team
-- Zoe Adeyemi: Electrical Engineer, Hardware Engineering team
+- Hazel Osei: Senior Product Manager, Product team
 - Tessa Okafor: Mechanical Engineer, Hardware Engineering team
-- Naomi Boyle: Quality Engineer, Operations team
+- Omar Hart: Procurement Specialist, Operations team
+- Zoe Adeyemi: Electrical Engineer, Hardware Engineering team
+- Ruth Holloway: Electrical Engineer, Hardware Engineering team
+- Rosa Novak: Mechanical Engineer, Hardware Engineering team
+- Claire Gallagher: Quality Engineer, Operations team
 
 ## Notes
 
-### `Meetings/2025-10-26 Fjord kickoff.md`
+### `Meetings/2025-07-06 Ember kickoff.md`
 
 - Type: meeting
-- Date: 2025-10-26
-- Author: Diego Bishop (Product Manager)
+- Date: 2025-07-06
+- Author: Hazel Osei (Senior Product Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-10-26
-project: Fjord
+date: 2025-07-06
+project: Ember
 attendees:
-  - Diego Bishop
-  - Rosa Novak
-  - Zoe Adeyemi
-  - Hector Haddad
-  - Ines Fitzgerald
+  - Hazel Osei
+  - Tessa Okafor
+  - Ruth Holloway
+  - Rafael Nakamura
+  - Omar Hart
 ```
 
-Situation: Kickoff meeting of Fjord: goal, owner and target launch date.
+Situation: Kickoff meeting of Ember: goal, owner and target launch date.
 
 Facts to state, keeping every anchor word for word:
 
-- Fjord is the project to build a sensor kit for school gyms and auditoriums, sold as the Larkspur Sentinel Gen 2. Anchors: "sensor kit", "Larkspur Sentinel Gen 2".
-- Diego Bishop is the product owner of Fjord. Anchors: "Diego Bishop".
-- Fjord is scheduled to launch on August 28, 2026. Anchors: "August 28, 2026".
+- Ember is the project to build a portable multi-gas sensor for basements, sold as the Larkspur Breeze Gen 2. Anchors: "multi-gas sensor for basements", "Larkspur Breeze Gen 2".
+- Hazel Osei is the product owner of Ember. Anchors: "Hazel Osei".
+- Ember is scheduled to launch on January 4, 2027. Anchors: "January 4, 2027".
 
 Links, each inside a real sentence of the note:
 
-- [[Diego Bishop]]: Diego Bishop owns the project
+- [[Hazel Osei]]: Hazel Osei owns the project
 
-### `Specs/Fjord requirements.md`
+### `Specs/Ember requirements.md`
 
 - Type: spec
-- Date: 2025-11-05
-- Author: Diego Bishop (Product Manager)
+- Date: 2025-07-16
+- Author: Hazel Osei (Senior Product Manager)
 - Length: 300 to 600 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: spec
-date: 2025-11-05
-project: Fjord
-owner: Diego Bishop
+date: 2025-07-16
+project: Ember
+owner: Hazel Osei
 status: approved
 ```
 
-Situation: Requirements document of Fjord, with sections for power, cost and enclosure. A short "Decisions" section at the end was added later, after the enclosure vendor was settled.
+Situation: Requirements document of Ember, with sections for power, cost, the enclosure and the circuit board assembly. A short "Decisions" section at the end was added later, after the enclosure vendor was settled; it does not name the vendor.
 
 Facts to state, keeping every anchor word for word:
 
-- The Fjord requirements call for a battery life of 18 months. Anchors: "18 months".
-- The target unit cost for Fjord is $92. Anchors: "$92".
+- The Ember requirements call for a battery life of 48 months. Anchors: "48 months".
+- The target unit cost for Ember is $67. Anchors: "$67".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-10-26 Fjord kickoff]]: the requirements build on what the kickoff agreed
-- [[2026-01-09 Fjord tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
+- [[2025-07-06 Ember kickoff]]: the requirements build on what the kickoff agreed
+- [[2025-09-19 Ember tooling sign-off]]: the enclosure supplier decision is recorded in the tooling sign-off
 
-### `Specs/Fjord requirements (copy).md`
+### `Specs/Ember requirements (copy).md`
 
 - Type: spec
-- Date: 2025-11-07
-- Author: Rosa Novak (Mechanical Engineer)
+- Date: 2025-07-16
+- Author: Tessa Okafor (Mechanical Engineer)
 - Length: 300 to 600 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: spec
-date: 2025-11-07
-project: Fjord
-owner: Diego Bishop
-status: draft
+date: 2025-07-16
+project: Ember
+owner: Hazel Osei
+status: approved
 ```
 
-Situation: An old working copy of the Fjord requirements that was never deleted. Same structure as the main requirements, but it asks for 24 months of battery life.
+Situation: A duplicate of the Ember requirements made the same day and edited separately. It looks just as official, with the same sections, but asks for 26 months of battery life.
 
 Facts to state, keeping every anchor word for word:
 
-- The Fjord requirements call for a battery life of 24 months. Anchors: "24 months".
+- The Ember requirements call for a battery life of 26 months. Anchors: "26 months".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-10-26 Fjord kickoff]]: written right after the kickoff
+- [[2025-07-06 Ember kickoff]]: written right after the kickoff
 
-### `Quotes/Fjord enclosure - Cobalt Molding.md`
+### `Quotes/Ember enclosure - Redstone Plastics.md`
 
 - Type: quote
-- Date: 2025-11-20
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-07-31
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-11-20
-project: Fjord
-supplier: Cobalt Molding
+date: 2025-07-31
+project: Ember
+supplier: Redstone Plastics
 ```
 
-Situation: Summary of the quote Cobalt Molding sent for the Fjord enclosure.
+Situation: Summary of the quote Redstone Plastics sent for the Ember enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- Cobalt Molding quoted $57,300 for the Fjord enclosure tooling. Anchors: "$57,300".
-- Cobalt Molding needs 10 weeks to deliver the Fjord enclosure tooling. Anchors: "10 weeks".
+- Redstone Plastics quoted $40,100 for the Ember enclosure tooling. Anchors: "$40,100".
+- Redstone Plastics needs 7 weeks to deliver the Ember enclosure tooling. Anchors: "7 weeks".
 
 Links, each inside a real sentence of the note:
 
-- [[Fjord requirements]]: answers the enclosure section of the requirements
-- [[Cobalt Molding]]: supplier details
+- [[Ember requirements]]: answers the enclosure section of the requirements
+- [[Redstone Plastics]]: supplier details
 
-### `Quotes/Fjord enclosure - Juno Plastics.md`
+### `Quotes/Ember enclosure - Ironwood Plastics.md`
 
 - Type: quote
-- Date: 2025-11-23
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-08-03
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-11-23
-project: Fjord
-supplier: Juno Plastics
+date: 2025-08-03
+project: Ember
+supplier: Ironwood Plastics
 ```
 
-Situation: Summary of the quote Juno Plastics sent for the Fjord enclosure.
+Situation: Summary of the quote Ironwood Plastics sent for the Ember enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- Juno Plastics quoted $48,400 for the Fjord enclosure tooling. Anchors: "$48,400".
-- Juno Plastics needs 7 weeks to deliver the Fjord enclosure tooling. Anchors: "7 weeks".
+- Ironwood Plastics quoted $68,300 for the Ember enclosure tooling. Anchors: "$68,300".
+- Ironwood Plastics needs 14 weeks to deliver the Ember enclosure tooling. Anchors: "14 weeks".
 
 Links, each inside a real sentence of the note:
 
-- [[Fjord requirements]]: answers the enclosure section of the requirements
-- [[Juno Plastics]]: supplier details
+- [[Ember requirements]]: answers the enclosure section of the requirements
+- [[Ironwood Plastics]]: supplier details
 
-### `Quotes/Fjord sensor module - Kingfisher Sensing.md`
+### `Quotes/Ember circuit board assembly - Gemini Circuits.md`
 
 - Type: quote
-- Date: 2025-11-25
-- Author: Ines Fitzgerald (Procurement Specialist)
+- Date: 2025-08-05
+- Author: Omar Hart (Procurement Specialist)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: quote
-date: 2025-11-25
-project: Fjord
-supplier: Kingfisher Sensing
+date: 2025-08-05
+project: Ember
+supplier: Gemini Circuits
 ```
 
-Situation: Summary of the quote Kingfisher Sensing sent for the Fjord sensor module.
+Situation: Summary of the quote Gemini Circuits sent for the Ember circuit board assembly.
 
 Facts to state, keeping every anchor word for word:
 
-- Kingfisher Sensing quoted $8.63 per module for the Fjord sensor module. Anchors: "$8.63".
+- Gemini Circuits quoted $2.04 per board for the Ember circuit board assembly. Anchors: "$2.04".
 
 Links, each inside a real sentence of the note:
 
-- [[Fjord requirements]]: answers the sensor module section of the requirements
-- [[Kingfisher Sensing]]: supplier details
+- [[Ember requirements]]: answers the circuit board assembly section of the requirements
+- [[Gemini Circuits]]: supplier details
 
-### `Meetings/2025-12-05 Fjord enclosure review.md`
+### `Meetings/2025-08-15 Ember enclosure review.md`
 
 - Type: meeting
-- Date: 2025-12-05
-- Author: Rosa Novak (Mechanical Engineer)
+- Date: 2025-08-15
+- Author: Tessa Okafor (Mechanical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2025-12-05
-project: Fjord
+date: 2025-08-15
+project: Ember
 attendees:
-  - Rosa Novak
-  - Diego Bishop
-  - Ines Fitzgerald
+  - Tessa Okafor
+  - Hazel Osei
+  - Omar Hart
 ```
 
-Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Cobalt Molding, mainly on price.
+Situation: Enclosure vendor review comparing the two tooling quotes. The team leans toward Redstone Plastics, mainly because its tooling is cheaper.
 
 Facts to state, keeping every anchor word for word:
 
-- The team chose to move forward with Cobalt Molding for the Fjord enclosure. Anchors: "Cobalt Molding".
+- The team chose to move forward with Redstone Plastics for the Ember enclosure. Anchors: "Redstone Plastics".
 
 Links, each inside a real sentence of the note:
 
-- [[Fjord enclosure - Cobalt Molding]]: the offer from Cobalt Molding
-- [[Fjord enclosure - Juno Plastics]]: the offer from Juno Plastics
-- [[Fjord requirements]]: the enclosure requirements being checked
+- [[Ember enclosure - Redstone Plastics]]: the offer from Redstone Plastics
+- [[Ember enclosure - Ironwood Plastics]]: the offer from Ironwood Plastics
+- [[Ember requirements]]: the enclosure requirements being checked
 
-### `Projects/Fjord.md`
+### `Projects/Ember.md`
 
 - Type: project
-- Date: 2025-12-10
-- Author: Diego Bishop (Product Manager)
+- Date: 2025-08-20
+- Author: Hazel Osei (Senior Product Manager)
 - Length: 150 to 300 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: project
-product: Larkspur Sentinel Gen 2
-owner: Diego Bishop
+product: Larkspur Breeze Gen 2
+owner: Hazel Osei
 status: active
-updated: 2025-12-10
+updated: 2025-08-20
 ```
 
-Situation: Project page of Fjord, last edited on 2025-12-10 and never updated since: it still shows Cobalt Molding as the enclosure vendor and the original launch date.
+Situation: Project page of Ember, last edited on 2025-08-20 and never updated since: it still shows Redstone Plastics as the enclosure vendor and the original launch date.
 
 Facts to state, keeping every anchor word for word:
 
-- Fjord is scheduled to launch on August 28, 2026. Anchors: "August 28, 2026".
-- The team chose to move forward with Cobalt Molding for the Fjord enclosure. Anchors: "Cobalt Molding".
+- Ember is scheduled to launch on January 4, 2027. Anchors: "January 4, 2027".
+- The team chose to move forward with Redstone Plastics for the Ember enclosure. Anchors: "Redstone Plastics".
 
 Links, each inside a real sentence of the note:
 
-- [[2025-10-26 Fjord kickoff]]: how the project started
-- [[Fjord requirements]]: the requirements
-- [[2025-12-05 Fjord enclosure review]]: where the enclosure vendor was discussed
+- [[2025-07-06 Ember kickoff]]: how the project started
+- [[Ember requirements]]: the requirements
+- [[2025-08-15 Ember enclosure review]]: where the enclosure vendor was discussed
 
-### `Journal/Rosa Novak/2025-12-15 Rosa Novak journal.md`
+### `Journal/Zoe Adeyemi/2025-08-25 Zoe Adeyemi journal.md`
 
 - Type: journal
-- Date: 2025-12-15
-- Author: Rosa Novak (Mechanical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-12-15
-author: Rosa Novak
-project: Fjord
-```
-
-Situation: Personal note: heard in the hallway that Fjord is going with Cobalt Molding for the enclosure.
-
-Facts to state, keeping every anchor word for word:
-
-- The team chose to move forward with Cobalt Molding for the Fjord enclosure. Anchors: "Cobalt Molding".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-12-05 Fjord enclosure review]]: what came out of the enclosure review
-
-### `Meetings/2025-12-25 Fjord design review.md`
-
-- Type: meeting
-- Date: 2025-12-25
-- Author: Zoe Adeyemi (Electrical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2025-12-25
-project: Fjord
-attendees:
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hector Haddad
-  - Diego Bishop
-```
-
-Situation: Design review of Fjord. One open question is debated at length and left open.
-
-Facts to state, keeping every anchor word for word:
-
-- The team discussed adding Bluetooth commissioning for Fjord but made no decision. Anchors: "Bluetooth".
-
-Links, each inside a real sentence of the note:
-
-- [[Fjord]]: open questions are tracked on the project page
-
-### `Journal/Tessa Okafor/2025-12-27 Tessa Okafor journal.md`
-
-- Type: journal
-- Date: 2025-12-27
-- Author: Tessa Okafor (Mechanical Engineer)
-- Length: 80 to 200 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: journal
-date: 2025-12-27
-author: Tessa Okafor
-project: Fjord
-```
-
-Situation: Personal note: frustrated that the team still has not settled adding Bluetooth commissioning for Fjord.
-
-Facts to state, keeping every anchor word for word:
-
-- The team discussed adding Bluetooth commissioning for Fjord but made no decision. Anchors: "Bluetooth".
-
-Links, each inside a real sentence of the note:
-
-- [[2025-12-25 Fjord design review]]: the question came up in the design review
-
-### `Meetings/2026-01-09 Fjord tooling sign-off.md`
-
-- Type: meeting
-- Date: 2026-01-09
-- Author: Rosa Novak (Mechanical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2026-01-09
-project: Fjord
-attendees:
-  - Rosa Novak
-  - Diego Bishop
-  - Ines Fitzgerald
-  - Naomi Boyle
-```
-
-Situation: Vendor validation after the drop tests: the team gives Juno Plastics the tooling go-ahead for the Fjord enclosure. Talk about sign-off, validation and go-ahead.
-
-Facts to state, keeping every anchor word for word:
-
-- Juno Plastics received the tooling go-ahead for the Fjord enclosure after the drop tests. Anchors: "Juno Plastics".
-
-Links, each inside a real sentence of the note:
-
-- [[Fjord requirements]]: this settles the enclosure section of the requirements
-- [[Juno Plastics]]: Juno Plastics is now the validated vendor
-
-Never use these words: quote, quotes, quoted, quotation, bid, bids.
-
-### `Meetings/2026-01-29 Fjord EVT review.md`
-
-- Type: meeting
-- Date: 2026-01-29
-- Author: Zoe Adeyemi (Electrical Engineer)
-- Length: 180 to 400 words
-
-Frontmatter, copied exactly:
-
-```yaml
-type: meeting
-date: 2026-01-29
-project: Fjord
-attendees:
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Hector Haddad
-  - Naomi Boyle
-```
-
-Situation: Review of the first engineering validation build of Fjord.
-
-Facts to state, keeping every anchor word for word:
-
-- The Fjord EVT build produced 60 units. Anchors: "60 units".
-
-Links, each inside a real sentence of the note:
-
-- [[2026-01-09 Fjord tooling sign-off]]: enclosures built as agreed at the sign-off
-
-### `Journal/Zoe Adeyemi/2026-01-31 Zoe Adeyemi journal.md`
-
-- Type: journal
-- Date: 2026-01-31
+- Date: 2025-08-25
 - Author: Zoe Adeyemi (Electrical Engineer)
 - Length: 80 to 200 words
 
@@ -403,133 +259,279 @@ Frontmatter, copied exactly:
 
 ```yaml
 type: journal
-date: 2026-01-31
+date: 2025-08-25
 author: Zoe Adeyemi
-project: Fjord
+project: Ember
 ```
 
-Situation: Personal note after the Fjord EVT build, counting the units on the bench.
+Situation: Personal note from someone who was not at the enclosure review: heard in the hallway that Ember is going with Redstone Plastics for the enclosure.
 
 Facts to state, keeping every anchor word for word:
 
-- The Fjord EVT build produced 65 units. Anchors: "65 units".
+- The team chose to move forward with Redstone Plastics for the Ember enclosure. Anchors: "Redstone Plastics".
 
 Links, each inside a real sentence of the note:
 
-- [[2026-01-29 Fjord EVT review]]: notes from the EVT review
+- [[2025-08-15 Ember enclosure review]]: what came out of the enclosure review
 
-### `Meetings/2026-03-15 Fjord pilot kickoff with Glenwood Campus Services.md`
+### `Meetings/2025-09-04 Ember design review.md`
 
 - Type: meeting
-- Date: 2026-03-15
-- Author: Diego Bishop (Product Manager)
+- Date: 2025-09-04
+- Author: Ruth Holloway (Electrical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2026-03-15
-project: Fjord
+date: 2025-09-04
+project: Ember
 attendees:
-  - Diego Bishop
-  - Naomi Boyle
+  - Ruth Holloway
+  - Tessa Okafor
+  - Rafael Nakamura
+  - Hazel Osei
 ```
 
-Situation: Kickoff of the Fjord pilot at Glenwood Campus Services: scope and number of units.
+Situation: Design review of Ember. One open question is debated at length and left open.
 
 Facts to state, keeping every anchor word for word:
 
-- Glenwood Campus Services is piloting Fjord with 90 units. Anchors: "Glenwood Campus Services", "90 units".
+- The team discussed using recycled plastic for the enclosure for Ember but made no decision. Anchors: "recycled plastic".
 
 Links, each inside a real sentence of the note:
 
-- [[Glenwood Campus Services]]: who the customer is
-- [[Fjord]]: the project page
+- [[Ember]]: open questions are tracked on the project page
 
-### `Meetings/2026-03-25 Fjord DVT review.md`
+### `Journal/Ruth Holloway/2025-09-06 Ruth Holloway journal.md`
+
+- Type: journal
+- Date: 2025-09-06
+- Author: Ruth Holloway (Electrical Engineer)
+- Length: 80 to 200 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: journal
+date: 2025-09-06
+author: Ruth Holloway
+project: Ember
+```
+
+Situation: Personal note: frustrated that the team still has not settled using recycled plastic for the enclosure for Ember.
+
+Facts to state, keeping every anchor word for word:
+
+- The team discussed using recycled plastic for the enclosure for Ember but made no decision. Anchors: "recycled plastic".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-09-04 Ember design review]]: the question came up in the design review
+
+### `Meetings/2025-09-19 Ember tooling sign-off.md`
 
 - Type: meeting
-- Date: 2026-03-25
-- Author: Naomi Boyle (Quality Engineer)
+- Date: 2025-09-19
+- Author: Tessa Okafor (Mechanical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2026-03-25
-project: Fjord
+date: 2025-09-19
+project: Ember
 attendees:
-  - Naomi Boyle
-  - Zoe Adeyemi
-  - Rosa Novak
-  - Diego Bishop
+  - Tessa Okafor
+  - Hazel Osei
+  - Omar Hart
+  - Claire Gallagher
 ```
 
-Situation: Design validation review of Fjord: the main issue found on the DVT units.
+Situation: Vendor validation after the drop tests: the team gives Ironwood Plastics the tooling go-ahead for the Ember enclosure. Talk about sign-off, validation and go-ahead.
 
 Facts to state, keeping every anchor word for word:
 
-- The Fjord DVT units showed a loose light pipe over the status LED. Anchors: "light pipe".
+- Ironwood Plastics received the tooling go-ahead for the Ember enclosure after the drop tests. Anchors: "Ironwood Plastics".
 
 Links, each inside a real sentence of the note:
 
-- [[2026-03-15 Fjord pilot kickoff with Glenwood Campus Services]]: DVT units also went to the pilot
+- [[Ember requirements]]: this settles the enclosure section of the requirements
+- [[Ironwood Plastics]]: Ironwood Plastics is now the validated vendor
 
-### `Meetings/2026-04-19 Fjord schedule review.md`
+Never use these words: quote, quotes, quoted, quoting, quotation, quotations, bid, bids, bidding, bidder, bidders.
+
+### `Meetings/2026-01-02 Ember EVT review.md`
 
 - Type: meeting
-- Date: 2026-04-19
-- Author: Diego Bishop (Product Manager)
+- Date: 2026-01-02
+- Author: Ruth Holloway (Electrical Engineer)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: meeting
-date: 2026-04-19
-project: Fjord
+date: 2026-01-02
+project: Ember
 attendees:
-  - Diego Bishop
-  - Naomi Boyle
+  - Ruth Holloway
+  - Tessa Okafor
+  - Rafael Nakamura
+  - Claire Gallagher
+```
+
+Situation: Review of the first engineering validation build of Ember, once the enclosure tooling was ready.
+
+Facts to state, keeping every anchor word for word:
+
+- The Ember EVT build produced 74 units. Anchors: "74 units".
+
+Links, each inside a real sentence of the note:
+
+- [[2025-09-19 Ember tooling sign-off]]: enclosures built as agreed at the sign-off
+
+### `Journal/Rosa Novak/2026-01-04 Rosa Novak journal.md`
+
+- Type: journal
+- Date: 2026-01-04
+- Author: Rosa Novak (Mechanical Engineer)
+- Length: 80 to 200 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: journal
+date: 2026-01-04
+author: Rosa Novak
+project: Ember
+```
+
+Situation: Personal note from someone who helped on the Ember EVT build but was not at the review: they counted the units themselves.
+
+Facts to state, keeping every anchor word for word:
+
+- The Ember EVT build produced 79 units. Anchors: "79 units".
+
+Links, each inside a real sentence of the note:
+
+- [[2026-01-02 Ember EVT review]]: the build the EVT review was about
+
+### `Meetings/2026-02-16 Ember pilot kickoff.md`
+
+- Type: meeting
+- Date: 2026-02-16
+- Author: Hazel Osei (Senior Product Manager)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2026-02-16
+project: Ember
+customer: Maple Ridge University
+attendees:
+  - Hazel Osei
+  - Claire Gallagher
+```
+
+Situation: Kickoff of the Ember pilot at Maple Ridge University: scope and number of units.
+
+Facts to state, keeping every anchor word for word:
+
+- Maple Ridge University is piloting Ember with 80 units. Anchors: "Maple Ridge University", "80 units".
+
+Links, each inside a real sentence of the note:
+
+- [[Maple Ridge University]]: who the customer is
+- [[Ember]]: the project page
+
+### `Meetings/2026-02-26 Ember DVT review.md`
+
+- Type: meeting
+- Date: 2026-02-26
+- Author: Claire Gallagher (Quality Engineer)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2026-02-26
+project: Ember
+attendees:
+  - Claire Gallagher
+  - Ruth Holloway
+  - Tessa Okafor
+  - Hazel Osei
+```
+
+Situation: Design validation review of Ember: the main issue found on the DVT units.
+
+Facts to state, keeping every anchor word for word:
+
+- The Ember DVT units showed a CO2 reading drift in warm rooms. Anchors: "reading drift".
+
+Links, each inside a real sentence of the note:
+
+- [[2026-02-16 Ember pilot kickoff]]: DVT units also went to the pilot
+
+### `Meetings/2026-03-23 Ember schedule review.md`
+
+- Type: meeting
+- Date: 2026-03-23
+- Author: Hazel Osei (Senior Product Manager)
+- Length: 180 to 400 words
+
+Frontmatter, copied exactly:
+
+```yaml
+type: meeting
+date: 2026-03-23
+project: Ember
+attendees:
+  - Hazel Osei
+  - Claire Gallagher
   - Emeka Nordin
 ```
 
-Situation: Schedule review of Fjord: the launch moves because a certification test has to be run again.
+Situation: Schedule review of Ember: the launch moves because a certification test has to be run again.
 
 Facts to state, keeping every anchor word for word:
 
-- Fjord will now launch on November 17, 2026. Anchors: "November 17, 2026".
-- The Fjord launch slipped because of a certification retest at Redstone Compliance Labs. Anchors: "Redstone Compliance Labs".
+- Ember will now launch on March 16, 2027. Anchors: "March 16, 2027".
+- The Ember launch slipped because of a certification retest at Anvil Test Labs. Anchors: "Anvil Test Labs".
 
 Links, each inside a real sentence of the note:
 
-- [[Redstone Compliance Labs]]: the lab running the retest
-- [[Fjord]]: the project page
+- [[Anvil Test Labs]]: the lab running the retest
+- [[Ember]]: the project page
 
-### `Decisions/Fjord launch date change.md`
+### `Decisions/Ember launch date change.md`
 
 - Type: decision
-- Date: 2026-04-21
-- Author: Diego Bishop (Product Manager)
+- Date: 2026-03-25
+- Author: Hazel Osei (Senior Product Manager)
 - Length: 120 to 250 words
 
 Frontmatter, copied exactly:
 
 ```yaml
 type: decision
-date: 2026-04-21
-project: Fjord
-decided_by: Diego Bishop
+date: 2026-03-25
+project: Ember
+decided_by: Hazel Osei
 ```
 
-Situation: Decision record of the new Fjord launch date.
+Situation: Decision record of the new Ember launch date. The reasons are left to the schedule review.
 
 Facts to state, keeping every anchor word for word:
 
-- Fjord will now launch on November 17, 2026. Anchors: "November 17, 2026".
+- Ember will now launch on March 16, 2027. Anchors: "March 16, 2027".
 
 Links, each inside a real sentence of the note:
 
-- [[2026-04-19 Fjord schedule review]]: the reasons are in the schedule review
+- [[2026-03-23 Ember schedule review]]: the reasons are in the schedule review
