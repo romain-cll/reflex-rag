@@ -89,7 +89,9 @@ export async function parseVault(dir: string): Promise<ParsedVault> {
 }
 
 /** Matches a target against the full path, then the file name, ignoring case. */
-function noteResolver(paths: string[]): (target: string) => string | undefined {
+export function noteResolver(
+  paths: string[]
+): (target: string) => string | undefined {
   const byPath = new Map<string, string>()
   const byName = new Map<string, string>()
   for (const path of paths) {
@@ -108,7 +110,7 @@ function withoutExtension(path: string): string {
   return path.replace(/\.md$/i, "")
 }
 
-function splitFrontmatter(
+export function splitFrontmatter(
   path: string,
   content: string
 ): { frontmatter: Record<string, unknown>; body: string } {
