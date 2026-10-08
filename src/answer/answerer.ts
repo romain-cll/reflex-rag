@@ -6,6 +6,7 @@ const MAX_TOKENS = 1024
 
 export const AnswerSchema = z.object({
   status: z.enum(["answered", "conflict", "abstained"]),
+  value: z.string(),
   answer: z.string(),
   citations: z.array(z.string()),
 })
@@ -27,7 +28,7 @@ Set "status" to one of three values.
 - Use "conflict" when the sources disagree and none of them supersedes the other. Give each value with its source in the answer.
 - Use "abstained" when the excerpts do not hold the answer. Say so rather than guessing. Never infer a "no" from the absence of a mention.
 
-In "citations", cite the note paths of the excerpts you used, exactly as they are written. Keep "answer" short and concise: one or two sentences. Copy names, dates and amounts exactly as they are written in the excerpts.`
+In "citations", cite the note paths of the excerpts you used, exactly as they are written. Put in "value" only the answer itself (a name, a date, an amount or a short phrase, or "no decision"), without the outdated values it replaces; leave it empty when abstaining, and for a conflict separate the values with " | ". Keep "answer" short and concise: one or two sentences. Copy names, dates and amounts exactly as they are written in the excerpts.`
 
 export async function answerQuestion(
   question: string,

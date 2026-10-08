@@ -45,12 +45,13 @@ export function grade(
   return { correct: false, failure: failureOf(question, output, contextNotes) }
 }
 
-function isCorrect({ expected }: Question, output: Answer): boolean {
+function isCorrect({ expected, stale }: Question, output: Answer): boolean {
   switch (expected.kind) {
     case "value":
       return (
         output.status === "answered" &&
-        expected.values.some((value) => contains(output.answer, value))
+        expected.values.some((value) => contains(output.value, value)) &&
+        !stale.some((value) => contains(output.value, value))
       )
     case "conflict":
       return (
@@ -60,7 +61,10 @@ function isCorrect({ expected }: Question, output: Answer): boolean {
     case "undecided":
       return (
         output.status === "answered" &&
-        UNDECIDED_PHRASES.some((phrase) => contains(output.answer, phrase))
+        UNDECIDED_PHRASES.some(
+          (phrase) =>
+            contains(output.value, phrase) || contains(output.answer, phrase)
+        )
       )
     case "abstain":
       return output.status === "abstained"
@@ -79,7 +83,7 @@ function failureOf(
   if (output.status === "abstained" && question.expected.kind !== "abstain") {
     return "false_abstention"
   }
-  if (question.stale.some((value) => contains(output.answer, value))) {
+  if (question.stale.some((value) => contains(output.value, value))) {
     return "wrong_version"
   }
   if (question.expected.kind === "conflict" && output.status !== "conflict") {
