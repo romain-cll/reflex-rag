@@ -28,6 +28,13 @@ TypeScript is pinned to `~6.0`: typescript-eslint does not support 7.x yet.
 - `bun run check`: lint, typecheck, format check and tests. Run it before every commit.
 - `bun test`, `bun run lint`, `bun run typecheck`, `bun run format`
 - `bun src/cli.ts <command>`, or `reflex <command>` after `bun link`
+- `bun scripts/inspect-note.ts <path or title>`: a note's chunks, links and backlinks from `.reflex/index.db`
+
+### Corpus
+
+- `bun corpus/generator/cli.ts generate --name dev --seed 42 --scale 1 [--force]`: truth file `corpus/dev/world.json` and writing briefs `corpus/dev/briefs/`. Scale 1 ≈ 200 notes, scale 10 ≈ 2,000.
+- The notes of `corpus/dev/vault/` are written by subagents from the briefs, following `corpus/WRITING.md`, one batch each.
+- `bun corpus/generator/cli.ts validate dev [--batch batch-NN]`: checks the vault against the world. Must print `0 errors` before the vault is committed.
 
 ### Lint (check only)
 

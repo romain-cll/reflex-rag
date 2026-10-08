@@ -25,12 +25,13 @@ You write notes of the Obsidian vault of Larkspur Devices, Inc., a fictional com
 
 ## What not to write
 
-- No names of people, companies, products or places other than those of the brief (cast, facts, frontmatter, links, situation). Refer to anyone else by role: "the team", "finance", "the vendor".
-- No numbers, amounts, dates, percentages, durations or quantities other than those of the brief (anchors, frontmatter, situation, titles of linked notes). Numbers from zero to ten are allowed but must not carry facts. No times of day.
-- No decisions, outcomes, prices or plans the brief does not state. Filler is fine when it stays generic (process, mood, routine).
+- No names of people, companies, products or places other than those of your brief (cast, facts, frontmatter, links, situations): any name of the brief may appear in any of its notes. Refer to anyone else by role: "the team", "finance", "the vendor". A person who only appears in an attendee list is named without a role.
+- No numbers, amounts, dates, percentages, durations or quantities other than those of the note's own brief entry (anchors, frontmatter, situation, titles of linked notes). This includes quantities written in words with a unit, even idioms such as "one unit at a time" or "a couple of weeks". A bare number from zero to ten is allowed but must not carry a fact. No times of day. When the brief gives a figure to another note, leave it out ("the original launch date", "the cost target").
+- Do not restate in a note a fact that the brief only gives to a note it links to: multi-hop questions rely on having to follow the link. For example, the "Decisions" section of a requirements document points to the sign-off without naming the vendor.
+- No decisions, outcomes, prices or plans the brief does not state. Generic filler is fine (send a recap, schedule a follow-up, mood, routine); new figures, decisions or commitments are not.
 - No wikilinks other than the brief's links.
 - The words listed under "Never use these words" must not appear, in any form.
-- Never mention these topics, anywhere: patents, crowdfunding (Kickstarter, Indiegogo), Japan, NPS or Net Promoter Score, data residency, ISO 14001, carbon footprint, SOC 2, Series C, a holiday party, a four-day week, Seattle.
+- Never mention these topics, anywhere: patents, crowdfunding (Kickstarter, Indiegogo), Japan, trade shows, Amazon, NPS or Net Promoter Score, data residency, cyber insurance, LEED, ISO 14001, carbon footprint, conflict minerals, SOC 2, Series C, a holiday party, a four-day week.
 
 ## Check your work
 
