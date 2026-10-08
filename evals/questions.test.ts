@@ -124,6 +124,84 @@ function answerFact(q: Question): Fact {
   return required(facts[0], "fact")
 }
 
+/**
+ * The superseded fact a multi_hop chain's outdated path goes through, and the
+ * fact that outdated path leads to:
+ * - a supplier chain through a tooling sign-off: the decoy vendor (value of
+ *   the superseded `enclosure_vendor` fact of the project) and the same
+ *   attribute of its supplier;
+ * - an account-owner chain: the former owner (person of the superseded
+ *   `account_owner` fact of the customer) and their office.
+ */
+function outdatedAnswer(
+  chainId: string
+): { kind: "vendor" | "owner"; fact: Fact } | undefined {
+  const chain = required(chainById.get(chainId), `chain ${chainId}`)
+  const answer = required(factById.get(chain.answer), "chain answer")
+  const notes = chain.notes.map((id) => required(noteById.get(id), id))
+  const [first, second] = notes
+
+  if (
+    second?.title.endsWith("tooling sign-off") &&
+    answer.subject.startsWith("supplier-")
+  ) {
+    const project = world.projects.find(
+      (p) => p.codename === second.frontmatter.project
+    )
+    const decoy = world.facts.find(
+      (f) =>
+        f.subject === project?.id &&
+        f.attribute === "enclosure_vendor" &&
+        f.supersededBy !== null
+    )
+    const supplier = world.suppliers.find((s) => s.name === decoy?.value)
+    const fact = world.facts.find(
+      (f) => f.subject === supplier?.id && f.attribute === answer.attribute
+    )
+    return { kind: "vendor", fact: required(fact, `decoy fact of ${chainId}`) }
+  }
+
+  if (
+    answer.attribute === "office" &&
+    first?.title.endsWith("quarterly review")
+  ) {
+    const customer = world.customers.find(
+      (c) => c.name === first.frontmatter.customer
+    )
+    const former = world.facts.find(
+      (f) =>
+        f.subject === customer?.id &&
+        f.attribute === "account_owner" &&
+        f.supersededBy !== null
+    )
+    const person = world.people.find((p) => p.name === former?.value)
+    const fact = world.facts.find(
+      (f) => f.subject === person?.id && f.attribute === "office"
+    )
+    return {
+      kind: "owner",
+      fact: required(fact, `former office of ${chainId}`),
+    }
+  }
+  return undefined
+}
+
+/** Whether following the outdated path would give the right answer. */
+function overlaps(chainId: string): boolean {
+  const outdated = outdatedAnswer(chainId)
+  if (!outdated) return false
+  const chain = required(chainById.get(chainId), `chain ${chainId}`)
+  const expected = forms(required(factById.get(chain.answer), "chain answer"))
+  const wrong = forms(outdated.fact)
+  return expected.some((value) => wrong.includes(value))
+}
+
+function chainOf(q: Question): string {
+  const chains = q.refs.filter((ref) => chainById.has(ref))
+  expect(chains).toHaveLength(1)
+  return chains[0] ?? ""
+}
+
 function errorMessage(run: () => unknown): string {
   try {
     run()
@@ -399,14 +477,17 @@ describe("AC5 — sources", () => {
     }
   })
 
-  test("AC5 — a multi_hop question's sources are the notes of its chain, in order", () => {
-    for (const q of ofCategory("multi_hop")) {
+  test("AC5 — a multi_hop question's sources are the notes of its chain after the first one, in order", () => {
+    const questions = ofCategory("multi_hop")
+    expect(questions.length).toBeGreaterThan(0)
+    for (const q of questions) {
       const chains = q.refs.filter((ref) => chainById.has(ref))
       expect(chains).toHaveLength(1)
       const chain = required(chainById.get(chains[0] ?? ""), "chain")
-      const paths = chain.notes.map(
-        (id) => required(noteById.get(id), `note ${id}`).path
-      )
+      const paths = chain.notes
+        .slice(1)
+        .map((id) => required(noteById.get(id), `note ${id}`).path)
+      expect(paths.length).toBeGreaterThan(0)
       expect(q.sources).toEqual(paths)
     }
   })
@@ -514,6 +595,82 @@ describe("AC6 — expected values", () => {
       for (const stale of q.stale) {
         expect(q.expected.values).not.toContain(stale)
       }
+    }
+  })
+
+  test("AC6 — a supplier multi_hop question reached through a tooling sign-off lists the decoy vendor's value as stale", () => {
+    const questions = ofCategory("multi_hop").filter(
+      (q) => outdatedAnswer(chainOf(q))?.kind === "vendor"
+    )
+    expect(questions.length).toBeGreaterThan(0)
+    const attributes = new Set<string>()
+    for (const q of questions) {
+      const { fact } = required(outdatedAnswer(chainOf(q)), "outdated answer")
+      attributes.add(fact.attribute)
+      expect(fact.anchors.length).toBeGreaterThan(0)
+      for (const anchor of fact.anchors) {
+        expect({ id: q.id, stale: q.stale.includes(anchor) }).toEqual({
+          id: q.id,
+          stale: true,
+        })
+      }
+    }
+    // Both the contact chains and the city chains are exercised.
+    expect([...attributes].sort()).toEqual(["account_contact", "city"])
+  })
+
+  test("AC6 — an account-owner multi_hop question lists the former owner's office as stale", () => {
+    const questions = ofCategory("multi_hop").filter(
+      (q) => outdatedAnswer(chainOf(q))?.kind === "owner"
+    )
+    expect(questions.length).toBeGreaterThan(0)
+    for (const q of questions) {
+      const { fact } = required(outdatedAnswer(chainOf(q)), "outdated answer")
+      expect(fact.attribute).toBe("office")
+      for (const anchor of fact.anchors) {
+        expect({ id: q.id, stale: q.stale.includes(anchor) }).toEqual({
+          id: q.id,
+          stale: true,
+        })
+      }
+    }
+  })
+
+  test("AC6 — a multi_hop stale value is never the chain's own answer", () => {
+    for (const q of ofCategory("multi_hop")) {
+      const chain = required(chainById.get(chainOf(q)), "chain")
+      const own = forms(required(factById.get(chain.answer), "chain answer"))
+      for (const stale of q.stale) expect(own).not.toContain(stale)
+    }
+  })
+
+  test("AC6 — no question has an expected value that is also one of its stale values", () => {
+    expect(questionSet().questions.some((q) => q.stale.length > 0)).toBe(true)
+    for (const q of questionSet().questions) {
+      const values =
+        q.expected.kind === "value" || q.expected.kind === "conflict"
+          ? q.expected.values
+          : []
+      const expected = values.map((value) => value.toLowerCase())
+      for (const stale of q.stale) {
+        expect({
+          id: q.id,
+          overlap: expected.includes(stale.toLowerCase()),
+        }).toEqual({ id: q.id, overlap: false })
+      }
+    }
+  })
+
+  test("AC6 — a multi_hop candidate whose outdated path gives the right answer is dropped", () => {
+    const overlapping = world.chains.filter((c) => overlaps(c.id))
+    // The scale-1 world holds such chains (two account owners in the same office).
+    expect(overlapping.length).toBeGreaterThan(0)
+    const used = new Set(ofCategory("multi_hop").map(chainOf))
+    for (const chain of overlapping) {
+      expect({ chain: chain.id, used: used.has(chain.id) }).toEqual({
+        chain: chain.id,
+        used: false,
+      })
     }
   })
 
