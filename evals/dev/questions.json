@@ -17,6 +17,11 @@
       "sources": [
         "Customers/Whitmore Campus Services.md"
       ],
+      "sourceGroups": [
+        [
+          "Customers/Whitmore Campus Services.md"
+        ]
+      ],
       "entity": "customer-0005",
       "refs": [
         "fact-0103"
@@ -36,6 +41,11 @@
       "stale": [],
       "sources": [
         "Quotes/Fjord enclosure - Ironwood Plastics.md"
+      ],
+      "sourceGroups": [
+        [
+          "Quotes/Fjord enclosure - Ironwood Plastics.md"
+        ]
       ],
       "entity": "project-0005",
       "refs": [
@@ -57,6 +67,11 @@
       "sources": [
         "People/Ines Fitzgerald.md"
       ],
+      "sourceGroups": [
+        [
+          "People/Ines Fitzgerald.md"
+        ]
+      ],
       "entity": "person-0022",
       "refs": [
         "fact-0044"
@@ -76,6 +91,11 @@
       "stale": [],
       "sources": [
         "Customers/Northgate Realty Partners.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Northgate Realty Partners.md"
+        ]
       ],
       "entity": "customer-0011",
       "refs": [
@@ -97,6 +117,11 @@
       "sources": [
         "Suppliers/Anvil Test Labs.md"
       ],
+      "sourceGroups": [
+        [
+          "Suppliers/Anvil Test Labs.md"
+        ]
+      ],
       "entity": "supplier-0011",
       "refs": [
         "fact-0073"
@@ -116,6 +141,11 @@
       "stale": [],
       "sources": [
         "Quotes/Dune battery pack - Everest Energy.md"
+      ],
+      "sourceGroups": [
+        [
+          "Quotes/Dune battery pack - Everest Energy.md"
+        ]
       ],
       "entity": "project-0003",
       "refs": [
@@ -137,6 +167,11 @@
       "sources": [
         "Customers/Westgate Realty Partners.md"
       ],
+      "sourceGroups": [
+        [
+          "Customers/Westgate Realty Partners.md"
+        ]
+      ],
       "entity": "customer-0001",
       "refs": [
         "fact-0079"
@@ -153,6 +188,11 @@
       "stale": [],
       "sources": [
         "Meetings/2025-12-04 Operations review.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-12-04 Operations review.md"
+        ]
       ],
       "entity": "company:CRM",
       "refs": [
@@ -174,6 +214,11 @@
       "sources": [
         "Meetings/2025-07-07 Atlas DVT review.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-07-07 Atlas DVT review.md"
+        ]
+      ],
       "entity": "project-0001",
       "refs": [
         "fact-0168"
@@ -193,6 +238,11 @@
       "stale": [],
       "sources": [
         "Suppliers/Northstar Electronics.md"
+      ],
+      "sourceGroups": [
+        [
+          "Suppliers/Northstar Electronics.md"
+        ]
       ],
       "entity": "supplier-0005",
       "refs": [
@@ -214,6 +264,11 @@
       "sources": [
         "Meetings/2025-10-29 Dune pilot kickoff.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-10-29 Dune pilot kickoff.md"
+        ]
+      ],
       "entity": "project-0003",
       "refs": [
         "fact-0207"
@@ -233,6 +288,11 @@
       "stale": [],
       "sources": [
         "Specs/Dune requirements.md"
+      ],
+      "sourceGroups": [
+        [
+          "Specs/Dune requirements.md"
+        ]
       ],
       "entity": "project-0003",
       "refs": [
@@ -257,6 +317,14 @@
         "Meetings/2025-06-17 Westgate Realty Partners account handoff.md",
         "People/Anya Castillo.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-06-17 Westgate Realty Partners account handoff.md"
+        ],
+        [
+          "People/Anya Castillo.md"
+        ]
+      ],
       "entity": "customer-0001",
       "refs": [
         "chain-0001"
@@ -280,6 +348,14 @@
         "Meetings/2025-03-25 Atlas tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-03-25 Atlas tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Wexford Molding.md"
+        ]
+      ],
       "entity": "project-0001",
       "refs": [
         "chain-0013"
@@ -300,6 +376,14 @@
       "sources": [
         "Meetings/2025-12-03 Dune schedule review.md",
         "Suppliers/Cobalt Test Labs.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-12-03 Dune schedule review.md"
+        ],
+        [
+          "Suppliers/Cobalt Test Labs.md"
+        ]
       ],
       "entity": "project-0003",
       "refs": [
@@ -324,6 +408,14 @@
         "Meetings/2025-06-10 Harborview College account handoff.md",
         "People/Aisha Whitfield.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-06-10 Harborview College account handoff.md"
+        ],
+        [
+          "People/Aisha Whitfield.md"
+        ]
+      ],
       "entity": "customer-0009",
       "refs": [
         "chain-0009"
@@ -346,6 +438,14 @@
       "sources": [
         "Meetings/2025-11-21 Fjord tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-21 Fjord tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Wexford Molding.md"
+        ]
       ],
       "entity": "project-0005",
       "refs": [
@@ -370,6 +470,14 @@
         "Meetings/2025-07-20 Dune tooling sign-off.md",
         "Suppliers/Redstone Plastics.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-07-20 Dune tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Redstone Plastics.md"
+        ]
+      ],
       "entity": "project-0003",
       "refs": [
         "chain-0021"
@@ -390,6 +498,14 @@
       "sources": [
         "Meetings/2025-10-29 Dune pilot kickoff.md",
         "Customers/Pine Valley Medical Center.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-10-29 Dune pilot kickoff.md"
+        ],
+        [
+          "Customers/Pine Valley Medical Center.md"
+        ]
       ],
       "entity": "project-0003",
       "refs": [
@@ -414,6 +530,14 @@
         "Meetings/2025-03-25 Atlas tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-03-25 Atlas tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Wexford Molding.md"
+        ]
+      ],
       "entity": "project-0001",
       "refs": [
         "chain-0014"
@@ -435,6 +559,14 @@
         "Meetings/2026-03-16 Fjord pilot kickoff.md",
         "Customers/Whitmore Campus Services.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-03-16 Fjord pilot kickoff.md"
+        ],
+        [
+          "Customers/Whitmore Campus Services.md"
+        ]
+      ],
       "entity": "project-0005",
       "refs": [
         "chain-0032"
@@ -455,6 +587,14 @@
       "sources": [
         "Meetings/2025-08-01 Atlas schedule review.md",
         "Suppliers/Anvil Test Labs.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-08-01 Atlas schedule review.md"
+        ],
+        [
+          "Suppliers/Anvil Test Labs.md"
+        ]
       ],
       "entity": "project-0001",
       "refs": [
@@ -479,6 +619,14 @@
         "Meetings/2026-02-12 Northgate Realty Partners account handoff.md",
         "People/Lena Greer.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-02-12 Northgate Realty Partners account handoff.md"
+        ],
+        [
+          "People/Lena Greer.md"
+        ]
+      ],
       "entity": "customer-0011",
       "refs": [
         "chain-0011"
@@ -502,6 +650,14 @@
         "Meetings/2025-08-04 Whitmore Campus Services account handoff.md",
         "People/Lena Greer.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-08-04 Whitmore Campus Services account handoff.md"
+        ],
+        [
+          "People/Lena Greer.md"
+        ]
+      ],
       "entity": "customer-0005",
       "refs": [
         "chain-0005"
@@ -522,6 +678,14 @@
       "sources": [
         "Meetings/2025-06-27 Atlas pilot kickoff.md",
         "Customers/Westgate Realty Partners.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-06-27 Atlas pilot kickoff.md"
+        ],
+        [
+          "Customers/Westgate Realty Partners.md"
+        ]
       ],
       "entity": "project-0001",
       "refs": [
@@ -546,6 +710,14 @@
         "Meetings/2025-12-10 Valemont Unified Schools account handoff.md",
         "People/Anya Castillo.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-12-10 Valemont Unified Schools account handoff.md"
+        ],
+        [
+          "People/Anya Castillo.md"
+        ]
+      ],
       "entity": "customer-0007",
       "refs": [
         "chain-0007"
@@ -569,6 +741,14 @@
         "Meetings/2025-11-21 Fjord tooling sign-off.md",
         "Suppliers/Wexford Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-21 Fjord tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Wexford Molding.md"
+        ]
+      ],
       "entity": "project-0005",
       "refs": [
         "chain-0029"
@@ -590,6 +770,11 @@
       ],
       "sources": [
         "Meetings/2025-11-21 Fjord tooling sign-off.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-21 Fjord tooling sign-off.md"
+        ]
       ],
       "entity": "project-0005",
       "refs": [
@@ -615,6 +800,12 @@
         "Meetings/2026-04-20 Fjord schedule review.md",
         "Decisions/Fjord launch date change.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-04-20 Fjord schedule review.md",
+          "Decisions/Fjord launch date change.md"
+        ]
+      ],
       "entity": "project-0005",
       "refs": [
         "fact-0249"
@@ -636,6 +827,11 @@
       ],
       "sources": [
         "Meetings/2025-06-17 Westgate Realty Partners account handoff.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-06-17 Westgate Realty Partners account handoff.md"
+        ]
       ],
       "entity": "customer-0001",
       "refs": [
@@ -659,6 +855,11 @@
       "sources": [
         "Meetings/2025-10-17 Pine Valley Medical Center account handoff.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-10-17 Pine Valley Medical Center account handoff.md"
+        ]
+      ],
       "entity": "customer-0003",
       "refs": [
         "fact-0094"
@@ -680,6 +881,11 @@
       ],
       "sources": [
         "Meetings/2026-02-12 Northgate Realty Partners account handoff.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-02-12 Northgate Realty Partners account handoff.md"
+        ]
       ],
       "entity": "customer-0011",
       "refs": [
@@ -703,6 +909,11 @@
       "sources": [
         "Meetings/2025-08-04 Whitmore Campus Services account handoff.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-08-04 Whitmore Campus Services account handoff.md"
+        ]
+      ],
       "entity": "customer-0005",
       "refs": [
         "fact-0106"
@@ -725,6 +936,12 @@
       "sources": [
         "Meetings/2025-05-03 All-hands.md",
         "Journal/Ruth Holloway/2025-05-04 Ruth Holloway journal.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-03 All-hands.md",
+          "Journal/Ruth Holloway/2025-05-04 Ruth Holloway journal.md"
+        ]
       ],
       "entity": "person-0007",
       "refs": [
@@ -750,6 +967,12 @@
         "Meetings/2025-08-01 Atlas schedule review.md",
         "Decisions/Atlas launch date change.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-08-01 Atlas schedule review.md",
+          "Decisions/Atlas launch date change.md"
+        ]
+      ],
       "entity": "project-0001",
       "refs": [
         "fact-0169"
@@ -772,6 +995,11 @@
       "sources": [
         "Meetings/2025-03-25 Atlas tooling sign-off.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-03-25 Atlas tooling sign-off.md"
+        ]
+      ],
       "entity": "project-0001",
       "refs": [
         "fact-0163"
@@ -793,6 +1021,11 @@
       ],
       "sources": [
         "Meetings/2025-07-20 Dune tooling sign-off.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-07-20 Dune tooling sign-off.md"
+        ]
       ],
       "entity": "project-0003",
       "refs": [
@@ -817,6 +1050,12 @@
         "Meetings/2025-05-03 All-hands.md",
         "Journal/Rosa Novak/2025-05-09 Rosa Novak journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-03 All-hands.md",
+          "Journal/Rosa Novak/2025-05-09 Rosa Novak journal.md"
+        ]
+      ],
       "entity": "person-0022",
       "refs": [
         "fact-0272"
@@ -839,6 +1078,11 @@
       "sources": [
         "Meetings/2025-12-10 Valemont Unified Schools account handoff.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-12-10 Valemont Unified Schools account handoff.md"
+        ]
+      ],
       "entity": "customer-0007",
       "refs": [
         "fact-0118"
@@ -858,8 +1102,18 @@
       },
       "stale": [],
       "sources": [
+        "Customers/Whitmore Campus Services.md",
         "Meetings/2025-09-04 Whitmore Campus Services quarterly review.md",
         "Customers/Whitmore Campus Services billing summary.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Whitmore Campus Services.md",
+          "Meetings/2025-09-04 Whitmore Campus Services quarterly review.md"
+        ],
+        [
+          "Customers/Whitmore Campus Services billing summary.md"
+        ]
       ],
       "entity": "customer-0005",
       "refs": [
@@ -883,6 +1137,14 @@
         "Meetings/2026-01-30 Fjord EVT review.md",
         "Journal/Ruth Holloway/2026-02-01 Ruth Holloway journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-30 Fjord EVT review.md"
+        ],
+        [
+          "Journal/Ruth Holloway/2026-02-01 Ruth Holloway journal.md"
+        ]
+      ],
       "entity": "project-0005",
       "refs": [
         "trap-0054"
@@ -904,6 +1166,14 @@
       "sources": [
         "Meetings/2025-05-13 Atlas EVT review.md",
         "Journal/Ruth Holloway/2025-05-15 Ruth Holloway journal.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-13 Atlas EVT review.md"
+        ],
+        [
+          "Journal/Ruth Holloway/2025-05-15 Ruth Holloway journal.md"
+        ]
       ],
       "entity": "project-0001",
       "refs": [
@@ -927,6 +1197,14 @@
         "Specs/Dune requirements.md",
         "Specs/Dune requirements (copy).md"
       ],
+      "sourceGroups": [
+        [
+          "Specs/Dune requirements.md"
+        ],
+        [
+          "Specs/Dune requirements (copy).md"
+        ]
+      ],
       "entity": "project-0003",
       "refs": [
         "trap-0039"
@@ -949,6 +1227,14 @@
         "Specs/Atlas requirements.md",
         "Specs/Atlas requirements (copy).md"
       ],
+      "sourceGroups": [
+        [
+          "Specs/Atlas requirements.md"
+        ],
+        [
+          "Specs/Atlas requirements (copy).md"
+        ]
+      ],
       "entity": "project-0001",
       "refs": [
         "trap-0025"
@@ -968,8 +1254,18 @@
       },
       "stale": [],
       "sources": [
+        "Customers/Valemont Unified Schools.md",
         "Meetings/2026-02-01 Valemont Unified Schools quarterly review.md",
         "Customers/Valemont Unified Schools billing summary.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Valemont Unified Schools.md",
+          "Meetings/2026-02-01 Valemont Unified Schools quarterly review.md"
+        ],
+        [
+          "Customers/Valemont Unified Schools billing summary.md"
+        ]
       ],
       "entity": "customer-0007",
       "refs": [
@@ -990,8 +1286,18 @@
       },
       "stale": [],
       "sources": [
+        "Customers/Westgate Realty Partners.md",
         "Meetings/2025-07-23 Westgate Realty Partners quarterly review.md",
         "Customers/Westgate Realty Partners billing summary.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Westgate Realty Partners.md",
+          "Meetings/2025-07-23 Westgate Realty Partners quarterly review.md"
+        ],
+        [
+          "Customers/Westgate Realty Partners billing summary.md"
+        ]
       ],
       "entity": "customer-0001",
       "refs": [
@@ -1015,6 +1321,14 @@
         "Specs/Fjord requirements.md",
         "Specs/Fjord requirements (copy).md"
       ],
+      "sourceGroups": [
+        [
+          "Specs/Fjord requirements.md"
+        ],
+        [
+          "Specs/Fjord requirements (copy).md"
+        ]
+      ],
       "entity": "project-0005",
       "refs": [
         "trap-0053"
@@ -1037,6 +1351,14 @@
         "Meetings/2025-09-14 Dune EVT review.md",
         "Journal/Tessa Okafor/2025-09-16 Tessa Okafor journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-14 Dune EVT review.md"
+        ],
+        [
+          "Journal/Tessa Okafor/2025-09-16 Tessa Okafor journal.md"
+        ]
+      ],
       "entity": "project-0003",
       "refs": [
         "trap-0040"
@@ -1052,6 +1374,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0011",
       "refs": [
         "absent-0018"
@@ -1067,6 +1390,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "company:Series C funding round",
       "refs": [
         "absent-0033"
@@ -1082,6 +1406,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "supplier-0003",
       "refs": [
         "absent-0003"
@@ -1097,6 +1422,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0005",
       "refs": [
         "absent-0029"
@@ -1112,6 +1438,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "supplier-0001",
       "refs": [
         "absent-0001"
@@ -1127,6 +1454,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "company:holiday party venue",
       "refs": [
         "absent-0034"
@@ -1142,6 +1470,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0003",
       "refs": [
         "absent-0010"
@@ -1157,6 +1486,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0001",
       "refs": [
         "absent-0020"
@@ -1172,6 +1502,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0007",
       "refs": [
         "absent-0014"
@@ -1187,6 +1518,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0005",
       "refs": [
         "absent-0028"
@@ -1202,6 +1534,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0003",
       "refs": [
         "absent-0025"
@@ -1217,6 +1550,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0001",
       "refs": [
         "absent-0008"
@@ -1236,6 +1570,11 @@
       "stale": [],
       "sources": [
         "Customers/Summit Park Workplace Group.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Summit Park Workplace Group.md"
+        ]
       ],
       "entity": "customer-0010",
       "refs": [
@@ -1257,6 +1596,11 @@
       "sources": [
         "People/Claire Gallagher.md"
       ],
+      "sourceGroups": [
+        [
+          "People/Claire Gallagher.md"
+        ]
+      ],
       "entity": "person-0025",
       "refs": [
         "fact-0050"
@@ -1276,6 +1620,11 @@
       "stale": [],
       "sources": [
         "Specs/Cirrus requirements.md"
+      ],
+      "sourceGroups": [
+        [
+          "Specs/Cirrus requirements.md"
+        ]
       ],
       "entity": "project-0002",
       "refs": [
@@ -1297,6 +1646,11 @@
       "sources": [
         "Quotes/Cirrus enclosure - Lattice Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Quotes/Cirrus enclosure - Lattice Molding.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "fact-0180"
@@ -1317,6 +1671,11 @@
       "sources": [
         "Meetings/2025-10-01 Cirrus DVT review.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-10-01 Cirrus DVT review.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "fact-0188"
@@ -1334,6 +1693,12 @@
       "sources": [
         "Meetings/2025-12-24 Granite design review.md",
         "Journal/Tessa Okafor/2025-12-26 Tessa Okafor journal.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-12-24 Granite design review.md",
+          "Journal/Tessa Okafor/2025-12-26 Tessa Okafor journal.md"
+        ]
       ],
       "entity": "project-0006",
       "refs": [
@@ -1355,6 +1720,11 @@
       "sources": [
         "Meetings/2025-09-21 Cirrus pilot kickoff.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-21 Cirrus pilot kickoff.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "fact-0187"
@@ -1374,6 +1744,11 @@
       "stale": [],
       "sources": [
         "Quotes/Cirrus sensor module - Tamarack Sensing.md"
+      ],
+      "sourceGroups": [
+        [
+          "Quotes/Cirrus sensor module - Tamarack Sensing.md"
+        ]
       ],
       "entity": "project-0002",
       "refs": [
@@ -1395,6 +1770,11 @@
       "sources": [
         "Customers/Thornbury Unified Schools.md"
       ],
+      "sourceGroups": [
+        [
+          "Customers/Thornbury Unified Schools.md"
+        ]
+      ],
       "entity": "customer-0012",
       "refs": [
         "fact-0146"
@@ -1414,6 +1794,11 @@
       "stale": [],
       "sources": [
         "Customers/Larchmont Regional Hospital.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Larchmont Regional Hospital.md"
+        ]
       ],
       "entity": "customer-0008",
       "refs": [
@@ -1435,6 +1820,11 @@
       "sources": [
         "Customers/Foxborough Unified Schools.md"
       ],
+      "sourceGroups": [
+        [
+          "Customers/Foxborough Unified Schools.md"
+        ]
+      ],
       "entity": "customer-0002",
       "refs": [
         "fact-0085"
@@ -1452,6 +1842,12 @@
       "sources": [
         "Meetings/2025-05-14 Cirrus design review.md",
         "Journal/Tessa Okafor/2025-05-16 Tessa Okafor journal.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-14 Cirrus design review.md",
+          "Journal/Tessa Okafor/2025-05-16 Tessa Okafor journal.md"
+        ]
       ],
       "entity": "project-0002",
       "refs": [
@@ -1476,6 +1872,14 @@
         "Meetings/2025-09-22 Maple Ridge University account handoff.md",
         "People/Leah Ashby.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-22 Maple Ridge University account handoff.md"
+        ],
+        [
+          "People/Leah Ashby.md"
+        ]
+      ],
       "entity": "customer-0004",
       "refs": [
         "chain-0004"
@@ -1496,6 +1900,14 @@
       "sources": [
         "Meetings/2026-05-31 Granite pilot kickoff.md",
         "Customers/Redwood Hills Realty Partners.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-05-31 Granite pilot kickoff.md"
+        ],
+        [
+          "Customers/Redwood Hills Realty Partners.md"
+        ]
       ],
       "entity": "project-0006",
       "refs": [
@@ -1520,6 +1932,14 @@
         "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md",
         "People/Luis Whitaker.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md"
+        ],
+        [
+          "People/Luis Whitaker.md"
+        ]
+      ],
       "entity": "customer-0002",
       "refs": [
         "chain-0002"
@@ -1540,6 +1960,14 @@
       "sources": [
         "Meetings/2026-03-23 Ember schedule review.md",
         "Suppliers/Anvil Test Labs.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-03-23 Ember schedule review.md"
+        ],
+        [
+          "Suppliers/Anvil Test Labs.md"
+        ]
       ],
       "entity": "project-0004",
       "refs": [
@@ -1564,6 +1992,14 @@
         "Meetings/2026-01-08 Granite tooling sign-off.md",
         "Suppliers/Lattice Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-08 Granite tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Lattice Molding.md"
+        ]
+      ],
       "entity": "project-0006",
       "refs": [
         "chain-0033"
@@ -1587,6 +2023,14 @@
         "Meetings/2025-05-29 Cirrus tooling sign-off.md",
         "Suppliers/Lattice Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-29 Cirrus tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Lattice Molding.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "chain-0018"
@@ -1608,6 +2052,14 @@
         "Meetings/2026-02-16 Ember pilot kickoff.md",
         "Customers/Maple Ridge University.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-02-16 Ember pilot kickoff.md"
+        ],
+        [
+          "Customers/Maple Ridge University.md"
+        ]
+      ],
       "entity": "project-0004",
       "refs": [
         "chain-0028"
@@ -1628,6 +2080,14 @@
       "sources": [
         "Meetings/2025-09-21 Cirrus pilot kickoff.md",
         "Customers/Foxborough Unified Schools.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-21 Cirrus pilot kickoff.md"
+        ],
+        [
+          "Customers/Foxborough Unified Schools.md"
+        ]
       ],
       "entity": "project-0002",
       "refs": [
@@ -1652,6 +2112,14 @@
         "Meetings/2025-05-29 Cirrus tooling sign-off.md",
         "Suppliers/Lattice Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-29 Cirrus tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Lattice Molding.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "chain-0017"
@@ -1674,6 +2142,14 @@
       "sources": [
         "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md",
         "People/Leah Ashby.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md"
+        ],
+        [
+          "People/Leah Ashby.md"
+        ]
       ],
       "entity": "customer-0010",
       "refs": [
@@ -1698,6 +2174,14 @@
         "Meetings/2026-01-08 Granite tooling sign-off.md",
         "Suppliers/Lattice Molding.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-08 Granite tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Lattice Molding.md"
+        ]
+      ],
       "entity": "project-0006",
       "refs": [
         "chain-0034"
@@ -1720,6 +2204,14 @@
       "sources": [
         "Meetings/2025-09-19 Ember tooling sign-off.md",
         "Suppliers/Ironwood Plastics.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-19 Ember tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Ironwood Plastics.md"
+        ]
       ],
       "entity": "project-0004",
       "refs": [
@@ -1744,6 +2236,14 @@
         "Meetings/2025-09-19 Ember tooling sign-off.md",
         "Suppliers/Ironwood Plastics.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-19 Ember tooling sign-off.md"
+        ],
+        [
+          "Suppliers/Ironwood Plastics.md"
+        ]
+      ],
       "entity": "project-0004",
       "refs": [
         "chain-0025"
@@ -1767,6 +2267,14 @@
         "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md",
         "People/Luis Whitaker.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md"
+        ],
+        [
+          "People/Luis Whitaker.md"
+        ]
+      ],
       "entity": "customer-0008",
       "refs": [
         "chain-0008"
@@ -1787,6 +2295,14 @@
       "sources": [
         "Meetings/2025-10-26 Cirrus schedule review.md",
         "Suppliers/Halcyon Compliance Labs.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-10-26 Cirrus schedule review.md"
+        ],
+        [
+          "Suppliers/Halcyon Compliance Labs.md"
+        ]
       ],
       "entity": "project-0002",
       "refs": [
@@ -1809,6 +2325,11 @@
       ],
       "sources": [
         "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-29 Foxborough Unified Schools account handoff.md"
+        ]
       ],
       "entity": "customer-0002",
       "refs": [
@@ -1833,6 +2354,12 @@
         "Meetings/2025-11-05 All-hands.md",
         "Journal/Zoe Adeyemi/2025-11-09 Zoe Adeyemi journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-05 All-hands.md",
+          "Journal/Zoe Adeyemi/2025-11-09 Zoe Adeyemi journal.md"
+        ]
+      ],
       "entity": "person-0014",
       "refs": [
         "fact-0274"
@@ -1856,6 +2383,12 @@
         "Meetings/2026-05-25 All-hands.md",
         "Journal/Ruth Holloway/2026-05-26 Ruth Holloway journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-05-25 All-hands.md",
+          "Journal/Ruth Holloway/2026-05-26 Ruth Holloway journal.md"
+        ]
+      ],
       "entity": "person-0010",
       "refs": [
         "fact-0275"
@@ -1877,6 +2410,11 @@
       ],
       "sources": [
         "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-29 Summit Park Workplace Group account handoff.md"
+        ]
       ],
       "entity": "customer-0010",
       "refs": [
@@ -1900,6 +2438,11 @@
       "sources": [
         "Meetings/2025-09-22 Maple Ridge University account handoff.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-09-22 Maple Ridge University account handoff.md"
+        ]
+      ],
       "entity": "customer-0004",
       "refs": [
         "fact-0100"
@@ -1921,6 +2464,11 @@
       ],
       "sources": [
         "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-03-07 Larchmont Regional Hospital account handoff.md"
+        ]
       ],
       "entity": "customer-0008",
       "refs": [
@@ -1946,6 +2494,12 @@
         "Meetings/2026-07-05 Granite schedule review.md",
         "Decisions/Granite launch date change.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-07-05 Granite schedule review.md",
+          "Decisions/Granite launch date change.md"
+        ]
+      ],
       "entity": "project-0006",
       "refs": [
         "fact-0269"
@@ -1968,6 +2522,11 @@
       "sources": [
         "Meetings/2025-05-29 Cirrus tooling sign-off.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-05-29 Cirrus tooling sign-off.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "fact-0183"
@@ -1989,6 +2548,11 @@
       ],
       "sources": [
         "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-06-09 Thornbury Unified Schools account handoff.md"
+        ]
       ],
       "entity": "customer-0012",
       "refs": [
@@ -2013,6 +2577,12 @@
         "Meetings/2025-11-05 All-hands.md",
         "Journal/Tessa Okafor/2025-11-10 Tessa Okafor journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-11-05 All-hands.md",
+          "Journal/Tessa Okafor/2025-11-10 Tessa Okafor journal.md"
+        ]
+      ],
       "entity": "person-0016",
       "refs": [
         "fact-0273"
@@ -2034,6 +2604,11 @@
       ],
       "sources": [
         "Meetings/2026-01-08 Granite tooling sign-off.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-08 Granite tooling sign-off.md"
+        ]
       ],
       "entity": "project-0006",
       "refs": [
@@ -2059,6 +2634,12 @@
         "Meetings/2026-03-23 Ember schedule review.md",
         "Decisions/Ember launch date change.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-03-23 Ember schedule review.md",
+          "Decisions/Ember launch date change.md"
+        ]
+      ],
       "entity": "project-0004",
       "refs": [
         "fact-0229"
@@ -2080,6 +2661,14 @@
       "sources": [
         "Meetings/2026-04-16 Granite EVT review.md",
         "Journal/Zoe Adeyemi/2026-04-18 Zoe Adeyemi journal.md"
+      ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-04-16 Granite EVT review.md"
+        ],
+        [
+          "Journal/Zoe Adeyemi/2026-04-18 Zoe Adeyemi journal.md"
+        ]
       ],
       "entity": "project-0006",
       "refs": [
@@ -2103,6 +2692,14 @@
         "Specs/Ember requirements.md",
         "Specs/Ember requirements (copy).md"
       ],
+      "sourceGroups": [
+        [
+          "Specs/Ember requirements.md"
+        ],
+        [
+          "Specs/Ember requirements (copy).md"
+        ]
+      ],
       "entity": "project-0004",
       "refs": [
         "trap-0046"
@@ -2125,6 +2722,14 @@
         "Specs/Cirrus requirements.md",
         "Specs/Cirrus requirements (copy).md"
       ],
+      "sourceGroups": [
+        [
+          "Specs/Cirrus requirements.md"
+        ],
+        [
+          "Specs/Cirrus requirements (copy).md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "trap-0032"
@@ -2144,8 +2749,18 @@
       },
       "stale": [],
       "sources": [
+        "Customers/Maple Ridge University.md",
         "Meetings/2025-10-26 Maple Ridge University quarterly review.md",
         "Customers/Maple Ridge University billing summary.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Maple Ridge University.md",
+          "Meetings/2025-10-26 Maple Ridge University quarterly review.md"
+        ],
+        [
+          "Customers/Maple Ridge University billing summary.md"
+        ]
       ],
       "entity": "customer-0004",
       "refs": [
@@ -2166,8 +2781,18 @@
       },
       "stale": [],
       "sources": [
+        "Customers/Foxborough Unified Schools.md",
         "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md",
         "Customers/Foxborough Unified Schools billing summary.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Foxborough Unified Schools.md",
+          "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md"
+        ],
+        [
+          "Customers/Foxborough Unified Schools billing summary.md"
+        ]
       ],
       "entity": "customer-0002",
       "refs": [
@@ -2191,6 +2816,14 @@
         "Meetings/2026-01-02 Ember EVT review.md",
         "Journal/Rosa Novak/2026-01-04 Rosa Novak journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2026-01-02 Ember EVT review.md"
+        ],
+        [
+          "Journal/Rosa Novak/2026-01-04 Rosa Novak journal.md"
+        ]
+      ],
       "entity": "project-0004",
       "refs": [
         "trap-0047"
@@ -2210,8 +2843,18 @@
       },
       "stale": [],
       "sources": [
+        "Customers/Larchmont Regional Hospital.md",
         "Meetings/2026-04-30 Larchmont Regional Hospital quarterly review.md",
         "Customers/Larchmont Regional Hospital billing summary.md"
+      ],
+      "sourceGroups": [
+        [
+          "Customers/Larchmont Regional Hospital.md",
+          "Meetings/2026-04-30 Larchmont Regional Hospital quarterly review.md"
+        ],
+        [
+          "Customers/Larchmont Regional Hospital billing summary.md"
+        ]
       ],
       "entity": "customer-0008",
       "refs": [
@@ -2235,6 +2878,14 @@
         "Meetings/2025-08-07 Cirrus EVT review.md",
         "Journal/Zoe Adeyemi/2025-08-09 Zoe Adeyemi journal.md"
       ],
+      "sourceGroups": [
+        [
+          "Meetings/2025-08-07 Cirrus EVT review.md"
+        ],
+        [
+          "Journal/Zoe Adeyemi/2025-08-09 Zoe Adeyemi journal.md"
+        ]
+      ],
       "entity": "project-0002",
       "refs": [
         "trap-0033"
@@ -2257,6 +2908,14 @@
         "Specs/Granite requirements.md",
         "Specs/Granite requirements (copy).md"
       ],
+      "sourceGroups": [
+        [
+          "Specs/Granite requirements.md"
+        ],
+        [
+          "Specs/Granite requirements (copy).md"
+        ]
+      ],
       "entity": "project-0006",
       "refs": [
         "trap-0060"
@@ -2272,6 +2931,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0010",
       "refs": [
         "absent-0017"
@@ -2287,6 +2947,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "company:SOC 2 audit",
       "refs": [
         "absent-0032"
@@ -2302,6 +2963,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0002",
       "refs": [
         "absent-0009"
@@ -2317,6 +2979,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0004",
       "refs": [
         "absent-0011"
@@ -2332,6 +2995,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0006",
       "refs": [
         "absent-0013"
@@ -2347,6 +3011,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0006",
       "refs": [
         "absent-0030"
@@ -2362,6 +3027,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0002",
       "refs": [
         "absent-0022"
@@ -2377,6 +3043,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "supplier-0002",
       "refs": [
         "absent-0002"
@@ -2392,6 +3059,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "project-0002",
       "refs": [
         "absent-0023"
@@ -2407,6 +3075,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "supplier-0006",
       "refs": [
         "absent-0006"
@@ -2422,6 +3091,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "supplier-0004",
       "refs": [
         "absent-0004"
@@ -2437,6 +3107,7 @@
       },
       "stale": [],
       "sources": [],
+      "sourceGroups": [],
       "entity": "customer-0012",
       "refs": [
         "absent-0019"
