@@ -4,7 +4,7 @@ Write each of the 20 notes below as a markdown file of the vault, following corp
 
 ## Cast
 
-- Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver and Austin.
+- Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver, Austin, Boston and Chicago.
 - Hazel Osei: Product Manager, Product team
 - Ines Fitzgerald: Customer Success Manager, Customer Success team
 - Zoe Adeyemi: Electrical Engineer, Hardware Engineering team

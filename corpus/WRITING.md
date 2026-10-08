@@ -21,7 +21,7 @@ You write notes of the Obsidian vault of Larkspur Devices, Inc., a fictional com
 - Stay within the word range of the brief.
 - State every fact of the brief in natural prose. You may rephrase the statement, but keep each anchor word for word.
 - Put each link `[[Title]]` inside a real sentence that says what the brief's intent says, for example: "The final decision is recorded in [[2025-03-22 Atlas tooling sign-off]]." Never a bare list of links, never a link in the frontmatter. Use the exact title between the brackets; an alias is allowed: `[[Title|alias]]`.
-- Follow the "Situation": it says what the note is and what it must convey, including its traps (a page that was never updated, a copy that disagrees with the original, a rumour).
+- Follow the "Situation": it says what the note is and what it must convey, including its traps (a page that was never updated, a copy that disagrees with the original, a rumour). The situation is for you, not for the reader: a page that was never updated reads as a normal page written at its date and never says it is outdated; a copy never says it is a copy; a rumour reads as what the author believes.
 
 ## What not to write
 

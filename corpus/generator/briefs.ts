@@ -1,3 +1,4 @@
+import { OFFICES } from "./pools.ts"
 import type { NoteSpec, World } from "./schema.ts"
 import { roleAt } from "./world.ts"
 
@@ -88,7 +89,7 @@ function renderBatch(world: World, name: string, notes: NoteSpec[]): string {
     "",
     "## Cast",
     "",
-    `- ${world.meta.company} designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver and Austin.`,
+    `- ${world.meta.company} designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in ${offices()}.`,
     ...cast,
     "",
     "## Notes",
@@ -154,4 +155,11 @@ function yaml(frontmatter: Record<string, string | string[]>): string[] {
       ? [`${key}:`, ...value.map((item) => `  - ${scalar(item)}`)]
       : [`${key}: ${scalar(value)}`]
   )
+}
+
+/** "Portland (headquarters), Denver, Austin, Boston and Chicago". */
+function offices(): string {
+  const [headquarters, ...others] = OFFICES
+  const last = others.pop()
+  return `${headquarters} (headquarters), ${others.join(", ")} and ${last}`
 }
