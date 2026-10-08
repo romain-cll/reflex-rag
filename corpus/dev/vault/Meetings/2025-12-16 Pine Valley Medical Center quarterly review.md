@@ -3,10 +3,10 @@ type: meeting
 date: 2025-12-16
 customer: Pine Valley Medical Center
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Maya Raman
 ---
-Ines Fitzgerald met Maya Raman for the quarterly business review with Pine Valley Medical Center, run as a customer success review. The meeting covered the status of the deployment and the next steps.
+Naomi Boyle met Maya Raman for the quarterly business review with Pine Valley Medical Center, run as a customer success review. The meeting covered the status of the deployment and the next steps.
 
 ## Discussion
 

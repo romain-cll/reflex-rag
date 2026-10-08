@@ -3,10 +3,10 @@ type: meeting
 date: 2025-09-04
 customer: Whitmore Campus Services
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Simon Brennan
 ---
-Ines Fitzgerald met Simon Brennan for the quarterly business review with Whitmore Campus Services, run as a customer success review. The meeting covered the status of the deployment and the commercial picture on the account.
+Naomi Boyle met Simon Brennan for the quarterly business review with Whitmore Campus Services, run as a customer success review. The meeting covered the status of the deployment and the commercial picture on the account.
 
 ## Discussion
 

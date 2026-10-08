@@ -3,11 +3,11 @@ type: meeting
 date: 2026-03-31
 customer: Northgate Realty Partners
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Bennett Calloway
 ---
 
-Ines Fitzgerald met Bennett Calloway for the quarterly business review of the Northgate Realty Partners account. The review covered the state of the deployment and the contract as it is recorded on the account.
+Naomi Boyle met Bennett Calloway for the quarterly business review of the Northgate Realty Partners account. The review covered the state of the deployment and the contract as it is recorded on the account.
 
 ## Discussion
 
@@ -23,5 +23,5 @@ No decision was taken during this review. It was a status check on the deploymen
 
 ## Action items
 
-- Ines sends a recap of the review to the Sales team and to Customer Success.
-- Ines passes Bennett's feedback on the support he would like to the people concerned.
+- Naomi sends a recap of the review to the Sales team and to Customer Success.
+- Naomi passes Bennett's feedback on the support he would like to the people concerned.

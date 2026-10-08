@@ -3,10 +3,10 @@ type: meeting
 date: 2025-07-23
 customer: Westgate Realty Partners
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Ravi Chandra
 ---
-Ines Fitzgerald met Ravi Chandra for the quarterly business review with Westgate Realty Partners, run as a customer success review. The meeting covered the status of the deployment and the commercial picture on the account.
+Naomi Boyle met Ravi Chandra for the quarterly business review with Westgate Realty Partners, run as a customer success review. The meeting covered the status of the deployment and the commercial picture on the account.
 
 ## Discussion
 

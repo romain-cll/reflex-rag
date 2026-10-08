@@ -7,10 +7,9 @@ Write each of the 19 notes below as a markdown file of the vault, following corp
 - Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver, Austin, Boston and Chicago.
 - Tomas Mbeki: Account Executive, Sales team
 - Anya Castillo: Account Executive, Sales team
-- Ines Fitzgerald: Account Executive, Sales team
+- Naomi Boyle: Customer Success Manager, Customer Success team
 - Theo Ramsey: Finance Manager, Finance team
 - Luis Whitaker: Account Executive, Sales team
-- Naomi Boyle: Customer Success Manager, Customer Success team
 - Aisha Whitfield: Account Executive, Sales team
 - Leah Ashby: Account Executive, Sales team
 - Lena Greer: Account Executive, Sales team
@@ -79,7 +78,7 @@ Links, each inside a real sentence of the note:
 
 - Type: meeting
 - Date: 2025-07-23
-- Author: Ines Fitzgerald (Account Executive)
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
@@ -89,7 +88,7 @@ type: meeting
 date: 2025-07-23
 customer: Westgate Realty Partners
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Ravi Chandra
 ```
 
@@ -303,7 +302,7 @@ Links, each inside a real sentence of the note:
 
 - Type: meeting
 - Date: 2025-12-16
-- Author: Ines Fitzgerald (Account Executive)
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
@@ -313,7 +312,7 @@ type: meeting
 date: 2025-12-16
 customer: Pine Valley Medical Center
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Maya Raman
 ```
 
@@ -502,7 +501,7 @@ Links, each inside a real sentence of the note:
 
 - Type: meeting
 - Date: 2025-09-04
-- Author: Ines Fitzgerald (Account Executive)
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
@@ -512,7 +511,7 @@ type: meeting
 date: 2025-09-04
 customer: Whitmore Campus Services
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Simon Brennan
 ```
 

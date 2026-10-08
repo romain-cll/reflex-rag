@@ -9,7 +9,6 @@ Write each of the 18 notes below as a markdown file of the vault, following corp
 - Tomas Mbeki: Account Executive, Sales team
 - Naomi Boyle: Customer Success Manager, Customer Success team
 - Anya Castillo: Account Executive, Sales team
-- Ines Fitzgerald: Account Executive, Sales team
 - Theo Ramsey: Finance Manager, Finance team
 - Luis Whitaker: Account Executive, Sales team
 - Aisha Whitfield: Account Executive, Sales team
@@ -166,7 +165,7 @@ Links, each inside a real sentence of the note:
 
 - Type: meeting
 - Date: 2026-02-01
-- Author: Ines Fitzgerald (Account Executive)
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
@@ -176,7 +175,7 @@ type: meeting
 date: 2026-02-01
 customer: Valemont Unified Schools
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Priya Farrow
 ```
 
@@ -390,7 +389,7 @@ Links, each inside a real sentence of the note:
 
 - Type: meeting
 - Date: 2025-08-23
-- Author: Ines Fitzgerald (Account Executive)
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
@@ -400,7 +399,7 @@ type: meeting
 date: 2025-08-23
 customer: Harborview College
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Joanna Delacroix
 ```
 

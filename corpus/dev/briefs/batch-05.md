@@ -7,10 +7,9 @@ Write each of the 7 notes below as a markdown file of the vault, following corpu
 - Larkspur Devices, Inc. designs connected indoor air-quality sensors for commercial buildings and outsources manufacturing. Offices in Portland (headquarters), Denver, Austin, Boston and Chicago.
 - Leah Ashby: Account Executive, Sales team
 - Lena Greer: Account Executive, Sales team
-- Ines Fitzgerald: Account Executive, Sales team
+- Naomi Boyle: Customer Success Manager, Customer Success team
 - Theo Ramsey: Finance Manager, Finance team
 - Tomas Mbeki: Account Executive, Sales team
-- Naomi Boyle: Customer Success Manager, Customer Success team
 
 ## Notes
 
@@ -76,7 +75,7 @@ Links, each inside a real sentence of the note:
 
 - Type: meeting
 - Date: 2026-03-31
-- Author: Ines Fitzgerald (Account Executive)
+- Author: Naomi Boyle (Customer Success Manager)
 - Length: 180 to 400 words
 
 Frontmatter, copied exactly:
@@ -86,7 +85,7 @@ type: meeting
 date: 2026-03-31
 customer: Northgate Realty Partners
 attendees:
-  - Ines Fitzgerald
+  - Naomi Boyle
   - Bennett Calloway
 ```
 
