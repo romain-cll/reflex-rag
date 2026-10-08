@@ -18,3 +18,6 @@ node_modules/
 # Run traces and reports (runs cited in REPORT.md get versioned explicitly)
 runs/*
 !runs/.gitkeep
+
+# Local agent memory (reviewer)
+.claude/agent-memory/
