@@ -38,7 +38,12 @@ function fakeLLM(value: unknown = answered()) {
 }
 
 function answered(citations: string[] = ["people/alice.md"]) {
-  return { status: "answered", answer: "Alice leads Atlas.", citations }
+  return {
+    status: "answered",
+    value: "Alice",
+    answer: "Alice leads Atlas.",
+    citations,
+  }
 }
 
 const CONTEXT: ContextChunk[] = [
@@ -94,6 +99,7 @@ describe("AnswerSchema", () => {
     for (const status of ["answered", "conflict", "abstained"]) {
       const parsed = AnswerSchema.safeParse({
         status,
+        value: "Alice",
         answer: "Short text.",
         citations: ["people/alice.md"],
       })
@@ -104,15 +110,56 @@ describe("AnswerSchema", () => {
   test("AC3 — accepts an empty citation list", () => {
     const parsed = AnswerSchema.safeParse({
       status: "abstained",
+      value: "",
       answer: "The excerpts do not say.",
       citations: [],
     })
     expect(parsed.success).toBe(true)
   })
 
+  test("AC3 — accepts an empty value, for an abstention", () => {
+    const parsed = AnswerSchema.safeParse({
+      status: "abstained",
+      value: "",
+      answer: "The excerpts do not say.",
+      citations: [],
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  test("AC3 — accepts conflict values separated by a pipe", () => {
+    const parsed = AnswerSchema.safeParse({
+      status: "conflict",
+      value: "$143,000 | $177,000",
+      answer: "The notes disagree.",
+      citations: [],
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  test("AC3 — rejects a missing value", () => {
+    const parsed = AnswerSchema.safeParse({
+      status: "answered",
+      answer: "Alice leads Atlas.",
+      citations: [],
+    })
+    expect(parsed.success).toBe(false)
+  })
+
+  test("AC3 — rejects a value that is not a string", () => {
+    const parsed = AnswerSchema.safeParse({
+      status: "answered",
+      value: 42,
+      answer: "Alice leads Atlas.",
+      citations: [],
+    })
+    expect(parsed.success).toBe(false)
+  })
+
   test("AC3 — rejects an unknown status", () => {
     const parsed = AnswerSchema.safeParse({
       status: "maybe",
+      value: "Alice",
       answer: "Short text.",
       citations: [],
     })
@@ -121,16 +168,25 @@ describe("AnswerSchema", () => {
 
   test("AC3 — rejects a missing answer or missing citations", () => {
     expect(
-      AnswerSchema.safeParse({ status: "answered", citations: [] }).success
+      AnswerSchema.safeParse({
+        status: "answered",
+        value: "Alice",
+        citations: [],
+      }).success
     ).toBe(false)
     expect(
-      AnswerSchema.safeParse({ status: "answered", answer: "Text." }).success
+      AnswerSchema.safeParse({
+        status: "answered",
+        value: "Alice",
+        answer: "Text.",
+      }).success
     ).toBe(false)
   })
 
   test("AC3 — rejects citations that are not strings", () => {
     const parsed = AnswerSchema.safeParse({
       status: "answered",
+      value: "Alice",
       answer: "Text.",
       citations: [42],
     })
@@ -146,6 +202,7 @@ describe("answerQuestion", () => {
 
     expect(result.output).toEqual({
       status: "answered",
+      value: "Alice",
       answer: "Alice leads Atlas.",
       citations: ["people/alice.md", "projects/atlas.md"],
     })
@@ -155,11 +212,13 @@ describe("answerQuestion", () => {
   test("AC3 — keeps the conflict and abstained statuses", async () => {
     const conflict: Answer = {
       status: "conflict",
+      value: "June | July",
       answer: "The notes disagree: June (atlas.md), July (roadmap.md).",
       citations: ["projects/atlas.md"],
     }
     const abstained: Answer = {
       status: "abstained",
+      value: "",
       answer: "The excerpts do not say.",
       citations: [],
     }
@@ -184,11 +243,24 @@ describe("answerQuestion", () => {
     const { request, schema } = calls[0] as JsonCall
     expect(request.maxTokens).toBeGreaterThan(0)
     expect(
-      schema.safeParse({ status: "answered", answer: "A.", citations: [] })
-        .success
+      schema.safeParse({
+        status: "answered",
+        value: "A",
+        answer: "A.",
+        citations: [],
+      }).success
     ).toBe(true)
     expect(
-      schema.safeParse({ status: "maybe", answer: "A.", citations: [] }).success
+      schema.safeParse({
+        status: "maybe",
+        value: "A",
+        answer: "A.",
+        citations: [],
+      }).success
+    ).toBe(false)
+    expect(
+      schema.safeParse({ status: "answered", answer: "A.", citations: [] })
+        .success
     ).toBe(false)
     expect(schema.safeParse({ status: "answered" }).success).toBe(false)
   })
@@ -312,6 +384,20 @@ describe("answerQuestion", () => {
     expect(system).toMatch(/short|concise|brief/i)
   })
 
+  test("AC4 — the system prompt tells the model to put only the answer itself in value, without the outdated values it replaces", async () => {
+    const { llm, calls } = fakeLLM()
+    await answerQuestion(QUESTION, CONTEXT, llm)
+    const system = (calls[0] as JsonCall).request.system ?? ""
+
+    const sentence = sentencesOf(system).find(
+      (part) => /\bvalue\b/i.test(part) && /\bonly\b/i.test(part)
+    )
+    expect(sentence).toBeDefined()
+    expect(sentence).toMatch(/answer (itself|alone)|bare answer/i)
+    expect(sentence).toMatch(/outdated|superseded|replaced|earlier|stale/i)
+    expect(sentence).toMatch(/\bwithout\b|\bnot\b|\bno\b/i)
+  })
+
   test("AC4 — the user message holds the question", async () => {
     const prompt = await userMessageFor()
 
@@ -413,6 +499,7 @@ describe("answerQuestion", () => {
   test("AC5 — leaves status and answer untouched when citations are removed", async () => {
     const { llm } = fakeLLM({
       status: "conflict",
+      value: "June | July",
       answer: "June versus July.",
       citations: ["nowhere.md"],
     })
@@ -420,6 +507,7 @@ describe("answerQuestion", () => {
     const result = await answerQuestion(QUESTION, CONTEXT, llm)
 
     expect(result.output.status).toBe("conflict")
+    expect(result.output.value).toBe("June | July")
     expect(result.output.answer).toBe("June versus July.")
     expect(result.output.citations).toEqual([])
   })

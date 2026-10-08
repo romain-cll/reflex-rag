@@ -17,6 +17,7 @@ interface ContextChunk {
 
 interface Output {
   status: "answered" | "conflict" | "abstained"
+  value: string
   answer: string
   citations: string[]
 }
@@ -84,7 +85,7 @@ function makeQuestion(n: number, overrides: Partial<Question> = {}): Question {
 }
 
 function answered(answer: string): Output {
-  return { status: "answered", answer, citations: [] }
+  return { status: "answered", value: answer, answer, citations: [] }
 }
 
 function chunk(notePath: string): ContextChunk {
@@ -261,6 +262,7 @@ describe("AC3 — run records", () => {
           notes: ["Other.md"],
           output: {
             status: "abstained" as const,
+            value: "",
             answer: "Not in the notes.",
             citations: [],
           },
