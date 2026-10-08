@@ -2,7 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
-import { WorldSchema } from "./schema.ts"
+import { BATCH_SIZE, renderBatches } from "./briefs.ts"
+import { WorldSchema, type World } from "./schema.ts"
 
 const cliPath = resolve(import.meta.dir, "cli.ts")
 const tempDirs: string[] = []
@@ -142,7 +143,10 @@ function renderFile(title: string, type: string, date: string, body: string) {
 }
 
 /** Writes <out>/<name>/world.json and the vault files (path -> content). */
-function makeProject(files: Record<string, string>): {
+function makeProject(
+  files: Record<string, string>,
+  world: World = tinyWorld()
+): {
   out: string
   name: string
 } {
@@ -151,7 +155,7 @@ function makeProject(files: Record<string, string>): {
   const name = "demo"
   const root = join(out, name)
   mkdirSync(join(root, "vault"), { recursive: true })
-  writeFileSync(join(root, "world.json"), JSON.stringify(tinyWorld(), null, 2))
+  writeFileSync(join(root, "world.json"), JSON.stringify(world, null, 2))
   for (const [path, content] of Object.entries(files)) {
     const file = join(root, "vault", path)
     mkdirSync(dirname(file), { recursive: true })
@@ -310,5 +314,172 @@ describe("AC9 — CLI validate", () => {
     expect(result.stdout).toContain(HUB_PATH)
     expect(result.stdout).toContain("missing")
     expect(result.exitCode).toBe(1)
+  }, 30_000)
+
+  test("AC9 — --batch batch-01 does not report a file outside the world as unexpected", () => {
+    const files = { ...cleanFiles(), "Notes/Stray.md": "# Stray\n" }
+    const result = runValidate(makeProject(files), ["--batch", "batch-01"])
+    expect(result.stdout).not.toContain("unexpected")
+    expect(result.stdout).not.toContain("Notes/Stray.md")
+    expect(printedCount(result.stdout, "error")).toBe(0)
+    expect(result.exitCode).toBe(0)
+  }, 30_000)
+})
+
+// A world of more than BATCH_SIZE notes, so that it splits in several batches.
+
+const MEMO_BODY = "A short memo about the weekly planning of the Falcon team."
+
+function memoPath(index: number): string {
+  return `Memos/Memo ${String.fromCharCode(65 + index)}.md`
+}
+
+/** tinyWorld plus BATCH_SIZE memos, none of which states a fact or links. */
+function bigWorld(): World {
+  const world = tinyWorld()
+  for (let index = 0; index < BATCH_SIZE; index++) {
+    const title = `Memo ${String.fromCharCode(65 + index)}`
+    const date = `2025-08-${String(index + 1).padStart(2, "0")}`
+    world.notes.push({
+      id: `m${index + 1}`,
+      path: memoPath(index),
+      type: "journal",
+      title,
+      date,
+      author: "p1",
+      frontmatter: { title, type: "journal", date },
+      context: "A planning memo.",
+      states: [],
+      links: [],
+      forbiddenTerms: [],
+      words: [8, 30],
+    })
+  }
+  return world
+}
+
+function memoFile(index: number, body = MEMO_BODY): string {
+  const title = `Memo ${String.fromCharCode(65 + index)}`
+  const date = `2025-08-${String(index + 1).padStart(2, "0")}`
+  return renderFile(title, "journal", date, `# ${title}\n\n${body}`)
+}
+
+function bigFiles(): Record<string, string> {
+  const files = cleanFiles()
+  for (let index = 0; index < BATCH_SIZE; index++) {
+    files[memoPath(index)] = memoFile(index)
+  }
+  return files
+}
+
+/** The files of bigWorld where the memo at `path` states an unplanned amount. */
+function withBrokenMemo(path: string) {
+  const index = [...Array(BATCH_SIZE).keys()].find((i) => memoPath(i) === path)
+  if (index === undefined) throw new Error(`fixture: ${path} is no memo`)
+  const files = bigFiles()
+  files[path] = memoFile(index, `${MEMO_BODY} The budget is $48,200 this year.`)
+  return { broken: path, files }
+}
+
+/** Splits the notes of bigWorld between batch-01 and batch-02 with renderBatches. */
+function batchSplit(world: World) {
+  const batches = renderBatches(world, BATCH_SIZE)
+  const pathsOf = (name: string) => {
+    const batch = batches.find((b) => b.name === name)
+    if (!batch) throw new Error(`fixture: no ${name}`)
+    return world.notes
+      .filter(({ id }) => batch.noteIds.includes(id))
+      .map(({ path }) => path)
+  }
+  return { first: pathsOf("batch-01"), second: pathsOf("batch-02") }
+}
+
+describe("AC9 — CLI validate --batch on a world of several batches", () => {
+  test("AC9 — the fixture world has a batch-01 and a batch-02 with distinct notes", () => {
+    const { first, second } = batchSplit(bigWorld())
+    expect(first.length).toBeGreaterThan(0)
+    expect(second.length).toBeGreaterThan(0)
+    expect(first.filter((path) => second.includes(path))).toEqual([])
+  })
+
+  test("AC9 — an error in a batch-02 note is not reported by --batch batch-01, and the exit code is 0", () => {
+    const world = bigWorld()
+    const { first, second } = batchSplit(world)
+    const { broken, files } = withBrokenMemo(second[0]!)
+    const project = makeProject(files, world)
+
+    const result = runValidate(project, ["--batch", "batch-01"])
+    expect(first).not.toContain(broken)
+    expect(result.stdout).not.toContain(broken)
+    expect(printedCount(result.stdout, "error")).toBe(0)
+    expect(result.exitCode).toBe(0)
+  }, 30_000)
+
+  test("AC9 — --batch batch-02 reports that error and exits 1", () => {
+    const world = bigWorld()
+    const { second } = batchSplit(world)
+    const { broken, files } = withBrokenMemo(second[0]!)
+    const project = makeProject(files, world)
+
+    const result = runValidate(project, ["--batch", "batch-02"])
+    expect(result.stdout).toContain(broken)
+    expect(result.stdout).toContain("unplanned-number")
+    expect(printedCount(result.stdout, "error")).toBe(1)
+    expect(result.exitCode).toBe(1)
+  }, 30_000)
+
+  test("AC9 — without --batch the same vault reports that error and exits 1", () => {
+    const world = bigWorld()
+    const { second } = batchSplit(world)
+    const { broken, files } = withBrokenMemo(second[0]!)
+    const result = runValidate(makeProject(files, world))
+    expect(result.stdout).toContain(broken)
+    expect(result.exitCode).toBe(1)
+  }, 30_000)
+
+  test("AC9 — an error in a batch-01 note is not reported by --batch batch-02, and the exit code is 0", () => {
+    const world = bigWorld()
+    const { first, second } = batchSplit(world)
+    const files = bigFiles()
+    files[QUOTE_PATH] = renderFile(
+      "Helix Quote",
+      "quote",
+      "2025-06-10",
+      QUOTE_BODY.replace("$3.85", "a fair price")
+    )
+    const result = runValidate(makeProject(files, world), [
+      "--batch",
+      "batch-02",
+    ])
+    expect(first).toContain(QUOTE_PATH)
+    expect(second).not.toContain(QUOTE_PATH)
+    expect(result.stdout).not.toContain(QUOTE_PATH)
+    expect(printedCount(result.stdout, "error")).toBe(0)
+    expect(result.exitCode).toBe(0)
+  }, 30_000)
+
+  test("AC9 — a missing note of another batch does not make --batch batch-01 fail", () => {
+    const world = bigWorld()
+    const { second } = batchSplit(world)
+    const files = bigFiles()
+    delete files[second[0]!]
+    const result = runValidate(makeProject(files, world), [
+      "--batch",
+      "batch-01",
+    ])
+    expect(result.stdout).not.toContain(second[0]!)
+    expect(result.stdout).not.toContain("missing")
+    expect(result.exitCode).toBe(0)
+  }, 30_000)
+
+  test("AC9 — a stray file does not make --batch batch-02 fail either", () => {
+    const world = bigWorld()
+    const files = { ...bigFiles(), "Notes/Stray.md": "# Stray\n" }
+    const result = runValidate(makeProject(files, world), [
+      "--batch",
+      "batch-02",
+    ])
+    expect(result.stdout).not.toContain("unexpected")
+    expect(result.exitCode).toBe(0)
   }, 30_000)
 })

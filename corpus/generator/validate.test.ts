@@ -584,6 +584,166 @@ describe("AC6 — unplanned numbers", () => {
     expect(errors).toHaveLength(2)
   })
 
+  const uncoveredFigures: [string, string][] = [
+    ["a digit quantity of weeks", "The ramp-up takes about 6 weeks."],
+    ["a quantity of weeks in words", "The ramp-up takes six weeks."],
+    ["a quantity of hours", "The call lasts 2 hours."],
+    ["a quantity of modules", "The kit has 3 modules."],
+    ["a quantity of sensors in words", "The site has four sensors."],
+    ["a quantity of boards in words", "The order is ten boards."],
+    ["a quantity of one month", "The trial lasts one month."],
+    ["a quantity of years", "The contract runs 5 years."],
+    ["a quantity of packs", "Each carton holds 9 packs."],
+    ["a quantity of days", "The delay was 2 days."],
+    ["a month and a day without a year", "The review is on December 4."],
+    ["a number in words above 10", "The team has twelve desks."],
+    ["a compound number in words", "The site has forty-five desks."],
+    [
+      "a percentage of 10 or less written with the word",
+      "A 5 percent fee applies.",
+    ],
+    ["a percentage above 10 written with the word", "The rate is 12 percent."],
+    [
+      "a year alone that no date of the texts falls in",
+      "The plan runs in 2027.",
+    ],
+  ]
+  for (const [label, sentence] of uncoveredFigures) {
+    test(`AC6 — ${label} that no text covers is one unplanned-number error`, () => {
+      const errors = unplanned("n1", sentence)
+      expect(errors).toHaveLength(1)
+      expect(errors[0]!.path).toBe(N1)
+    })
+  }
+
+  function addAnchor(factId: string, anchor: string) {
+    return (world: World) => {
+      const fact = world.facts.find((f) => f.id === factId)
+      if (!fact) throw new Error(`fixture: no fact ${factId}`)
+      fact.anchors.push(anchor)
+    }
+  }
+
+  test("AC6 — a quantity in digits is covered by the same quantity in an anchor", () => {
+    // n1 states f2.
+    const errors = unplanned(
+      "n1",
+      "The ramp-up takes about 6 weeks.",
+      addAnchor("f2", "6 weeks")
+    )
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a quantity in words is covered by the same quantity in digits in an anchor", () => {
+    const errors = unplanned(
+      "n1",
+      "The ramp-up takes six weeks.",
+      addAnchor("f2", "6 weeks")
+    )
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a quantity is covered by the same quantity in the context", () => {
+    const errors = unplanned("n1", "The ramp-up takes six weeks.", (world) => {
+      note(world, "n1").context = "The ramp-up takes 6 weeks."
+    })
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a quantity is not covered by the same number with another unit", () => {
+    const errors = unplanned(
+      "n1",
+      "The delay was 6 days.",
+      addAnchor("f2", "6 weeks")
+    )
+    expect(errors).toHaveLength(1)
+  })
+
+  test("AC6 — a quantity is not covered by the same unit with another number", () => {
+    const errors = unplanned(
+      "n1",
+      "The ramp-up takes about 7 weeks.",
+      addAnchor("f2", "6 weeks")
+    )
+    expect(errors).toHaveLength(1)
+  })
+
+  test("AC6 — a quantity above 10 gives one error, not one for the number and one for the quantity", () => {
+    expect(unplanned("n1", "The ramp-up takes 12 weeks.")).toHaveLength(1)
+    expect(
+      unplanned(
+        "n1",
+        "The ramp-up takes 12 weeks.",
+        addAnchor("f2", "12 weeks")
+      )
+    ).toEqual([])
+  })
+
+  test("AC6 — a bare number from 0 to 10 with no unit is allowed, in digits or in words", () => {
+    const errors = unplanned(
+      "n1",
+      "There were two meetings, 7 teams and ten desks."
+    )
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a month and a day is covered by an ISO date of the texts with that month and day", () => {
+    const errors = unplanned("n1", "The review is on December 4.", (world) => {
+      note(world, "n1").context = "The review is set for 2025-12-04."
+    })
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a month and a day is covered by a long date of the texts with that month and day", () => {
+    const errors = unplanned("n1", "The review is on December 4.", (world) => {
+      note(world, "n1").context = "The review is set for December 4, 2025."
+    })
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a month and a day is covered whatever the year of the date in the texts", () => {
+    const errors = unplanned("n1", "The review is on December 4.", (world) => {
+      note(world, "n1").context = "The review is set for 2024-12-04."
+    })
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a month and a day is not covered by another day of the same month", () => {
+    const errors = unplanned("n1", "The review is on December 5.", (world) => {
+      note(world, "n1").context = "The review is set for 2025-12-04."
+    })
+    expect(errors).toHaveLength(1)
+  })
+
+  test("AC6 — a month and a year is covered by a date of the texts in that month", () => {
+    const errors = unplanned(
+      "n1",
+      "The review is in December 2025.",
+      (world) => {
+        note(world, "n1").context = "The review is set for 2025-12-04."
+      }
+    )
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a percentage written with the word is covered by the same percentage with the sign", () => {
+    // n3 states f3, whose anchor is "12% volume discount".
+    const errors = unplanned("n3", "The rate is 12 percent for everyone.")
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a percentage with the sign is covered by the same percentage written with the word", () => {
+    const errors = unplanned("n1", "The rate is 12% for everyone.", (world) => {
+      note(world, "n1").context = "The rate is 12 percent."
+    })
+    expect(errors).toEqual([])
+  })
+
+  test("AC6 — a year alone is covered when a date of the texts falls in that year", () => {
+    // n1's frontmatter date is 2025-02-03.
+    expect(unplanned("n1", "The work began in 2025.")).toEqual([])
+  })
+
   test("AC6 — numbers from 0 to 10 are always allowed", () => {
     const errors = unplanned("n1", "There are 7 teams, 10 desks and 0 delays.")
     expect(errors).toEqual([])
@@ -626,13 +786,13 @@ describe("AC6 — unplanned numbers", () => {
       intent: "Point to the pilot batch",
     })
     const { errors } = run(world, {
-      n1: `${BODIES.n1} It follows the 500 unit run in [[Pilot Batch 500]].`,
+      n1: `${BODIES.n1} It follows the 500 pilot run in [[Pilot Batch 500]].`,
     })
     expect(withRule(errors, "unplanned-number")).toEqual([])
   })
 
   test("AC6 — a number in the title of a note it does not link to is not covered", () => {
-    const errors = unplanned("n1", "It follows the 500 unit run.")
+    const errors = unplanned("n1", "It follows the 500 pilot run.")
     expect(errors).toHaveLength(1)
   })
 
@@ -651,9 +811,34 @@ describe("AC6 — unplanned numbers", () => {
     expect(errors).toEqual([])
   })
 
-  test("AC6 — numbers inside wikilinks are ignored", () => {
-    const errors = unplanned("n1", "See [[Falcon Hub|the Falcon 2027 plan]].")
+  test("AC6 — a number in a wikilink target is ignored", () => {
+    // 500 only appears in the title of n4, which n1 does not link to.
+    expect(unplanned("n1", "See [[Pilot Batch 500]].")).toEqual([])
+    expect(unplanned("n1", "See [[Pilot Batch 500|the pilot run]].")).toEqual(
+      []
+    )
+  })
+
+  test("AC6 — a figure in a wikilink alias is checked like the rest of the body", () => {
+    const errors = unplanned("n1", "See [[Falcon Hub|the $4.10 offer]].")
+    expect(errors).toHaveLength(1)
+    expect(errors[0]!.path).toBe(N1)
+  })
+
+  test("AC6 — a figure in a wikilink alias is covered when the texts hold it", () => {
+    // n2 states f1, whose anchor is $3.85.
+    const errors = unplanned("n2", "See [[Falcon Hub|the $3.85 offer]].")
     expect(errors).toEqual([])
+  })
+
+  test("AC6 — only the alias of a wikilink is checked, not its target", () => {
+    const errors = unplanned("n1", "See [[Pilot Batch 500|the 2027 plan]].")
+    expect(errors).toHaveLength(1)
+  })
+
+  test("AC6 — a wikilink with a figure in both the target and the alias gives one error", () => {
+    const errors = unplanned("n1", "See [[Pilot Batch 500|the $4.10 offer]].")
+    expect(errors).toHaveLength(1)
   })
 })
 
