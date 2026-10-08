@@ -20,14 +20,14 @@ export interface ContextChunk {
   text: string
 }
 
-const SYSTEM_PROMPT = `You answer a question about a personal note vault, using only the excerpts provided in the user message. Each excerpt comes with its note path, the date of the note when it has one, and its heading. Do not use any knowledge from outside the excerpts.
+const SYSTEM_PROMPT = `You answer a question about a company's internal note vault, using only the excerpts provided in the user message. Each excerpt comes with its note path, the date of the note when it has one, and its heading. Do not use any knowledge from outside the excerpts.
 
 Set "status" to one of three values.
-- Use "answered" when the excerpts hold the answer. When a later note explicitly supersedes, replaces or corrects an earlier one, the earlier information is outdated, so answer with the newer information.
+- Use "answered" when the excerpts hold the answer. When a later note explicitly supersedes, replaces or corrects an earlier one, the earlier information is outdated, so answer with the newer information. When the excerpts say a question was discussed but left open, use "answered" and answer that no decision was made.
 - Use "conflict" when the sources disagree and none of them supersedes the other. Give each value with its source in the answer.
-- Use "abstained" when the excerpts do not hold the answer. Say so rather than guessing.
+- Use "abstained" when the excerpts do not hold the answer. Say so rather than guessing. Never infer a "no" from the absence of a mention.
 
-In "citations", cite the note paths of the excerpts you used, exactly as they are written. Keep "answer" short and concise: one or two sentences.`
+In "citations", cite the note paths of the excerpts you used, exactly as they are written. Keep "answer" short and concise: one or two sentences. Copy names, dates and amounts exactly as they are written in the excerpts.`
 
 export async function answerQuestion(
   question: string,

@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod"
 import type { z } from "zod"
-import type {
-  LLM,
-  LLMJsonResponse,
-  LLMRequest,
-  LLMResponse,
+import {
+  LLMCallError,
+  type LLM,
+  type LLMJsonResponse,
+  type LLMRequest,
+  type LLMResponse,
 } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
 
@@ -18,7 +19,7 @@ export interface AnthropicLLMOptions {
 /** The part of a Messages API response the wrapper reads. */
 interface MessageResult {
   stop_reason: string | null
-  content: { type: string }[]
+  content: { type: string; text?: string }[]
   usage: { input_tokens: number; output_tokens: number }
 }
 
@@ -42,11 +43,8 @@ export class AnthropicLLM implements LLM {
       })
     )
     const call = this.callOf(message, startedAt)
-    assertCompleted(message)
-    const text = message.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("")
-    return { text, call }
+    assertCompleted(message, call)
+    return { text: textOf(message), call }
   }
 
   async completeJson<T>(
@@ -59,19 +57,23 @@ export class AnthropicLLM implements LLM {
         ...this.baseParams(request),
         output_config: {
           effort: this.effort,
-          format: zodOutputFormat(schema),
+          format: lenientOutputFormat(schema),
         },
       })
     )
     const call = this.callOf(message, startedAt)
-    assertCompleted(message)
+    assertCompleted(message, call)
     if (message.parsed_output === null) {
-      throw new Error("Anthropic response could not be parsed: no output")
+      throw new LLMCallError(
+        "Anthropic response could not be parsed: the text is not JSON",
+        call
+      )
     }
     const validated = schema.safeParse(message.parsed_output)
     if (!validated.success) {
-      throw new Error(
-        `Anthropic output is invalid against the schema: ${validated.error.message}`
+      throw new LLMCallError(
+        `Anthropic output is invalid against the schema: ${validated.error.message}`,
+        call
       )
     }
     return { value: validated.data, call }
@@ -105,11 +107,43 @@ export class AnthropicLLM implements LLM {
   }
 }
 
-function assertCompleted(message: MessageResult): void {
+function assertCompleted(message: MessageResult, call: ModelCall): void {
   if (message.stop_reason === "refusal") {
-    throw new Error("Anthropic model refused the request (stop_reason refusal)")
+    throw new LLMCallError(
+      "Anthropic model refused the request (stop_reason refusal)",
+      call
+    )
   }
   if (message.stop_reason === "max_tokens") {
-    throw new Error("Anthropic output truncated (stop_reason max_tokens)")
+    throw new LLMCallError(
+      "Anthropic output truncated (stop_reason max_tokens)",
+      call
+    )
+  }
+}
+
+function textOf(message: MessageResult): string {
+  return message.content
+    .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
+    .join("")
+}
+
+/**
+ * `messages.parse` runs the `parse` of the output format on the text before
+ * returning, whatever the `stop_reason`: a truncated or refused response would
+ * fail there and hide its cause and its billed tokens. This format gives the
+ * schema of `zodOutputFormat` with a `parse` that never throws, so that the
+ * wrapper checks `stop_reason` first, then validates the parsed JSON itself.
+ */
+function lenientOutputFormat<T>(schema: z.ZodType<T>) {
+  return {
+    ...zodOutputFormat(schema),
+    parse: (text: string): unknown => {
+      try {
+        return JSON.parse(text) as unknown
+      } catch {
+        return null
+      }
+    },
   }
 }

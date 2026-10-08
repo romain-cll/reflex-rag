@@ -19,9 +19,12 @@ export interface RunRecord {
   contextNotes: string[]
   /** Share of the question's sources among the context notes; `null` when it has none. */
   recall: number | null
-  output: Answer
+  /** `null` when the answerer threw. */
+  output: Answer | null
+  /** The message of the error the answerer threw. */
+  error?: string
   grade: Grade
-  /** The retrieval calls, then the answer call. */
+  /** The retrieval calls, then the answer call when there is one. */
   calls: ModelCall[]
   latencyMs: number
   costUsd: number
@@ -117,22 +120,55 @@ async function evaluate(
     question.question,
     k
   )
-  const { output, call } = await answer(question.question, context)
+  const attempt = await attemptAnswer(answer, question.question, context)
   const latencyMs = performance.now() - startedAt
 
   const contextNotes = context.map((chunk) => chunk.notePath)
-  const calls = [...retrievalCalls, call]
-  return {
+  const calls =
+    attempt.call === undefined
+      ? retrievalCalls
+      : [...retrievalCalls, attempt.call]
+  const record = {
     id: question.id,
     split: question.split,
     category: question.category,
     contextNotes,
     recall: recallOf(question.sources, contextNotes),
-    output,
-    grade: grade(question, output, contextNotes),
     calls,
     latencyMs,
     costUsd: sum(calls.map(callCostUsd)),
+  }
+  if (attempt.output === null) {
+    return {
+      ...record,
+      output: null,
+      error: attempt.error,
+      grade: { correct: false, failure: "answer_error" },
+    }
+  }
+  return {
+    ...record,
+    output: attempt.output,
+    grade: grade(question, attempt.output, contextNotes),
+  }
+}
+
+type Attempt =
+  | { output: Answer; call: ModelCall }
+  | { output: null; error: string; call?: ModelCall }
+
+/** An error thrown after the API answered carries the `call` that was billed. */
+async function attemptAnswer(
+  answer: EvalOptions["answer"],
+  question: string,
+  context: ContextChunk[]
+): Promise<Attempt> {
+  try {
+    return await answer(question, context)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const { call } = error as { call?: ModelCall }
+    return { output: null, error: message, call }
   }
 }
 
@@ -171,7 +207,9 @@ function metricsOf(records: RunRecord[]): Metrics {
     latencyP95Ms: percentile(latencies, 0.95),
     meanCostUsd: mean(records.map((record) => record.costUsd)),
     meanInputTokens: mean(
-      records.map((record) => record.calls.at(-1)!.inputTokens)
+      records.flatMap((record) =>
+        record.output === null ? [] : [record.calls.at(-1)!.inputTokens]
+      )
     ),
     failures,
   }

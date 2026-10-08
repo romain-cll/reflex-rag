@@ -26,3 +26,16 @@ export interface LLM {
     schema: z.ZodType<T>
   ): Promise<LLMJsonResponse<T>>
 }
+
+/**
+ * An error raised after the API answered: `call` holds the request's billed
+ * tokens. Errors of the API itself carry none.
+ */
+export class LLMCallError extends Error {
+  constructor(
+    message: string,
+    readonly call: ModelCall
+  ) {
+    super(message)
+  }
+}

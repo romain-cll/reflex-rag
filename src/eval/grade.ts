@@ -1,7 +1,10 @@
 import type { Question } from "../../evals/schema.ts"
 import type { Answer } from "../answer/answerer.ts"
 
-/** In the order they are tried: a wrong answer gets the first that applies. */
+/**
+ * In the order they are tried: a wrong answer gets the first that applies.
+ * `answer_error` is never graded: the run sets it when the answerer throws.
+ */
 export const FAILURES = [
   "retrieval_miss",
   "false_abstention",
@@ -9,6 +12,7 @@ export const FAILURES = [
   "missed_contradiction",
   "unsupported_claim",
   "wrong_answer",
+  "answer_error",
 ] as const
 
 export type Failure = (typeof FAILURES)[number]
@@ -24,7 +28,11 @@ const UNDECIDED_PHRASES = [
   "not decided",
   "undecided",
   "has not been decided",
+  "not been settled",
+  "not settled",
   "still open",
+  "left open",
+  "remains open",
   "no final decision",
 ]
 
