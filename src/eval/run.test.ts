@@ -78,6 +78,7 @@ function makeQuestion(n: number, overrides: Partial<Question> = {}): Question {
     expected: { kind: "value", values: ["Denver"] },
     stale: ["Portland"],
     sources: [`Notes/source-${n}.md`],
+    sourceGroups: [[`Notes/source-${n}.md`]],
     entity: "customer-0001",
     refs: ["fact-0001"],
     ...overrides,
@@ -143,6 +144,13 @@ function scripted(questions: Question[], overrides: Map<string, Step>) {
   return fakes(steps)
 }
 
+const INDEX = {
+  vault: "/vaults/larkspur",
+  notes: 202,
+  chunks: 1534,
+  links: 611,
+}
+
 interface RunOptions {
   k?: number
   maxCostUsd?: number
@@ -166,6 +174,7 @@ function runWith(questions: Question[], options: RunOptions = {}) {
     models: { answerer: "claude-haiku-5-5", embedder: "mistral-embed" },
     thresholds: {},
     gitCommit: "abc1234",
+    index: INDEX,
   })
   return { fake, runsDir, result }
 }
@@ -229,11 +238,15 @@ describe("AC3 — run records", () => {
     expect(records[0]!.contextNotes).toEqual(["A.md", "C.md"])
   })
 
-  test("AC3 — recall is the share of the sources found among the context notes", async () => {
+  test("AC3 — recall is the share of the source groups with a note among the context notes", async () => {
+    const group = {
+      sources: ["A.md", "B.md"],
+      sourceGroups: [["A.md"], ["B.md"]],
+    }
     const questions = [
-      makeQuestion(1, { sources: ["A.md", "B.md"] }),
-      makeQuestion(2, { sources: ["A.md", "B.md"] }),
-      makeQuestion(3, { sources: ["A.md", "B.md"] }),
+      makeQuestion(1, group),
+      makeQuestion(2, group),
+      makeQuestion(3, group),
     ]
     const step = (notes: string[]): Step => ({
       notes,
@@ -248,12 +261,71 @@ describe("AC3 — run records", () => {
     expect(records.map((r) => r.recall)).toEqual([1, 0.5, 0])
   })
 
+  test("AC3 — a group counts once however many of its notes were retrieved", async () => {
+    const question = makeQuestion(1, {
+      sources: ["A.md", "B.md", "C.md"],
+      sourceGroups: [["A.md", "B.md"], ["C.md"]],
+    })
+    const overrides = new Map([
+      [
+        question.id,
+        { notes: ["A.md", "B.md"], output: answered("Denver") } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    expect(records[0]!.recall).toBe(0.5)
+  })
+
+  test("AC3 — one note of a group is enough to cover it", async () => {
+    const question = makeQuestion(1, {
+      sources: ["A.md", "B.md", "C.md"],
+      sourceGroups: [["A.md", "B.md"], ["C.md"]],
+    })
+    const overrides = new Map([
+      [
+        question.id,
+        { notes: ["B.md", "C.md"], output: answered("Denver") } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    expect(records[0]!.recall).toBe(1)
+  })
+
+  test("AC3 — regression, a multi_hop question with recall 0.5 whose answer is an abstention is a retrieval_miss", async () => {
+    const question = makeQuestion(1, {
+      category: "multi_hop",
+      sources: ["A.md", "B.md"],
+      sourceGroups: [["A.md"], ["B.md"]],
+    })
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: ["A.md"],
+          output: {
+            status: "abstained" as const,
+            value: "",
+            answer: "The excerpts do not say.",
+            citations: [],
+          },
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    expect(records[0]!.recall).toBe(0.5)
+    expect(records[0]!.grade).toEqual({
+      correct: false,
+      failure: "retrieval_miss",
+    })
+  })
+
   test("AC3 — recall is null for an abstain question", async () => {
     const question = makeQuestion(1, {
       category: "no_answer",
       expected: { kind: "abstain" },
       stale: [],
       sources: [],
+      sourceGroups: [],
     })
     const overrides = new Map([
       [
@@ -845,6 +917,16 @@ describe("AC6 — outputs", () => {
     expect(prices["claude-haiku-5-5"]).toBeDefined()
     expect(prices["claude-sonnet-5-5"]).toBeDefined()
     expect(prices["mistral-embed"]).toBeDefined()
+  })
+
+  test("AC6 — the settings line holds the index metadata: vault, notes, chunks and links", async () => {
+    const { result, runsDir } = runWith(questions, { overrides })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const header = JSON.parse(lines[0]!) as Record<string, unknown>
+    expect(header.index).toEqual(INDEX)
   })
 
   test("AC6 — trace.jsonl has one record line per question after the settings line", async () => {

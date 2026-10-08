@@ -253,6 +253,7 @@ describe("AC2 — schema", () => {
       question: "A question?",
       stale: [],
       sources: [],
+      sourceGroups: [],
       entity: "supplier-0001",
       refs: ["fact-0001"],
     }
@@ -280,6 +281,7 @@ describe("AC2 — schema", () => {
       expected: { kind: "value", values: ["Lyon"] },
       stale: [],
       sources: ["Suppliers/Acme.md"],
+      sourceGroups: [["Suppliers/Acme.md"]],
       entity: "supplier-0001",
       refs: ["fact-0001"],
     }
@@ -304,6 +306,36 @@ describe("AC2 — schema", () => {
     ).toBe(false)
     expect(
       QuestionSetSchema.safeParse(set({ entity: undefined })).success
+    ).toBe(false)
+  })
+
+  test("AC2 — the schema requires sourceGroups, a list of lists of note paths", () => {
+    const valid = {
+      id: "q-001",
+      split: "tuning",
+      category: "multi_hop",
+      question: "A question?",
+      expected: { kind: "value", values: ["Lyon"] },
+      stale: [],
+      sources: ["Suppliers/Acme.md", "People/Anya.md"],
+      sourceGroups: [["Suppliers/Acme.md"], ["People/Anya.md"]],
+      entity: "supplier-0001",
+      refs: ["fact-0001"],
+    }
+    const set = (patch: Record<string, unknown>) => ({
+      world: { seed: 1, scale: 1 },
+      questions: [{ ...valid, ...patch }],
+    })
+    expect(QuestionSetSchema.safeParse(set({})).success).toBe(true)
+    expect(
+      QuestionSetSchema.safeParse(set({ sourceGroups: undefined })).success
+    ).toBe(false)
+    expect(
+      QuestionSetSchema.safeParse(set({ sourceGroups: ["Suppliers/Acme.md"] }))
+        .success
+    ).toBe(false)
+    expect(
+      QuestionSetSchema.safeParse(set({ sourceGroups: [[1]] })).success
     ).toBe(false)
   })
 })
@@ -465,7 +497,7 @@ describe("AC5 — sources", () => {
     }
   })
 
-  test("AC5 — a conflict question's sources are the truth notes of its trap", () => {
+  test("AC5 — a conflict question's sources include the truth notes of its trap", () => {
     for (const q of ofCategory("contradiction")) {
       const traps = q.refs.filter((ref) => trapById.has(ref))
       expect(traps).toHaveLength(1)
@@ -473,7 +505,13 @@ describe("AC5 — sources", () => {
       const truth = trap.truthNotes.map(
         (id) => required(noteById.get(id), `note ${id}`).path
       )
-      expect([...q.sources].sort()).toEqual([...truth].sort())
+      for (const path of truth) {
+        expect({ id: q.id, path, listed: q.sources.includes(path) }).toEqual({
+          id: q.id,
+          path,
+          listed: true,
+        })
+      }
     }
   })
 
@@ -489,6 +527,124 @@ describe("AC5 — sources", () => {
         .map((id) => required(noteById.get(id), `note ${id}`).path)
       expect(paths.length).toBeGreaterThan(0)
       expect(q.sources).toEqual(paths)
+    }
+  })
+})
+
+/** The paths of the notes stating a fact. */
+function stating(factId: string): string[] {
+  return world.notes.filter((n) => n.states.includes(factId)).map((n) => n.path)
+}
+
+/** A group as a comparable value: its paths, sorted. */
+function key(group: string[]): string {
+  return JSON.stringify([...group].sort())
+}
+
+describe("AC5 — source groups", () => {
+  test("AC5 — sourceGroups is empty for an abstain question and holds non-empty groups of world note paths otherwise", () => {
+    for (const q of questionSet().questions) {
+      if (q.expected.kind === "abstain") {
+        expect({ id: q.id, groups: q.sourceGroups }).toEqual({
+          id: q.id,
+          groups: [],
+        })
+        continue
+      }
+      expect(q.sourceGroups.length).toBeGreaterThan(0)
+      for (const group of q.sourceGroups) {
+        expect(group.length).toBeGreaterThan(0)
+        for (const path of group) expect(notePaths.has(path)).toBe(true)
+      }
+    }
+  })
+
+  test("AC5 — sources is the union of the source groups", () => {
+    for (const q of questionSet().questions) {
+      const union = [...new Set(q.sourceGroups.flat())].sort()
+      expect({ id: q.id, sources: [...new Set(q.sources)].sort() }).toEqual({
+        id: q.id,
+        sources: union,
+      })
+    }
+  })
+
+  test("AC5 — a simple or temporal value question has one group with every note that states its fact", () => {
+    const questions = [...ofCategory("simple"), ...ofCategory("temporal")]
+    let checked = 0
+    for (const q of questions) {
+      if (q.expected.kind !== "value") continue
+      const expected = stating(answerFact(q).id)
+      expect(expected.length).toBeGreaterThan(0)
+      expect({ id: q.id, groups: q.sourceGroups.map(key) }).toEqual({
+        id: q.id,
+        groups: [key(expected)],
+      })
+      checked++
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  test("AC5 — an undecided question has one group with the truth notes of its trap", () => {
+    const questions = ofCategory("simple").filter(
+      (q) => q.expected.kind === "undecided"
+    )
+    expect(questions.length).toBeGreaterThan(0)
+    for (const q of questions) {
+      const trap = required(
+        trapById.get(q.refs.find((ref) => trapById.has(ref)) ?? ""),
+        "trap"
+      )
+      const truth = trap.truthNotes.map(
+        (id) => required(noteById.get(id), `note ${id}`).path
+      )
+      expect({ id: q.id, groups: q.sourceGroups.map(key) }).toEqual({
+        id: q.id,
+        groups: [key(truth)],
+      })
+    }
+  })
+
+  test("AC5 — a conflict question has two groups, the notes that state each of the two facts", () => {
+    const questions = ofCategory("contradiction")
+    expect(questions.length).toBeGreaterThan(0)
+    for (const q of questions) {
+      const trap = required(
+        trapById.get(q.refs.find((ref) => trapById.has(ref)) ?? ""),
+        "trap"
+      )
+      expect(trap.facts).toHaveLength(2)
+      const expected = trap.facts.map((id) => key(stating(id))).sort()
+      expect({ id: q.id, groups: q.sourceGroups.map(key).sort() }).toEqual({
+        id: q.id,
+        groups: expected,
+      })
+    }
+  })
+
+  test("AC5 — regression q-104: the account page that states one of the two contract values belongs to that value's group", () => {
+    const q = required(
+      ofCategory("contradiction").find((c) => c.refs.includes("trap-0003")),
+      "the Foxborough contract value question"
+    )
+    const account = "Customers/Foxborough Unified Schools.md"
+    const review =
+      "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md"
+    const billing = "Customers/Foxborough Unified Schools billing summary.md"
+    expect(q.sourceGroups.map(key).sort()).toEqual(
+      [key([account, review]), key([billing])].sort()
+    )
+    expect(q.sources).toContain(account)
+  })
+
+  test("AC5 — a multi_hop question has one group per source note, in order", () => {
+    const questions = ofCategory("multi_hop")
+    expect(questions.length).toBeGreaterThan(0)
+    for (const q of questions) {
+      expect({ id: q.id, groups: q.sourceGroups }).toEqual({
+        id: q.id,
+        groups: q.sources.map((source) => [source]),
+      })
     }
   })
 })

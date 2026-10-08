@@ -22,6 +22,7 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     expected: { kind: "value", values: ["Denver"] },
     stale: [],
     sources: [ANYA],
+    sourceGroups: [[ANYA]],
     entity: "customer-0001",
     refs: ["fact-0001"],
     ...overrides,
@@ -51,6 +52,7 @@ function conflictQuestion(overrides: Partial<Question> = {}): Question {
     question: "What is the annual contract value?",
     expected: { kind: "conflict", values: ["$143,000", "$177,000"] },
     sources: [ANYA, HANDOFF],
+    sourceGroups: [[ANYA], [HANDOFF]],
     ...overrides,
   })
 }
@@ -69,6 +71,7 @@ function abstainQuestion(overrides: Partial<Question> = {}): Question {
     question: "Which cyber insurance policy is required?",
     expected: { kind: "abstain" },
     sources: [],
+    sourceGroups: [],
     ...overrides,
   })
 }
@@ -295,6 +298,110 @@ describe("AC1 — stale values that are part of the expected value", () => {
   })
 })
 
+describe("AC1 — matching at word and number boundaries", () => {
+  test("AC1 — value: regression, $90 does not match $900", () => {
+    const result = grade(
+      valueQuestion(["$90"]),
+      output("answered", "The unit price is $900."),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+
+  test("AC1 — value: regression, $90 does not match $90,000", () => {
+    const result = grade(
+      valueQuestion(["$90"]),
+      output("answered", "The unit price is $90,000."),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+
+  test("AC1 — value: $90 still matches in a sentence and before punctuation", () => {
+    for (const value of ["$90", "It is $90.", "$90, per unit", "($90)"]) {
+      const result = grade(valueQuestion(["$90"]), output("answered", value), [
+        ANYA,
+      ])
+      expect({ value, result }).toEqual({
+        value,
+        result: { correct: true, failure: null },
+      })
+    }
+  })
+
+  test("AC1 — value: regression, 9 weeks does not match 19 weeks", () => {
+    const result = grade(
+      valueQuestion(["9 weeks"]),
+      output("answered", "Delivery takes 19 weeks."),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+
+  test("AC1 — value: 9 weeks still matches 9 weeks", () => {
+    const result = grade(
+      valueQuestion(["9 weeks"]),
+      output("answered", "Delivery takes 9 weeks."),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC1 — value: regression, Account Executive does not match Senior Account Executive", () => {
+    const result = grade(
+      valueQuestion(["Account Executive"]),
+      output("answered", "Senior Account Executive"),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+
+  test("AC1 — value: a word match is not fooled by a longer word ending the same way", () => {
+    const result = grade(
+      valueQuestion(["Denver"]),
+      output("answered", "The office is in Denvers."),
+      [ANYA]
+    )
+    expect(result.correct).toBe(false)
+  })
+
+  test("AC1 — value: a decimal is not split at its point", () => {
+    const result = grade(
+      valueQuestion(["3.5 mm"]),
+      output("answered", "The panel is 13.5 mm thick."),
+      [ANYA]
+    )
+    expect(result.correct).toBe(false)
+  })
+
+  test("AC1 — value: an ISO date does not match inside a longer one", () => {
+    const result = grade(
+      valueQuestion(["2026-03-02"]),
+      output("answered", "2026-03-021"),
+      [ANYA]
+    )
+    expect(result.correct).toBe(false)
+  })
+
+  test("AC1 — value: a stale value is matched at boundaries too, $90 inside $900 is not a wrong_version", () => {
+    const result = grade(
+      valueQuestion(["$1,200"], { stale: ["$90"] }),
+      output("answered", "$1,200 or $900"),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC1 — conflict: values are matched at boundaries, $143,000 does not match $1,143,000", () => {
+    const result = grade(
+      conflictQuestion(),
+      output("conflict", "$1,143,000 in one note and $177,000 in the other."),
+      [ANYA, HANDOFF]
+    )
+    expect(result.correct).toBe(false)
+  })
+})
+
 describe("AC1 — grading of conflict questions", () => {
   test("AC1 — conflict: correct when status is conflict and the answer contains both values", () => {
     const result = grade(
@@ -321,10 +428,41 @@ describe("AC1 — grading of conflict questions", () => {
     expect(result).toEqual({ correct: true, failure: null })
   })
 
-  test("AC1 — conflict: both values only in the value, not in the answer, is wrong", () => {
+  test("AC1 — conflict: both values only in the value, not in the answer, is correct", () => {
     const result = grade(
       conflictQuestion(),
       output("conflict", "$143,000 | $177,000", "The notes disagree."),
+      [ANYA, HANDOFF]
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC1 — conflict: one value in the value and the other in the answer is correct", () => {
+    const result = grade(
+      conflictQuestion(),
+      output("conflict", "$143,000", "The billing summary says $177,000."),
+      [ANYA, HANDOFF]
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC1 — conflict: regression, '91 | 96' in the value with '91 or 96 units' in the answer is correct", () => {
+    const result = grade(
+      conflictQuestion({
+        expected: { kind: "conflict", values: ["91", "96"] },
+      }),
+      output("conflict", "91 | 96", "The EVT build made 91 or 96 units."),
+      [ANYA, HANDOFF]
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC1 — conflict: a value that only appears inside a longer number does not count", () => {
+    const result = grade(
+      conflictQuestion({
+        expected: { kind: "conflict", values: ["91", "96"] },
+      }),
+      output("conflict", "910 | 96", "The EVT build made 910 or 96 units."),
       [ANYA, HANDOFF]
     )
     expect(result.correct).toBe(false)
@@ -481,9 +619,12 @@ describe("AC2 — failure taxonomy", () => {
     expect(result).toEqual({ correct: true, failure: null })
   })
 
-  test("AC2 — retrieval_miss: the question has sources and none is among the context notes", () => {
+  test("AC2 — retrieval_miss: a source group has no note among the context notes", () => {
     const result = grade(
-      valueQuestion(["Denver"], { sources: [ANYA, HANDOFF] }),
+      valueQuestion(["Denver"], {
+        sources: [ANYA, HANDOFF],
+        sourceGroups: [[ANYA], [HANDOFF]],
+      }),
       output("answered", "Austin."),
       ["Other/Unrelated.md"]
     )
@@ -499,13 +640,72 @@ describe("AC2 — failure taxonomy", () => {
     expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
   })
 
-  test("AC2 — retrieval_miss: one source among the context notes is not a miss", () => {
+  test("AC2 — retrieval_miss: any missing group is a miss, even when another group was retrieved", () => {
     const result = grade(
-      valueQuestion(["Denver"], { sources: [ANYA, HANDOFF] }),
+      valueQuestion(["Denver"], {
+        sources: [ANYA, HANDOFF],
+        sourceGroups: [[ANYA], [HANDOFF]],
+      }),
       output("answered", "Austin."),
       [HANDOFF]
     )
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
+  })
+
+  test("AC2 — retrieval_miss: regression, a multi_hop question with recall 0.5 that was abstained is a retrieval_miss, not a false_abstention", () => {
+    const result = grade(
+      valueQuestion(["Denver"], {
+        category: "multi_hop",
+        sources: [ANYA, HANDOFF],
+        sourceGroups: [[ANYA], [HANDOFF]],
+      }),
+      output("abstained", "The excerpts do not say."),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
+  })
+
+  test("AC2 — retrieval_miss: one note of each group is enough, so the question was not missed", () => {
+    const other = "Customers/Westgate Realty Partners.md"
+    const result = grade(
+      valueQuestion(["Denver"], {
+        sources: [ANYA, other, HANDOFF],
+        sourceGroups: [[ANYA, other], [HANDOFF]],
+      }),
+      output("answered", "Austin."),
+      [other, HANDOFF]
+    )
     expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+
+  test("AC2 — retrieval_miss: a group of several notes with none retrieved is a miss", () => {
+    const other = "Customers/Westgate Realty Partners.md"
+    const result = grade(
+      valueQuestion(["Denver"], {
+        sources: [ANYA, other, HANDOFF],
+        sourceGroups: [[ANYA, other], [HANDOFF]],
+      }),
+      output("answered", "Austin."),
+      [HANDOFF]
+    )
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
+  })
+
+  test("AC2 — retrieval_miss: regression q-104, a conflict question missing the billing summary group is a miss", () => {
+    const account = "Customers/Foxborough Unified Schools.md"
+    const review =
+      "Meetings/2026-04-15 Foxborough Unified Schools quarterly review.md"
+    const billing = "Customers/Foxborough Unified Schools billing summary.md"
+    const result = grade(
+      conflictQuestion({
+        id: "q-104",
+        sources: [account, review, billing],
+        sourceGroups: [[account, review], [billing]],
+      }),
+      output("answered", "The annual contract value is $143,000."),
+      [account]
+    )
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
   })
 
   test("AC2 — retrieval_miss comes before false_abstention", () => {
