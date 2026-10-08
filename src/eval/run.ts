@@ -8,8 +8,18 @@ import {
 } from "../../evals/schema.ts"
 import type { Answer, ContextChunk } from "../answer/answerer.ts"
 import type { ModelCall } from "../core/types.ts"
+import { RULES } from "../loop/policy.ts"
 import { FAILURES, grade, recallOf, type Failure, type Grade } from "./grade.ts"
 import { callCostUsd, PRICES } from "./prices.ts"
+
+/** What the retrieval loop of config B reports next to the context. */
+export interface LoopTrace {
+  /** The action of the last step. */
+  outcome: { type: string; rule: string }
+  hops: number
+  rewrites: number
+  steps: unknown[]
+}
 
 export interface RunRecord {
   id: string
@@ -23,6 +33,8 @@ export interface RunRecord {
   output: Answer | null
   /** The message of the error the answerer threw. */
   error?: string
+  /** The retrieval loop of config B; absent for config A. */
+  loop?: LoopTrace
   grade: Grade
   /** The retrieval calls, then the answer call when there is one. */
   calls: ModelCall[]
@@ -40,6 +52,12 @@ export interface Metrics {
   /** Input tokens of the answer call, i.e. the context size. */
   meanInputTokens: number | null
   failures: Record<Failure, number>
+  /** Means over the records with a loop; `null` when none has one. */
+  meanHops: number | null
+  meanRewrites: number | null
+  meanJudgeCalls: number | null
+  /** Count of each final policy rule, only the rules that occurred. */
+  finalRules: Record<string, number>
 }
 
 export interface Summary {
@@ -52,11 +70,17 @@ export interface EvalOptions {
   retrieve: (
     query: string,
     k: number
-  ) => Promise<{ context: ContextChunk[]; calls: ModelCall[] }>
+  ) => Promise<{
+    context: ContextChunk[]
+    calls: ModelCall[]
+    loop?: LoopTrace
+  }>
+  /** `call` is `null` when no model was called. */
   answer: (
     query: string,
-    context: ContextChunk[]
-  ) => Promise<{ output: Answer; call: ModelCall }>
+    context: ContextChunk[],
+    loop?: LoopTrace
+  ) => Promise<{ output: Answer; call: ModelCall | null }>
   k: number
   /** The run stops before a question once its cumulative cost has reached this. */
   maxCostUsd: number
@@ -64,6 +88,8 @@ export interface EvalOptions {
   config: string
   split: Split
   models: Record<string, string>
+  /** Config B: the policy, the rewriter and the number of candidates. */
+  loop?: Record<string, unknown>
   thresholds: Record<string, number>
   gitCommit: string
   index: IndexInfo
@@ -83,6 +109,7 @@ export interface RunSettings {
   split: Split
   k: number
   models: Record<string, string>
+  loop?: Record<string, unknown>
   prices: typeof PRICES
   thresholds: Record<string, number>
   gitCommit: string
@@ -140,24 +167,25 @@ async function evaluate(
   { retrieve, answer, k }: EvalOptions
 ): Promise<RunRecord> {
   const startedAt = performance.now()
-  const { context, calls: retrievalCalls } = await retrieve(
-    question.question,
-    k
-  )
-  const attempt = await attemptAnswer(answer, question.question, context)
+  const {
+    context,
+    calls: retrievalCalls,
+    loop,
+  } = await retrieve(question.question, k)
+  const attempt = await attemptAnswer(answer, question.question, context, loop)
   const latencyMs = performance.now() - startedAt
 
   const contextNotes = context.map((chunk) => chunk.notePath)
-  const calls =
-    attempt.call === undefined
-      ? retrievalCalls
-      : [...retrievalCalls, attempt.call]
+  const calls = attempt.call
+    ? [...retrievalCalls, attempt.call]
+    : retrievalCalls
   const record = {
     id: question.id,
     split: question.split,
     category: question.category,
     contextNotes,
     recall: recallOf(question, contextNotes),
+    ...(loop ? { loop } : {}),
     calls,
     latencyMs,
     costUsd: sum(calls.map(callCostUsd)),
@@ -178,17 +206,18 @@ async function evaluate(
 }
 
 type Attempt =
-  | { output: Answer; call: ModelCall }
+  | { output: Answer; call: ModelCall | null }
   | { output: null; error: string; call?: ModelCall }
 
 /** An error thrown after the API answered carries the `call` that was billed. */
 async function attemptAnswer(
   answer: EvalOptions["answer"],
   question: string,
-  context: ContextChunk[]
+  context: ContextChunk[],
+  loop: LoopTrace | undefined
 ): Promise<Attempt> {
   try {
-    return await answer(question, context)
+    return await answer(question, context, loop)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const { call } = error as { call?: ModelCall }
@@ -226,10 +255,41 @@ function metricsOf(records: RunRecord[]): Metrics {
     meanCostUsd: mean(records.map((record) => record.costUsd)),
     meanInputTokens: mean(
       records.flatMap((record) =>
-        record.output === null ? [] : [record.calls.at(-1)!.inputTokens]
+        hasAnswerCall(record) ? [record.calls.at(-1)!.inputTokens] : []
       )
     ),
     failures,
+    ...loopMetricsOf(records),
+  }
+}
+
+/** An abstaining loop gives its output without calling the answerer. */
+function hasAnswerCall(record: RunRecord): boolean {
+  return record.output !== null && record.loop?.outcome.type !== "abstain"
+}
+
+function loopMetricsOf(
+  records: RunRecord[]
+): Pick<
+  Metrics,
+  "meanHops" | "meanRewrites" | "meanJudgeCalls" | "finalRules"
+> {
+  const looped = records.flatMap((record) =>
+    record.loop ? [{ loop: record.loop, calls: record.calls }] : []
+  )
+  const finalRules: Record<string, number> = {}
+  for (const { loop } of looped) {
+    finalRules[loop.outcome.rule] = (finalRules[loop.outcome.rule] ?? 0) + 1
+  }
+  return {
+    meanHops: mean(looped.map(({ loop }) => loop.hops)),
+    meanRewrites: mean(looped.map(({ loop }) => loop.rewrites)),
+    meanJudgeCalls: mean(
+      looped.map(
+        ({ calls }) => calls.filter(({ role }) => role === "judge").length
+      )
+    ),
+    finalRules,
   }
 }
 
@@ -255,6 +315,7 @@ function settingsOf(options: EvalOptions): RunSettings {
     split: options.split,
     k: options.k,
     models: options.models,
+    ...(options.loop ? { loop: options.loop } : {}),
     prices: PRICES,
     thresholds: options.thresholds,
     gitCommit: options.gitCommit,
@@ -271,7 +332,9 @@ function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, "-")
 }
 
-const COLUMNS: Array<[string, (metrics: Metrics) => string]> = [
+type Column = [string, (metrics: Metrics) => string]
+
+const COLUMNS: Column[] = [
   ["n", (m) => String(m.n)],
   ["accuracy", (m) => percent(m.accuracy)],
   ["recall", (m) => percent(m.meanRecall)],
@@ -279,11 +342,24 @@ const COLUMNS: Array<[string, (metrics: Metrics) => string]> = [
   ["p95 (ms)", (m) => fixed(m.latencyP95Ms, 0)],
   ["cost/question (USD)", (m) => fixed(m.meanCostUsd, 5)],
   ["input tokens", (m) => fixed(m.meanInputTokens, 0)],
-  ...FAILURES.map((failure): [string, (metrics: Metrics) => string] => [
+  ...FAILURES.map((failure): Column => [
     failure,
     (m) => String(m.failures[failure]),
   ]),
 ]
+
+/** Added for a loop run: the loop means, then a count per final rule that occurred. */
+function loopColumns(summary: Summary): Column[] {
+  if (summary.overall.meanHops === null) return []
+  return [
+    ["hops", (m) => fixed(m.meanHops, 2)],
+    ["rewrites", (m) => fixed(m.meanRewrites, 2)],
+    ["judge calls", (m) => fixed(m.meanJudgeCalls, 2)],
+    ...RULES.filter((rule) => rule in summary.overall.finalRules).map(
+      (rule): Column => [rule, (m) => String(m.finalRules[rule] ?? 0)]
+    ),
+  ]
+}
 
 function percent(value: number | null): string {
   return value === null ? "-" : `${(value * 100).toFixed(1)}%`
@@ -303,8 +379,9 @@ export function renderReport(
   summary: Summary,
   costCap?: { maxCostUsd: number; skipped: number }
 ): string {
+  const columns = [...COLUMNS, ...loopColumns(summary)]
   const row = (label: string, metrics: Metrics) =>
-    `| ${[label, ...COLUMNS.map(([, format]) => format(metrics))].join(" | ")} |`
+    `| ${[label, ...columns.map(([, format]) => format(metrics))].join(" | ")} |`
   const lines = [
     `# Eval run: config ${settings.config}, ${settings.split} split`,
     "",
@@ -320,8 +397,8 @@ export function renderReport(
     "",
     "## Metrics",
     "",
-    `| category | ${COLUMNS.map(([name]) => name).join(" | ")} |`,
-    `| ${["---", ...COLUMNS.map(() => "---:")].join(" | ")} |`
+    `| category | ${columns.map(([name]) => name).join(" | ")} |`,
+    `| ${["---", ...columns.map(() => "---:")].join(" | ")} |`
   )
   for (const category of CATEGORIES) {
     const metrics = summary.byCategory[category]

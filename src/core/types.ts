@@ -4,6 +4,8 @@ export interface ModelCall {
   inputTokens: number
   outputTokens: number
   latencyMs: number
+  /** Set on the calls of the judge, which share their model with other roles. */
+  role?: "judge"
 }
 
 /** A markdown file of the vault. */

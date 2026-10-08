@@ -11,6 +11,7 @@ Commands:
   ask "<question>"           Ask a question about the vault
   eval --config <A|B|C>      Run the evals
     [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
+    [--rewrite llm|code] [--candidates <n>]    (config B)
 
 Options:
   -h, --help                 Show this help`
@@ -40,6 +41,8 @@ function run(argv: string[]): number | Promise<number> {
         k: { type: "string" },
         "max-cost": { type: "string" },
         "dry-run": { type: "boolean" },
+        rewrite: { type: "string" },
+        candidates: { type: "string" },
       },
       strict: true,
       allowPositionals: true,
@@ -77,6 +80,8 @@ function run(argv: string[]): number | Promise<number> {
         k: values.k,
         maxCost: values["max-cost"],
         dryRun: values["dry-run"],
+        rewrite: values.rewrite,
+        candidates: values.candidates,
       })
     }
     default:
