@@ -14,3 +14,7 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Run traces and reports (runs cited in REPORT.md get versioned explicitly)
+runs/*
+!runs/.gitkeep
