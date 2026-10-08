@@ -249,6 +249,52 @@ describe("AC1 — grading of value questions", () => {
   })
 })
 
+describe("AC1 — stale values that are part of the expected value", () => {
+  const titles = [
+    ["Senior Product Manager", "Product Manager"],
+    ["Mechanical Engineering Lead", "Mechanical Engineer"],
+    ["Senior Account Executive", "Account Executive"],
+  ] as const
+
+  for (const [expected, stale] of titles) {
+    test(`AC1 — value: regression, "${expected}" is correct although the stale "${stale}" is part of it`, () => {
+      const result = grade(
+        valueQuestion([expected], { stale: [stale] }),
+        output("answered", expected, `The title is ${expected}.`),
+        [ANYA]
+      )
+      expect(result).toEqual({ correct: true, failure: null })
+    })
+
+    test(`AC1 — value: "${stale}" alone is still wrong_version when "${expected}" is expected`, () => {
+      const result = grade(
+        valueQuestion([expected], { stale: [stale] }),
+        output("answered", stale, `The title is ${stale}.`),
+        [ANYA]
+      )
+      expect(result).toEqual({ correct: false, failure: "wrong_version" })
+    })
+
+    test(`AC1 — value: "${stale}" stated next to "${expected}" is still wrong_version`, () => {
+      const result = grade(
+        valueQuestion([expected], { stale: [stale] }),
+        output("answered", `${expected} | ${stale}`, "Two titles."),
+        [ANYA]
+      )
+      expect(result).toEqual({ correct: false, failure: "wrong_version" })
+    })
+  }
+
+  test("AC1 — value: the expected value in another case and spacing is not read as a stale value", () => {
+    const result = grade(
+      valueQuestion(["Senior Product Manager"], { stale: ["Product Manager"] }),
+      output("answered", "SENIOR   product\nmanager"),
+      [ANYA]
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+})
+
 describe("AC1 — grading of conflict questions", () => {
   test("AC1 — conflict: correct when status is conflict and the answer contains both values", () => {
     const result = grade(

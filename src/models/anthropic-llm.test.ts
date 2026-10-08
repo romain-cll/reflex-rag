@@ -15,7 +15,11 @@ interface RecordedParams {
     effort?: string
     format?: {
       type: string
-      schema: { properties?: Record<string, unknown> }
+      schema: {
+        properties?: Record<string, unknown>
+        required?: string[]
+        additionalProperties?: unknown
+      }
       parse?: (text: string) => unknown
     }
   }
@@ -281,6 +285,32 @@ describe("AnthropicLLM", () => {
       "city",
       "population",
     ])
+  })
+
+  test("AC1 — completeJson sends enums as enum, every property as required and additionalProperties false", async () => {
+    const StatusSchema = z.object({
+      status: z.enum(["answered", "conflict", "abstained"]),
+      value: z.string(),
+      citations: z.array(z.string()),
+    })
+    const { client, parsed } = setup({
+      parse: () =>
+        message({ parsed: { status: "answered", value: "x", citations: [] } }),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    await llm.completeJson({ prompt: "Hi", maxTokens: 50 }, StatusSchema)
+
+    const schema = (parsed[0] as RecordedParams).output_config?.format?.schema
+    expect(schema?.properties?.["status"]).toMatchObject({
+      enum: ["answered", "conflict", "abstained"],
+    })
+    expect([...(schema?.required ?? [])].sort()).toEqual([
+      "citations",
+      "status",
+      "value",
+    ])
+    expect(schema?.additionalProperties).toBe(false)
   })
 
   test("AC1 — completeJson uses the effort given in the options and sends no sampling parameters", async () => {
