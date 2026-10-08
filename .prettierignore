@@ -2,3 +2,6 @@
 corpus/*/vault/
 corpus/*/briefs/
 corpus/*/world.json
+
+# Generated question sets
+evals/*/questions.json
