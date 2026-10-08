@@ -17,5 +17,5 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true
   },
-  "include": ["src", "evals", "corpus"]
+  "include": ["src", "scripts", "evals", "corpus"]
 }

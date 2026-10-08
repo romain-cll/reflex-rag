@@ -26,7 +26,7 @@ function failWithUsage(message: string): number {
   return 1
 }
 
-function run(argv: string[]): number {
+function run(argv: string[]): number | Promise<number> {
   let parsed
   try {
     parsed = parseArgs({
@@ -71,4 +71,4 @@ function run(argv: string[]): number {
   }
 }
 
-process.exitCode = run(process.argv.slice(2))
+process.exitCode = await run(process.argv.slice(2))
