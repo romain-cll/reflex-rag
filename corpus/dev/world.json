@@ -1104,7 +1104,7 @@
       "subject": "supplier-0001",
       "attribute": "city",
       "value": "Hsinchu",
-      "statement": "Pacifica Plastics, a enclosure supplier, is based in Hsinchu.",
+      "statement": "Pacifica Plastics, an enclosure supplier, is based in Hsinchu.",
       "anchors": [
         "Hsinchu"
       ],
@@ -1130,7 +1130,7 @@
       "subject": "supplier-0002",
       "attribute": "city",
       "value": "Guadalajara",
-      "statement": "Juno Plastics, a enclosure supplier, is based in Guadalajara.",
+      "statement": "Juno Plastics, an enclosure supplier, is based in Guadalajara.",
       "anchors": [
         "Guadalajara"
       ],
@@ -1156,7 +1156,7 @@
       "subject": "supplier-0003",
       "attribute": "city",
       "value": "Suzhou",
-      "statement": "Cobalt Molding, a enclosure supplier, is based in Suzhou.",
+      "statement": "Cobalt Molding, an enclosure supplier, is based in Suzhou.",
       "anchors": [
         "Suzhou"
       ],

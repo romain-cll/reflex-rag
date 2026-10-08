@@ -125,7 +125,7 @@ Situation: Supplier page kept by procurement: who Pacifica Plastics is, where it
 
 Facts to state, keeping every anchor word for word:
 
-- Pacifica Plastics, a enclosure supplier, is based in Hsinchu. Anchors: "Hsinchu".
+- Pacifica Plastics, an enclosure supplier, is based in Hsinchu. Anchors: "Hsinchu".
 - Priya Gallagher is Larkspur's account contact at Pacifica Plastics. Anchors: "Priya Gallagher".
 
 ### `Suppliers/Juno Plastics.md`
@@ -147,7 +147,7 @@ Situation: Supplier page kept by procurement: who Juno Plastics is, where it is 
 
 Facts to state, keeping every anchor word for word:
 
-- Juno Plastics, a enclosure supplier, is based in Guadalajara. Anchors: "Guadalajara".
+- Juno Plastics, an enclosure supplier, is based in Guadalajara. Anchors: "Guadalajara".
 - Lucia Engel is Larkspur's account contact at Juno Plastics. Anchors: "Lucia Engel".
 
 ### `Suppliers/Ridgeline Packaging.md`
@@ -279,7 +279,7 @@ Situation: Supplier page kept by procurement: who Cobalt Molding is, where it is
 
 Facts to state, keeping every anchor word for word:
 
-- Cobalt Molding, a enclosure supplier, is based in Suzhou. Anchors: "Suzhou".
+- Cobalt Molding, an enclosure supplier, is based in Suzhou. Anchors: "Suzhou".
 - Andre Abara is Larkspur's account contact at Cobalt Molding. Anchors: "Andre Abara".
 
 ### `Suppliers/Trident Electronics.md`

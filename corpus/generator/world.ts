@@ -507,7 +507,7 @@ function buildSuppliers(
         subject: supplier.id,
         attribute: "city",
         value: city,
-        statement: `${name}, a ${category.label} supplier, is based in ${city}.`,
+        statement: `${name}, ${/^[aeiou]/i.test(category.label) ? "an" : "a"} ${category.label} supplier, is based in ${city}.`,
         anchors: [city],
         validFrom: date,
       })
