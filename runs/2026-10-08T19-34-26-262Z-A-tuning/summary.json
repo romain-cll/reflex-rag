@@ -2,14 +2,14 @@
   "overall": {
     "n": 60,
     "accuracy": 0.7,
-    "meanRecall": 0.7291666666666666,
+    "meanRecall": 0.7395833333333334,
     "latencyP50Ms": 2099.7649579999998,
     "latencyP95Ms": 4024.2814169999983,
     "meanCostUsd": 0.00025885833333333337,
     "meanInputTokens": 1682.5666666666666,
     "failures": {
-      "retrieval_miss": 8,
-      "false_abstention": 9,
+      "retrieval_miss": 17,
+      "false_abstention": 0,
       "wrong_version": 1,
       "missed_contradiction": 0,
       "unsupported_claim": 0,
@@ -45,8 +45,8 @@
       "meanCostUsd": 0.00026292,
       "meanInputTokens": 1669.8666666666666,
       "failures": {
-        "retrieval_miss": 5,
-        "false_abstention": 9,
+        "retrieval_miss": 14,
+        "false_abstention": 0,
         "wrong_version": 0,
         "missed_contradiction": 0,
         "unsupported_claim": 0,
@@ -75,7 +75,7 @@
     "contradiction": {
       "n": 9,
       "accuracy": 1,
-      "meanRecall": 0.9444444444444444,
+      "meanRecall": 1,
       "latencyP50Ms": 2538.149250000002,
       "latencyP95Ms": 2722.0429999999906,
       "meanCostUsd": 0.00029856666666666664,

@@ -2,18 +2,18 @@
   "overall": {
     "n": 60,
     "accuracy": 0.7166666666666667,
-    "meanRecall": 0.7708333333333334,
+    "meanRecall": 0.78125,
     "latencyP50Ms": 2077.0719580000004,
     "latencyP95Ms": 3469.444042000003,
     "meanCostUsd": 0.0002459916666666666,
     "meanInputTokens": 1655.65,
     "failures": {
-      "retrieval_miss": 5,
-      "false_abstention": 10,
+      "retrieval_miss": 16,
+      "false_abstention": 0,
       "wrong_version": 0,
       "missed_contradiction": 1,
       "unsupported_claim": 0,
-      "wrong_answer": 1,
+      "wrong_answer": 0,
       "answer_error": 0
     }
   },
@@ -45,12 +45,12 @@
       "meanCostUsd": 0.00027404666666666665,
       "meanInputTokens": 1656.3333333333333,
       "failures": {
-        "retrieval_miss": 3,
-        "false_abstention": 10,
+        "retrieval_miss": 14,
+        "false_abstention": 0,
         "wrong_version": 0,
         "missed_contradiction": 0,
         "unsupported_claim": 0,
-        "wrong_answer": 1,
+        "wrong_answer": 0,
         "answer_error": 0
       }
     },
@@ -75,7 +75,7 @@
     "contradiction": {
       "n": 9,
       "accuracy": 0.8888888888888888,
-      "meanRecall": 0.9444444444444444,
+      "meanRecall": 1,
       "latencyP50Ms": 2440.9600840000057,
       "latencyP95Ms": 2785.5368750000052,
       "meanCostUsd": 0.00028695555555555553,

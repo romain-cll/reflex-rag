@@ -1,26 +1,26 @@
 # Phase 2 — baseline, config A (simple RAG)
 
-Config A is a single retrieval pass: BM25 and `mistral-embed` candidates fused by reciprocal rank fusion, the top 8 chunks handed to a fixed answerer (Claude Haiku 5.5, effort `low`, structured output). No judge, no loop. Every figure below comes from the two traced runs versioned with this note.
+Config A is a single retrieval pass: BM25 and `mistral-embed` candidates fused by reciprocal rank fusion, the top 8 chunks handed to a fixed answerer (Claude Haiku 5.5, effort `low`, structured output). No judge, no loop. Every figure below comes from the two traced runs versioned with this note, unless another source is named.
 
 ## Setup
 
-- Corpus: dev vault, 202 notes of the fictional company Larkspur Devices (`corpus/dev/`, generator revision 2, seed 42, scale 1), index of 766 chunks and 253 links.
-- Questions: `evals/dev/questions.json`, derived from the truth file; two disjoint splits of 60 (12 simple, 15 multi-hop, 12 temporal, 9 contradiction, 12 no-answer each).
-- Grading: deterministic, against the expected values of the truth file (see `docs/features/eval-run.md`).
-- Code at commit `6de2b91`; runs: `runs/2026-10-08T19-34-26-262Z-A-tuning/` and `runs/2026-10-08T19-36-50-711Z-A-test/`, run one after the other.
+- Corpus: dev vault, 202 notes of the fictional company Larkspur Devices (`corpus/dev/`, generator revision 2, seed 42, scale 1); `reflex index` built 766 chunks and 253 links from it.
+- Questions: `evals/dev/questions.json`, derived from the truth file; two disjoint splits of 60 (12 simple, 15 multi-hop, 12 temporal, 9 contradiction, 12 no-answer each). Each question lists the groups of notes its answer needs: every group is needed, one note of a group is enough.
+- Grading: deterministic, against the expected values of the truth file (see `docs/features/eval-run.md`). The runs were answered at commit `6de2b91` and regraded offline with `scripts/regrade-run.ts` after the grader review (source groups, matching at word and number boundaries); the answers and costs are those recorded.
+- Runs: `runs/2026-10-08T19-34-26-262Z-A-tuning/` and `runs/2026-10-08T19-36-50-711Z-A-test/`, run one after the other.
 
 ## Results
 
-Accuracy as correct / questions, recall as the mean share of the expected source notes found in the context.
+Accuracy as correct / questions; recall as the mean share of the needed source groups found in the context.
 
 | Category      |      Tuning |        Test | Recall (tuning / test) |
 | ------------- | ----------: | ----------: | ---------------------: |
 | Simple        |     12 / 12 |     12 / 12 |        100.0% / 100.0% |
 | Multi-hop     |      1 / 15 |      1 / 15 |          36.7% / 43.3% |
 | Temporal      |      8 / 12 |     10 / 12 |          75.0% / 83.3% |
-| Contradiction |       9 / 9 |       8 / 9 |          94.4% / 94.4% |
+| Contradiction |       9 / 9 |       8 / 9 |        100.0% / 100.0% |
 | No answer     |     12 / 12 |     12 / 12 |                    n/a |
-| **Overall**   | **42 / 60** | **43 / 60** |          72.9% / 77.1% |
+| **Overall**   | **42 / 60** | **43 / 60** |          74.0% / 78.1% |
 
 | Run    | Latency p50 | Latency p95 | Cost per question | Answerer input tokens |
 | ------ | ----------: | ----------: | ----------------: | --------------------: |
@@ -31,27 +31,25 @@ The two runs cost $0.0303 in total.
 
 ## Failures
 
-| Failure                             | Tuning | Test |
-| ----------------------------------- | -----: | ---: |
-| `retrieval_miss`                    |      8 |    5 |
-| `false_abstention`                  |      9 |   10 |
-| `wrong_version`                     |      1 |    0 |
-| `missed_contradiction`              |      0 |    1 |
-| `wrong_answer`                      |      0 |    1 |
-| `unsupported_claim`, `answer_error` |      0 |    0 |
+| Failure                                                                 | Tuning | Test |
+| ----------------------------------------------------------------------- | -----: | ---: |
+| `retrieval_miss`                                                        |     17 |   16 |
+| `wrong_version`                                                         |      1 |    0 |
+| `missed_contradiction`                                                  |      0 |    1 |
+| `false_abstention`, `unsupported_claim`, `wrong_answer`, `answer_error` |      0 |    0 |
 
-Two failure modes account for 33 of the 35 wrong answers.
+All 33 retrieval misses come from two modes; the other 2 failures are discussed after them.
 
-**1. Multi-hop: the first hop is retrieved, the linked note is not (28 of 30 multi-hop questions).** In 20 of them the context holds the note that names the entity (the tooling sign-off, the account handoff, the pilot kickoff) but not the note that holds the answer (the supplier, person or customer page it links to); the answerer then abstains in 19, correctly, which the taxonomy counts as `false_abstention`. In the other 8 even the first hop is missing. Example, test `q-074`, "Who is the main contact at the customer running the Granite pilot?": the context has `Meetings/2026-05-31 Granite pilot kickoff.md`, which names Redwood Hills Realty Partners, but not `Customers/Redwood Hills Realty Partners.md`, which names the contact; answer: "The excerpts name the customer for the Granite pilot as Redwood Hills Realty Partners, but do not name its main contact person."
+**1. The answer sits one link away from a retrieved note (17 multi-hop questions).** The context holds the note that names the entity (the account handoff, the pilot kickoff, the schedule review) but not the page it links to, which holds the answer (the person, customer or lab page). The answerer then abstains, correctly. Example, test `q-074`, "Who is the main contact at the customer running the Granite pilot?": the context has `Meetings/2026-05-31 Granite pilot kickoff.md`, which names Redwood Hills Realty Partners, but not `Customers/Redwood Hills Realty Partners.md`, which names the contact; answer: "The excerpts name the customer for the Granite pilot as Redwood Hills Realty Partners, but do not name its main contact person."
 
-**2. Vocabulary shift: the decision is never retrieved (5 of 5 enclosure-vendor questions).** "Which quote was selected for the … enclosure?" retrieves both supplier quotes, the enclosure review that leaned toward the cheaper vendor and the project page that was never updated; it never retrieves the tooling sign-off, which records the final vendor without using the word "quote". Example, test `q-098` (Granite): the answer is the outdated vendor, Wexford Molding, instead of Lattice Molding; graded `retrieval_miss` because the source note is absent. The requirements document, which A sometimes retrieves, links to that sign-off.
+**2. The decision is worded without the question's vocabulary (16 questions: 11 multi-hop, 5 temporal).** The tooling sign-off that records the final enclosure vendor never uses the word "quote", and none of these 16 contexts contains it. It fails the 5 "Which quote was selected for the … enclosure?" questions, where the context holds both supplier quotes, the enclosure review that leaned toward the cheaper vendor and the project page that was never updated; and the 11 supplier chains ("Who is Larkspur's contact at the supplier building the … enclosure?", "In which city is the supplier of the … EVT enclosures based?"), which go through that sign-off. Example, test `q-098` (Granite): the answer is the outdated vendor, Wexford Molding, instead of Lattice Molding. The requirements document, which links to the sign-off, is in 7 of these 16 contexts.
 
-**3. A contradiction resolved by authority (1 case).** Test `q-100`, "How many units did the Granite EVT build produce?": the EVT review says 89 units, a personal journal 94. The answerer gives 89 and mentions 94 as "her own tally, not the official record". The truth file treats the two as a contradiction to report, so it is graded `missed_contradiction`; the answer's reasoning is defensible.
+**Other failures.** Tuning `q-032`, "Who owns the Northgate Realty Partners account?": the context holds the account page (former owner) and the handoff meeting (new owner); the answerer returns both names as a conflict instead of reading the handoff as superseding the page, so the value holds the stale owner (`wrong_version`). Test `q-100`, "How many units did the Granite EVT build produce?": the EVT review says 89 units, a personal journal 94; the answerer gives 89 and mentions 94 as "her own tally, not the official record". The truth file treats the two as a contradiction to report (`missed_contradiction`); the answer's reasoning is defensible.
 
 ## What this baseline says
 
-- A simple retrieval pass answers single-note questions, reports absences and flags contradictions when both sources are retrieved: Haiku 5.5 never invented an answer (no `unsupported_claim`).
-- It fails where the answer sits one link away (multi-hop) or behind a change of vocabulary (the quote / sign-off trap). Both are cases where following a labelled link from a retrieved note would reach the answer: the target of configs B and C.
+- A single retrieval pass answers single-note questions, reports absences and flags contradictions when both sources are retrieved: the answerer never invented an answer (no `unsupported_claim`, no `false_abstention`).
+- In the 17 questions of the first mode, a retrieved note links to the missing one; in the second, the missing sign-off is linked from the requirements document, retrieved in 7 of the 16 cases, and a search that does not rely on the word "quote" could find it. Following labelled links and searching again are what configs B and C add.
 
 ## Limits
 
