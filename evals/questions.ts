@@ -75,6 +75,18 @@ function paths(ix: Index, ids: string[]): string[] {
   return ids.map((id) => lookup(ix.notes, id).path)
 }
 
+/** The paths of the notes stating a fact. */
+function stating(ix: Index, factId: string): string[] {
+  return (ix.statedBy.get(factId) ?? []).map((note) => note.path)
+}
+
+/** The source fields of a question: its groups and, as `sources`, their union. */
+function sourcesOf(
+  groups: string[][]
+): Pick<Question, "sources" | "sourceGroups"> {
+  return { sources: [...new Set(groups.flat())], sourceGroups: groups }
+}
+
 /** The names the subject of a fact stands for, to fill a template. */
 function subjectVars(world: World, subject: string): Vars {
   const project = world.projects.find((p) => p.id === subject)
@@ -157,7 +169,7 @@ function simpleQuestions(ix: Index): Candidate[] {
         question: fill(template, factVars(ix.world, fact)),
         expected: { kind: "value", values: answerForms(fact) },
         stale: [],
-        sources: notes.map((note) => note.path),
+        ...sourcesOf([notes.map((note) => note.path)]),
         entity: fact.subject,
         refs: [fact.id],
       },
@@ -177,7 +189,7 @@ function simpleQuestions(ix: Index): Candidate[] {
         ),
         expected: { kind: "undecided" },
         stale: [],
-        sources: paths(ix, trap.truthNotes),
+        ...sourcesOf([paths(ix, trap.truthNotes)]),
         entity: entityOf(fact.subject, answer(fact)),
         refs: [trap.id],
       }
@@ -272,7 +284,7 @@ function multiHopQuestions(ix: Index): Candidate[] {
         },
         stale: outdatedAnswer(ix, chain),
         // The entry note is one way in, not a note the answer needs.
-        sources: paths(ix, chain.notes.slice(1)),
+        ...sourcesOf(chain.notes.slice(1).map((id) => paths(ix, [id]))),
         entity,
         refs: [chain.id],
       },
@@ -293,7 +305,7 @@ function temporalQuestions(ix: Index): Candidate[] {
         question: fill(template, factVars(ix.world, latest)),
         expected: { kind: "value", values: answerForms(latest) },
         stale: older.flatMap((fact) => fact.anchors),
-        sources: (ix.statedBy.get(latest.id) ?? []).map((note) => note.path),
+        ...sourcesOf([stating(ix, latest.id)]),
         entity: latest.subject,
         refs: [latest.id],
       },
@@ -315,7 +327,9 @@ function contradictionQuestions(ix: Index): Candidate[] {
         question: fill(template, factVars(ix.world, one)),
         expected: { kind: "conflict", values: [answer(one), answer(other)] },
         stale: [],
-        sources: paths(ix, trap.truthNotes),
+        // Each side of the conflict needs a note stating it: the account page
+        // that states one of the two values is a source of that value.
+        ...sourcesOf([stating(ix, one.id), stating(ix, other.id)]),
         entity: one.subject,
         refs: [trap.id],
       },
@@ -333,7 +347,7 @@ function noAnswerQuestions(ix: Index): Candidate[] {
         question: fill(found[1], subjectVars(ix.world, absent.subject)),
         expected: { kind: "abstain" },
         stale: [],
-        sources: [],
+        ...sourcesOf([]),
         entity: entityOf(absent.subject, found[0]),
         refs: [absent.id],
       },

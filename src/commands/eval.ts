@@ -109,6 +109,7 @@ async function runConfigA(settings: EvalSettings): Promise<number> {
     if (settings.dryRun) return await dryRun(questions, retrieve, settings)
 
     const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
+    const { vaultPath, notes, chunks, links } = index.meta()
     const result = await runEval({
       questions,
       retrieve,
@@ -121,6 +122,7 @@ async function runConfigA(settings: EvalSettings): Promise<number> {
       models: { answerer: llm.model, embedder: embedder.model },
       thresholds: {},
       gitCommit: gitCommit(),
+      index: { vault: vaultPath, notes, chunks, links },
     })
     const { overall } = result.summary
     console.log(

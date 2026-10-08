@@ -8,7 +8,7 @@ import {
 } from "../../evals/schema.ts"
 import type { Answer, ContextChunk } from "../answer/answerer.ts"
 import type { ModelCall } from "../core/types.ts"
-import { FAILURES, grade, type Failure, type Grade } from "./grade.ts"
+import { FAILURES, grade, recallOf, type Failure, type Grade } from "./grade.ts"
 import { callCostUsd, PRICES } from "./prices.ts"
 
 export interface RunRecord {
@@ -17,7 +17,7 @@ export interface RunRecord {
   category: Category
   /** Note paths of the retrieved context, in rank order. */
   contextNotes: string[]
-  /** Share of the question's sources among the context notes; `null` when it has none. */
+  /** Share of the question's source groups with a note in the context; `null` when it has none. */
   recall: number | null
   /** `null` when the answerer threw. */
   output: Answer | null
@@ -66,6 +66,27 @@ export interface EvalOptions {
   models: Record<string, string>
   thresholds: Record<string, number>
   gitCommit: string
+  index: IndexInfo
+}
+
+/** What the run was made on, from the index metadata. */
+export interface IndexInfo {
+  vault: string
+  notes: number
+  chunks: number
+  links: number
+}
+
+/** The first line of the trace. */
+export interface RunSettings {
+  config: string
+  split: Split
+  k: number
+  models: Record<string, string>
+  prices: typeof PRICES
+  thresholds: Record<string, number>
+  gitCommit: string
+  index: IndexInfo
 }
 
 export interface EvalResult {
@@ -106,7 +127,10 @@ export async function runEval(options: EvalOptions): Promise<EvalResult> {
   const skipped = questions.length - records.length
   await writeFile(
     join(runDir, "report.md"),
-    renderReport(options, records, summary, skipped)
+    renderReport(settingsOf(options), records, summary, {
+      maxCostUsd: options.maxCostUsd,
+      skipped,
+    })
   )
   return { records, summary, skipped, runDir }
 }
@@ -133,7 +157,7 @@ async function evaluate(
     split: question.split,
     category: question.category,
     contextNotes,
-    recall: recallOf(question.sources, contextNotes),
+    recall: recallOf(question, contextNotes),
     calls,
     latencyMs,
     costUsd: sum(calls.map(callCostUsd)),
@@ -170,12 +194,6 @@ async function attemptAnswer(
     const { call } = error as { call?: ModelCall }
     return { output: null, error: message, call }
   }
-}
-
-function recallOf(sources: string[], contextNotes: string[]): number | null {
-  if (sources.length === 0) return null
-  const found = sources.filter((source) => contextNotes.includes(source))
-  return found.length / sources.length
 }
 
 export function summarize(records: RunRecord[]): Summary {
@@ -231,7 +249,7 @@ function percentile(values: number[], p: number): number | null {
 }
 
 /** The run settings, first line of the trace. */
-function settingsOf(options: EvalOptions) {
+function settingsOf(options: EvalOptions): RunSettings {
   return {
     config: options.config,
     split: options.split,
@@ -240,10 +258,11 @@ function settingsOf(options: EvalOptions) {
     prices: PRICES,
     thresholds: options.thresholds,
     gitCommit: options.gitCommit,
+    index: options.index,
   }
 }
 
-function jsonLine(value: unknown): string {
+export function jsonLine(value: unknown): string {
   return JSON.stringify(value) + "\n"
 }
 
@@ -274,23 +293,27 @@ function fixed(value: number | null, digits: number): string {
   return value === null ? "-" : value.toFixed(digits)
 }
 
-function renderReport(
-  options: EvalOptions,
+/**
+ * `costCap` is given when the run was stopped by its cost cap, which only the
+ * run itself knows.
+ */
+export function renderReport(
+  settings: Pick<RunSettings, "config" | "split" | "k" | "gitCommit">,
   records: RunRecord[],
   summary: Summary,
-  skipped: number
+  costCap?: { maxCostUsd: number; skipped: number }
 ): string {
   const row = (label: string, metrics: Metrics) =>
     `| ${[label, ...COLUMNS.map(([, format]) => format(metrics))].join(" | ")} |`
   const lines = [
-    `# Eval run: config ${options.config}, ${options.split} split`,
+    `# Eval run: config ${settings.config}, ${settings.split} split`,
     "",
-    `k = ${options.k}, commit ${options.gitCommit}`,
+    `k = ${settings.k}, commit ${settings.gitCommit}`,
   ]
-  if (skipped > 0) {
+  if (costCap && costCap.skipped > 0) {
     lines.push(
       "",
-      `Stopped by the cost cap (${options.maxCostUsd} USD): ${skipped} question(s) skipped.`
+      `Stopped by the cost cap (${costCap.maxCostUsd} USD): ${costCap.skipped} question(s) skipped.`
     )
   }
   lines.push(

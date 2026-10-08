@@ -27,6 +27,7 @@ export const QuestionSchema = z.object({
   expected: ExpectedSchema,
   stale: z.array(text),
   sources: z.array(text),
+  sourceGroups: z.array(z.array(text)),
   entity: text,
   refs: z.array(text).min(1),
 })
