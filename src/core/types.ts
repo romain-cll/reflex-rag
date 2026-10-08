@@ -6,10 +6,22 @@ export interface ModelCall {
   latencyMs: number
 }
 
+/** A markdown file of the vault. */
+export interface Note {
+  /** Relative to the vault root, with `/` separators. */
+  path: string
+  title: string
+  date: string | null
+  summary: string
+  frontmatter: Record<string, unknown>
+}
+
 /** A section of a note: the unit the index retrieves and the judge scores. */
 export interface Chunk {
   id: string
   notePath: string
+  /** Path of headings leading to the section, joined with ` > `. */
+  heading: string
   text: string
 }
 
@@ -19,5 +31,12 @@ export interface Link {
   sourcePath: string
   targetPath: string
   /** The sentence around the link in the source note. */
+  label: string
+}
+
+/** A wikilink whose target matches no note of the vault. */
+export interface UnresolvedLink {
+  sourcePath: string
+  target: string
   label: string
 }
