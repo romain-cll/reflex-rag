@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test"
 import type { z } from "zod"
 import type { LLM, LLMRequest, LLMResponse } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
-import { AnswerSchema, answerQuestion, type ContextChunk } from "./answerer.ts"
+import {
+  AnswerSchema,
+  answerQuestion,
+  type Answer,
+  type ContextChunk,
+} from "./answerer.ts"
 
 const CALL: ModelCall = {
   model: "fake-llm",
@@ -143,12 +148,12 @@ describe("answerQuestion", () => {
   })
 
   test("AC3 — keeps the conflict and abstained statuses", async () => {
-    const conflict = {
+    const conflict: Answer = {
       status: "conflict",
       answer: "The notes disagree: June (atlas.md), July (roadmap.md).",
       citations: ["projects/atlas.md"],
     }
-    const abstained = {
+    const abstained: Answer = {
       status: "abstained",
       answer: "The excerpts do not say.",
       citations: [],
