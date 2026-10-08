@@ -51,8 +51,19 @@ The review of the first version found traps that do not test what they claim (ch
 - **AC21 — vocabulary trap**: the forbidden terms of a sign-off include `quote`, `quotes`, `quoted`, `quoting`, `quotation`, `quotations`, `bid`, `bids`, `bidding`, `bidder`, `bidders`.
 - **AC22 — complete decoys**: every note stating a superseded enclosure-vendor fact is a truth or decoy note of that project's `revised_decision` trap on the vendor.
 - **AC23 — scale**: generation succeeds at every scale from 1 to 10, with unique project codenames and at most one price decision per product line.
+- **AC24 — quarterly reviews by customer success**: every quarterly review is written by someone whose role at the review date is on the Customer Success team, and who is not an account owner of that customer.
+- **AC9 (extended again)**: the two values of a `divergent_duplicate` trap differ at every scale from 1 to 10.
 
 A fact `subject` is an entity id, or `company` / `line:<product line>` for company-wide facts.
+
+### Known limits
+
+Accepted for the dev corpus (scale 1), to be fixed before generating the full corpus (scales 5 to 10):
+
+- value pools are small enough that facts of different entities share values at high scales (DVT findings from scale 3, battery values from scale 5, EVT counts around scale 8), and at every scale for attributes AC15 does not cover (contract values, unit counts, lead times, cost targets): a note of the wrong entity can then give the right answer and hide a retrieval miss;
+- launch dates are drawn after `today` regardless of the project start, so slips are decided long before the launch;
+- the second note of a chain is often reachable from the question itself (its title names the project or customer), so most chains take one link rather than two;
+- the quarterly review gives the contract value "as recorded on the account" while the billing summary carries an `updated` date: a system may read the pair as a dated update rather than a contradiction.
 
 ## Technical plan
 
