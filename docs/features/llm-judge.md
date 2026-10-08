@@ -10,6 +10,13 @@ Phase 3. The judge of config B: Claude Haiku 5.5 answers the closed questions of
 - **AC4 — prompts**: both prompts are fixed system prompts that define each probability, ask for calibrated estimates rather than certainties, and tell the model to use only the given text. The `missing` values are explained: `detail_in_linked_note` (the answer is likely in a note one link away), `newer_version` (the context may be outdated: a later note may change it), `topic_not_found` (nothing on the topic was found), `unidentified`.
 - **AC5 — budget**: each call sets `maxTokens` from the number of items it scores, and the judge passes the `LLM`'s errors through unchanged (they carry the billed call).
 
+## Revision 2 — short aliases
+
+The review of the first version measured 1,600 output tokens and 6 s per relevance call on 50 candidates, most of it spent copying long chunk ids; a system-one judge pays no such cost, so the B vs C comparison would be biased. This revision supersedes AC2, AC3 and AC5 where they differ.
+
+- **AC6 — aliases**: in the prompt, chunks are numbered `c1`, `c2`… and links `l1`, `l2`… in input order; the note path appears once per chunk, next to its alias. The model answers with the aliases; the judge maps them back to the real chunk and link ids (an unknown alias is ignored, a missing one gets 0).
+- **AC7 — budget**: `maxTokens` is a fixed base plus 16 tokens per scored item (an entry `{ "id": "c12", "probability": 0.85 }` takes about a dozen tokens).
+
 ## Technical plan
 
 Files:

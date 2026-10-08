@@ -12,7 +12,7 @@ Phase 3. The deterministic rules that turn the judge's probabilities into the ne
 - **AC4 — `rewrite-nothing-relevant`**: when no relevant chunk has been kept and rewrites remain, search again.
 - **AC5 — `abstain-nothing-relevant`**: when no relevant chunk has been kept and no rewrite remains, abstain.
 - **AC6 — `answer-best-effort`**: otherwise (no promising link or hops used up, no search to try, some relevant chunks), answer with what was found.
-- **AC7 — configuration**: `DEFAULT_POLICY` holds the thresholds (relevance 0.5, sufficiency 0.7, link 0.5) and budgets (3 hops, 1 rewrite, 12 context chunks). The relevance threshold and the chunk budget are used by the loop, not by `decide`; they live in the same configuration so that a run traces one object.
+- **AC7 — configuration**: `DEFAULT_POLICY` holds the thresholds (relevance 0.5, sufficiency 0.7, link 0.5) and budgets (3 hops, 1 rewrite, 8 context chunks — the same context budget as config A's `k`, so that A and B hand the answerer the same amount of text at most). The relevance threshold and the chunk budget are used by the loop, not by `decide`; they live in the same configuration so that a run traces one object.
 - **AC8 — purity**: `decide` reads only its arguments, changes neither of them, and returns the same action for the same inputs.
 
 ## Technical plan

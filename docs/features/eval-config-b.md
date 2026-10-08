@@ -12,6 +12,11 @@ Phase 3. `reflex eval --config B` runs the questions through the retrieval loop 
 - **AC6 — comparison**: `bun scripts/compare-runs.ts <runDir>...` reads each run's settings and `summary.json` and prints one markdown table: a row per category and one overall, a group of columns per run (labelled with its config and split): accuracy as `correct/n`, recall, latency p50 and p95, cost per question, and mean hops for loop configs.
 - **AC7 — CLI**: `--rewrite` accepts `llm` or `code` and is rejected for config A; `--candidates` takes a positive integer. Config C still answers "not implemented". The existing config A behaviour is unchanged.
 
+## Revision 2 — after the phase-3 review
+
+- **AC8 — same context budget**: `--k` sets the context budget of both configs: the top `k` chunks for A, the policy's chunk budget for B (default 8 for both); `--candidates` sets the loop's candidate pool. The report header shows both values.
+- **AC9 — tested wiring**: `abstentionOutput(rule)` and the dry-run bound (`upperBoundCalls`) are exported pure functions with unit tests; the bound counts, per possible turn, a relevance call on the candidates, an assessment with the visible links of the turn sized from the index, a rewriter call per possible rewrite, and the answerer call.
+
 ## Technical plan
 
 Files:

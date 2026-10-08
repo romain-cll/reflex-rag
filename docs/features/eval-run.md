@@ -19,6 +19,17 @@ Phase 2. `reflex eval --config A` runs a question split through retrieval and th
 
 - **AC8 — offline regrading**: `bun scripts/regrade-run.ts <runDir> [--questions <path>]` regrades a run from its `trace.jsonl` and the question set (default `evals/dev/questions.json`) with the current grader, without any model call: it rewrites each record's `recall` and `grade`, adds the regrading commit and date to the settings line, and rewrites `summary.json` and `report.md`. Outputs and costs are kept as recorded.
 
+## Revision 3 — failures attributed to a layer
+
+The phase-3 review showed that `retrieval_miss` named the wrong lever for loop configs (a source seen by the judge and rejected is not an index problem), and the project must show which layer failed: the retrieval brick or the answerer. This revision supersedes AC2 and extends AC3, AC5 and AC8.
+
+- **AC9 — context completeness**: a record of a question with sources gets `contextComplete: true` when every source group has a note in the final context, `false` otherwise (`null` for abstain questions).
+- **AC10 — failure taxonomy by layer**: a wrong answer gets exactly one failure. When the context is incomplete, the failure belongs to the **retrieval** family: `loop_error` (the loop itself failed), `judge_rejected` (a missing needed note had a chunk scored by the judge in some step of the loop, but it is not in the final context), `stopped_too_early` (the loop ended on the rule `sufficient` while a needed note was missing and never scored), else `retrieval_miss` (the needed note was never retrieved nor reached). When the context is complete, or the question has no source, the failure belongs to the **answer** family: `answer_error`, `false_abstention`, `wrong_version`, `missed_contradiction`, `unsupported_claim`, else `wrong_answer` (first that applies, as before). Config A records have no loop, so their retrieval failures are all `retrieval_miss`.
+- **AC11 — levers**: `FAILURES` maps each failure to its family and to the lever it points to (index and rewrites; relevance threshold or judge; sufficiency threshold; the loop's error handling; the answerer's prompt; the answerer's abstention rule; supersession handling; contradiction handling).
+- **AC12 — metrics**: per category and overall, add the context-complete rate (over questions with sources), the number of failures of each family, the mean number of chunks in the final context, and the number of abstentions made by the loop and by the answerer.
+- **AC13 — loop errors**: when `retrieve` throws an error carrying calls and steps (`LoopError`), the record keeps them, its cost counts them, its failure is `loop_error`, and the run goes on.
+- **AC14 — regrading**: `scripts/regrade-run.ts` recomputes all of the above from the trace.
+
 ## Technical plan
 
 Files:

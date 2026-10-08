@@ -16,6 +16,12 @@ Phase 3. The agentic retrieval of configs B and C: start from the hybrid search,
 - **AC8 — termination**: the loop always ends: the policy's budgets bound hops and rewrites, and the loop stops with `answer-best-effort` semantics if it ever reaches more assessments than hops plus rewrites plus one.
 - **AC9 — rewriters**: `CodeRewriter` builds a query from the question plus up to 6 terms taken from the kept chunks (capitalized words and phrases absent from the question, by frequency), with no model call; `LLMRewriter` asks the `LLM` for one reformulated query given the question, the kept chunks' headings and the judge's `missing` choice, and returns its call.
 
+## Revision 2 — after the phase-3 review
+
+- **AC10 — failures keep their cost**: when the judge or the rewriter throws, `runLoop` throws a `LoopError` carrying the original error's message, every call made so far (including the billed call the original error carries, if any) and the steps completed so far.
+- **AC11 — no assessment of an empty context**: when no chunk is kept, the loop does not call `judge.assess`; the step records the assessment `{ sufficient: 0, missing: topic_not_found with probability 1, links: {} }` with `skipped: true`, and the policy then searches again or abstains as before. (This supersedes the "one assessment per turn" reading of AC2 for empty contexts.)
+- **AC12 — visible links in the trace**: each step also records the visible links it assessed: id, target path, label and the judge's probability.
+
 ## Technical plan
 
 Files:
