@@ -21,3 +21,6 @@ runs/*
 
 # Local agent memory (reviewer)
 .claude/agent-memory/
+
+# Obsidian config created when the corpus vault is opened
+corpus/*/vault/.obsidian/
