@@ -48,10 +48,6 @@ interface World {
   links: Link[]
 }
 
-function stemOf(path: string): string {
-  return path.replace(/\.md$/, "")
-}
-
 /** The id of the only chunk of a generated note. */
 function hit(stem: string): string {
   return `${stem}#1`
@@ -323,14 +319,13 @@ describe("AC1 — search", () => {
       verdicts: { "a.md": { answer: 0.9 } },
     })
     const [a, c] = judgeCalls[0]!.notes
-    expect(a).toEqual({
+    // a links to b twice: the target is listed once.
+    expect({ ...a!, links: sorted(a!.links) }).toEqual({
       path: "a.md",
       date: "2025-01-01",
       text: "intro of a\n\n## Owner\nowner of a",
-      links: expect.any(Array),
+      links: ["b.md", "c.md"],
     })
-    // a links to b twice: the target is listed once.
-    expect(sorted(a!.links)).toEqual(["b.md", "c.md"])
     expect(c).toEqual({
       path: "c.md",
       date: null,

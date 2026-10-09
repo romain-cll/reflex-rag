@@ -762,7 +762,7 @@ function makeRecord(
     latencyMs: 300,
     costUsd: 0.01,
     ...overrides,
-  } as RunRecord
+  }
 }
 
 const wrong = (

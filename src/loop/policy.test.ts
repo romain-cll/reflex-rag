@@ -148,7 +148,8 @@ describe("AC1 — follow-steps", () => {
       DEFAULT_POLICY
     )
     expect(action.rule).not.toBe("follow-steps")
-    expect(action.type).not.toBe("expand")
+    // Nothing is kept and the note is openable, so `explore` opens it instead.
+    expect(action).toEqual({ type: "expand", rule: "explore", paths: ["a.md"] })
   })
 
   test("AC1 — uses the step threshold of the configuration", () => {

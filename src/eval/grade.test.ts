@@ -1,20 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Question } from "../../evals/schema.ts"
-import { FAILURES, grade } from "./grade.ts"
-import * as grading from "./grade.ts"
-
-/**
- * Read from the namespace: a named import of a symbol that does not exist yet
- * would fail the whole file instead of the tests that need it.
- */
-const FAILURE_INFO = (
-  grading as unknown as {
-    FAILURE_INFO: Record<
-      string,
-      { family: "retrieval" | "answer"; lever: string }
-    >
-  }
-).FAILURE_INFO
+import { FAILURE_INFO, FAILURES, grade } from "./grade.ts"
 
 interface Output {
   status: "answered" | "conflict" | "abstained"

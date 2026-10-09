@@ -804,7 +804,7 @@ describe("AC3 — per category", () => {
     const order = orderOf(main, specs)
     CATEGORIES.forEach((category, index) => {
       const row = categories.rows[index]!
-      const ratios = row.join(" ").match(/\d+\/\d+/g)
+      const ratios = [...(row.join(" ").match(/\d+\/\d+/g) ?? [])]
       expect(ratios).toEqual(
         order.map((spec) => `${spec.correct[category]}/${CATEGORY_N[category]}`)
       )
