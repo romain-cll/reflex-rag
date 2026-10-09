@@ -1,6 +1,6 @@
 # reflex-rag
 
-Retrieval layer over an Obsidian vault. A system-one decision model (Clef-flash) judges the retrieval loop instead of an LLM, with an LLM fallback when confidence is low. The deliverable is the method: evals → traces → failure diagnosis → measured improvement.
+Retrieval layer over an Obsidian vault that returns the notes answering a question. A system-one decision model judges the retrieval loop instead of an LLM, with an LLM fallback when confidence is low. The deliverable is the method: evals → traces → failure diagnosis → measured improvement.
 
 The full brief is `reflex-rag-plan.md` at the repo root (French, local only, gitignored). Read it before starting a phase.
 
@@ -22,7 +22,7 @@ Bun + TypeScript (strict), single package. `bun:sqlite` (FTS5) for the derived i
 
 - LLM: Claude Haiku 5.5 (judge for config B, fallback for C, query rewriting, answerer); grader: Claude Sonnet 5.5
 - Embeddings: `mistral-embed`
-- System one: Clef-flash served by Ollama (`POST /v1/systemone`)
+- System one: Jev (TypeSafe API, `POST https://api.typesafe.ai/v1/systemone`, key `TYPESAFE_API_KEY`) for tuning and the published runs; Clef-flash served locally by Ollama (same API) only to check that code runs. Thresholds tuned on one model do not carry over to the other.
 
 TypeScript is pinned to `~6.0`: typescript-eslint does not support 7.x yet.
 
