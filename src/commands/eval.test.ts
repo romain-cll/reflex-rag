@@ -5,6 +5,7 @@ import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
 // A namespace import: a symbol that is not exported yet fails its own tests,
 // not the whole file.
 import * as evalCommand from "./eval.ts"
+import * as llmModule from "../models/anthropic-llm.ts"
 
 const HAIKU = "claude-haiku-5-5"
 
@@ -167,7 +168,7 @@ describe("eval-config-b AC10 — upperBoundCalls, number and order of the calls"
     for (const call of calls) expect(call.model).toBe(HAIKU)
   })
 
-  test("AC10 — every call is priced with its full maxTokens of output", async () => {
+  test("AC10 — every call is priced with its full maxTokens of output plus the thinking headroom", async () => {
     const calls = await evalCommand.upperBoundCalls(
       QUESTION,
       notes(8, 400),
@@ -178,6 +179,39 @@ describe("eval-config-b AC10 — upperBoundCalls, number and order of the calls"
       expect(call.outputTokens).toBeGreaterThan(0)
       expect(call.inputTokens).toBeGreaterThan(0)
     }
+  })
+
+  test("AC10 — the smallest call's output is at least the thinking headroom", async () => {
+    const calls = await evalCommand.upperBoundCalls(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "llm"
+    )
+    const smallest = Math.min(...calls.map((call) => call.outputTokens))
+    expect(llmModule.THINKING_HEADROOM_TOKENS).toBe(4096)
+    expect(smallest).toBeGreaterThanOrEqual(llmModule.THINKING_HEADROOM_TOKENS)
+  })
+
+  test("AC10 — a judge call's output is its token budget plus the thinking headroom", async () => {
+    // The judge's token budget grows by 48 per note; the headroom is a
+    // constant on top, so the gap between two sizes is unchanged by it.
+    const few = await evalCommand.upperBoundCalls(
+      QUESTION,
+      notes(4, 400),
+      DEFAULT_POLICY,
+      "code"
+    )
+    const many = await evalCommand.upperBoundCalls(
+      QUESTION,
+      notes(12, 400),
+      DEFAULT_POLICY,
+      "code"
+    )
+    expect(many[0]!.outputTokens - few[0]!.outputTokens).toBe(8 * 48)
+    expect(few[0]!.outputTokens).toBeGreaterThan(
+      llmModule.THINKING_HEADROOM_TOKENS + 4 * 48
+    )
   })
 
   test("AC10 — the judge calls come first, all sized as a call on all the candidate notes", async () => {
@@ -211,8 +245,8 @@ describe("eval-config-b AC10 — upperBoundCalls, sizes", () => {
     )
     for (let turn = 0; turn < 4; turn++) {
       expect(many[turn]!.inputTokens).toBeGreaterThan(few[turn]!.inputTokens)
-      // The judge's token budget is 24 tokens per note.
-      expect(many[turn]!.outputTokens).toBeGreaterThan(few[turn]!.outputTokens)
+      // The judge's token budget is 48 tokens per note, the headroom a constant.
+      expect(many[turn]!.outputTokens - few[turn]!.outputTokens).toBe(8 * 48)
     }
   })
 

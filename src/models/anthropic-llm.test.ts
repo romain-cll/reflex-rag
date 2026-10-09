@@ -4,6 +4,7 @@ import { z } from "zod"
 import type { LLM } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
 import { AnthropicLLM } from "./anthropic-llm.ts"
+import * as llmModule from "./anthropic-llm.ts"
 
 /** The part of a request to `messages.create` / `messages.parse` we check. */
 interface RecordedParams {
@@ -192,11 +193,29 @@ describe("AnthropicLLM", () => {
     expect(created).toHaveLength(1)
     const params = created[0] as RecordedParams
     expect(params.model).toBe(DEFAULT_MODEL)
-    expect(params.max_tokens).toBe(321)
+    expect(params.max_tokens).toBe(321 + llmModule.THINKING_HEADROOM_TOKENS)
     expect(systemText(params)).toBe("Be brief.")
     expect(userText(params)).toBe("What is the capital of France?")
     expect(params.output_config?.effort).toBe("low")
     expect(params.output_config?.format).toBeUndefined()
+  })
+
+  test("AC7 — THINKING_HEADROOM_TOKENS is 4096", () => {
+    expect(llmModule.THINKING_HEADROOM_TOKENS).toBe(4096)
+  })
+
+  test("AC7 — complete and completeJson both send maxTokens plus the headroom as max_tokens", async () => {
+    const { client, created, parsed } = setup({
+      create: () => message(),
+      parse: () => message({ parsed: good }),
+    })
+    const llm = new AnthropicLLM({ client })
+
+    await llm.complete({ prompt: "Hi", maxTokens: 50 })
+    await llm.completeJson({ prompt: "Hi", maxTokens: 50 }, Schema)
+
+    expect((created[0] as RecordedParams).max_tokens).toBe(50 + 4096)
+    expect((parsed[0] as RecordedParams).max_tokens).toBe(50 + 4096)
   })
 
   test("AC1 — complete leaves the system parameter out when the request has none", async () => {
@@ -275,7 +294,7 @@ describe("AnthropicLLM", () => {
     expect(parsed).toHaveLength(1)
     const params = parsed[0] as RecordedParams
     expect(params.model).toBe(DEFAULT_MODEL)
-    expect(params.max_tokens).toBe(200)
+    expect(params.max_tokens).toBe(200 + llmModule.THINKING_HEADROOM_TOKENS)
     expect(systemText(params)).toBe("Extract.")
     expect(userText(params)).toBe("Lyon has 522000 people.")
     expect(params.output_config?.effort).toBe("low")
