@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { Judge, NoteForJudge, Verdict } from "../core/judge.ts"
+import type { Judge, Judgement, NoteForJudge, Verdict } from "../core/judge.ts"
 import { LLMCallError } from "../core/llm.ts"
 import type { Chunk, Link, ModelCall, Note } from "../core/types.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
@@ -155,6 +155,16 @@ interface Scenario {
   rewriterFailure?: Error
   /** The nth call (from 0) of `retrieve` rejects with this error. */
   retrieveFailure?: { onCall: number; error: Error }
+  /** Milliseconds each fake waits before answering. */
+  delays?: { retrieve?: number; judge?: number; rewriter?: number }
+  /** Extra fields of the nth judgement (from 0): fallback paths, stages. */
+  judgements?: Array<Pick<Judgement, "fallback" | "stages">>
+}
+
+function wait(ms: number | undefined): Promise<void> {
+  return ms === undefined
+    ? Promise.resolve()
+    : new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function setup(scenario: Scenario) {
@@ -163,7 +173,8 @@ function setup(scenario: Scenario) {
   const byId = new Map(world.chunks.map((c) => [c.id, c]))
 
   const retrieveCalls: Array<[string, number]> = []
-  const retrieve: LoopDeps["retrieve"] = (query, k) => {
+  const retrieve: LoopDeps["retrieve"] = async (query, k) => {
+    await wait(scenario.delays?.retrieve)
     const n = retrieveCalls.length
     retrieveCalls.push([query, k])
     if (scenario.retrieveFailure?.onCall === n) {
@@ -184,13 +195,15 @@ function setup(scenario: Scenario) {
 
   const judgeCalls: Array<{ question: string; notes: NoteForJudge[] }> = []
   const judge: Judge = {
-    judge(q, notes) {
+    async judge(q, notes) {
       const n = judgeCalls.length
       judgeCalls.push({ question: q, notes: structuredClone(notes) })
+      await wait(scenario.delays?.judge)
       if (scenario.judgeFailure?.onCall === n) {
-        return Promise.reject(scenario.judgeFailure.error)
+        throw scenario.judgeFailure.error
       }
-      return Promise.resolve({
+      return {
+        ...scenario.judgements?.[n],
         notes: Object.fromEntries(
           notes.map((note) => {
             const scripted = scenario.verdicts?.[note.path]
@@ -199,7 +212,7 @@ function setup(scenario: Scenario) {
         ),
         // Like the real judges, no call when there is nothing to judge.
         calls: notes.length === 0 ? [] : [call("judge")],
-      })
+      }
     },
   }
 
@@ -209,15 +222,15 @@ function setup(scenario: Scenario) {
   }> = []
   const rewriter: Rewriter = {
     kind: "fake",
-    rewrite(q, notes) {
+    async rewrite(q, notes) {
       const n = rewriterCalls.length
       rewriterCalls.push({ question: q, notes: structuredClone(notes) })
-      if (scenario.rewriterFailure)
-        return Promise.reject(scenario.rewriterFailure)
-      return Promise.resolve({
+      await wait(scenario.delays?.rewriter)
+      if (scenario.rewriterFailure) throw scenario.rewriterFailure
+      return {
         query: scenario.rewrites?.[n] ?? `rewritten ${n + 1}`,
         calls: [call("rewriter")],
-      })
+      }
     },
   }
 
@@ -991,6 +1004,7 @@ describe("AC7 — trace", () => {
         judged: { "a.md": verdict({ answer: 0.6, step: 0.9 }) },
         parents: {},
         kept: ["a.md"],
+        fallback: [],
         action: { type: "expand", rule: "follow-steps", paths: ["a.md"] },
       },
       {
@@ -999,6 +1013,7 @@ describe("AC7 — trace", () => {
         judged: { "b.md": verdict({ answer: 0.9 }), "c.md": NONE },
         parents: { "b.md": "a.md", "c.md": "a.md" },
         kept: ["b.md"],
+        fallback: [],
         action: { type: "answer", rule: "answer" },
       },
     ])
@@ -1018,6 +1033,7 @@ describe("AC7 — trace", () => {
         judged: { "a.md": NONE },
         parents: {},
         kept: [],
+        fallback: [],
         action: { type: "rewrite", rule: "rewrite" },
       },
       {
@@ -1026,6 +1042,7 @@ describe("AC7 — trace", () => {
         judged: { "b.md": verdict({ answer: 0.9 }) },
         parents: {},
         kept: ["b.md"],
+        fallback: [],
         action: { type: "answer", rule: "answer" },
       },
     ])
@@ -1576,5 +1593,236 @@ describe("AC9 — failures keep their cost", () => {
     expect(rewriterCalls).toHaveLength(1)
     expect(error).toBe(failure)
     expect(error).not.toBeInstanceOf(LoopError)
+  })
+})
+
+/** An error carrying the calls made before it, like the judges' errors. */
+function withCalls(message: string, calls: ModelCall[]): Error {
+  return Object.assign(new Error(message), { calls })
+}
+
+/** Search, rewrite, search again, answer: one retrieve, judge and rewrite each turn. */
+const REWRITE_THEN_ANSWER: Scenario = {
+  world: worldOf([], { extra: ["a", "b"] }),
+  search: { [QUESTION]: hits("a"), "new query": hits("b") },
+  rewrites: ["new query"],
+  verdicts: { "b.md": { answer: 0.9 } },
+}
+
+describe("AC12 — stages", () => {
+  test("AC12 — the result has the four stages as numbers", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+    })
+    expect(Object.keys(result.stages).sort()).toEqual([
+      "fallbackMs",
+      "judgeMs",
+      "rewriteMs",
+      "searchMs",
+    ])
+    for (const ms of Object.values(result.stages)) {
+      expect(typeof ms).toBe("number")
+      expect(ms).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  test("AC12 — searchMs sums the time in retrieve over the turns", async () => {
+    const { result } = await run({
+      ...REWRITE_THEN_ANSWER,
+      delays: { retrieve: 30 },
+    })
+    expect(result.stages.searchMs).toBeGreaterThanOrEqual(55)
+    expect(result.stages.searchMs).toBeLessThan(500)
+    expect(result.stages.judgeMs).toBeLessThan(15)
+    expect(result.stages.fallbackMs).toBeLessThan(15)
+    expect(result.stages.rewriteMs).toBeLessThan(15)
+  })
+
+  test("AC12 — judgeMs sums the time in the judge over the turns when it reports no stages", async () => {
+    const { result, judgeCalls } = await run({
+      ...REWRITE_THEN_ANSWER,
+      delays: { judge: 25 },
+    })
+    expect(judgeCalls).toHaveLength(2)
+    expect(result.stages.judgeMs).toBeGreaterThanOrEqual(45)
+    expect(result.stages.judgeMs).toBeLessThan(500)
+    expect(result.stages.fallbackMs).toBe(0)
+    expect(result.stages.searchMs).toBeLessThan(15)
+    expect(result.stages.rewriteMs).toBeLessThan(15)
+  })
+
+  test("AC12 — rewriteMs is the time in the rewriter", async () => {
+    const { result } = await run({
+      ...REWRITE_THEN_ANSWER,
+      delays: { rewriter: 40 },
+    })
+    expect(result.stages.rewriteMs).toBeGreaterThanOrEqual(35)
+    expect(result.stages.rewriteMs).toBeLessThan(500)
+    expect(result.stages.searchMs).toBeLessThan(15)
+    expect(result.stages.judgeMs).toBeLessThan(15)
+    expect(result.stages.fallbackMs).toBe(0)
+  })
+
+  test("AC12 — a stage with no work stays at zero", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+      delays: { retrieve: 20, judge: 20 },
+    })
+    expect(result.stages.rewriteMs).toBe(0)
+    expect(result.stages.fallbackMs).toBe(0)
+  })
+
+  test("AC12 — the judge's stages split its time, added over the turns", async () => {
+    const { result, judgeCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+      judgements: [
+        { stages: { judgeMs: 1000, fallbackMs: 500 } },
+        { stages: { judgeMs: 200, fallbackMs: 30 } },
+      ],
+    })
+    expect(judgeCalls).toHaveLength(2)
+    expect(result.stages.judgeMs).toBe(1200)
+    expect(result.stages.fallbackMs).toBe(530)
+  })
+
+  test("AC12 — when the judge reports stages, the loop does not add its own measure of the call", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+      delays: { judge: 40 },
+      judgements: [{ stages: { judgeMs: 7, fallbackMs: 3 } }],
+    })
+    expect(result.stages.judgeMs).toBe(7)
+    expect(result.stages.fallbackMs).toBe(3)
+  })
+
+  test("AC12 — turns with and without stages add up", async () => {
+    const { result } = await run({
+      ...REWRITE_THEN_ANSWER,
+      delays: { judge: 25 },
+      judgements: [{ stages: { judgeMs: 100, fallbackMs: 50 } }],
+    })
+    // First judgement reports its split; the second one is measured whole.
+    expect(result.stages.judgeMs).toBeGreaterThanOrEqual(100 + 20)
+    expect(result.stages.judgeMs).toBeLessThan(100 + 500)
+    expect(result.stages.fallbackMs).toBe(50)
+  })
+})
+
+describe("AC13 — fallback trace", () => {
+  test("AC13 — without fallback every step and the result have an empty list", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    expect(result.steps).toHaveLength(2)
+    expect(result.steps.map((s) => s.fallback)).toEqual([[], []])
+    expect(result.fallback).toEqual([])
+  })
+
+  test("AC13 — a step records the paths the judge judged again that turn", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+      judgements: [{ fallback: ["a.md"] }, {}],
+    })
+    expect(result.steps.map((s) => s.fallback)).toEqual([["a.md"], []])
+  })
+
+  test("AC13 — the result lists all the fallback paths in order", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+      judgements: [{ fallback: ["a.md"] }, { fallback: ["c.md", "b.md"] }],
+    })
+    expect(result.steps.map((s) => s.fallback)).toEqual([
+      ["a.md"],
+      ["c.md", "b.md"],
+    ])
+    expect(result.fallback).toEqual(["a.md", "c.md", "b.md"])
+  })
+
+  test("AC13 — an empty fallback list from the judge gives an empty list", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+      judgements: [{ fallback: [] }],
+    })
+    expect(result.steps[0]!.fallback).toEqual([])
+    expect(result.fallback).toEqual([])
+  })
+
+  test("AC13 — an abstention keeps the fallback of its turns", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      policy: policyWith({ maxRewrites: 0 }),
+      judgements: [{ fallback: ["a.md"] }],
+    })
+    expect(result.outcome.type).toBe("abstain")
+    expect(result.steps[0]!.fallback).toEqual(["a.md"])
+    expect(result.fallback).toEqual(["a.md"])
+  })
+})
+
+describe("AC14 — errors carrying calls", () => {
+  test("AC14 — a judge error carrying calls keeps them after the calls made before", async () => {
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 } },
+      judgeFailure: {
+        onCall: 1,
+        error: withCalls("judge down", [call("primary"), call("fallback")]),
+      },
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("judge down")
+    expect(models(loopError.calls)).toEqual([
+      "embed",
+      "judge",
+      "primary",
+      "fallback",
+    ])
+    expect(loopError.steps).toHaveLength(1)
+  })
+
+  test("AC14 — a judge error carrying calls on the first turn keeps them after the retrieval", async () => {
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      judgeFailure: {
+        onCall: 0,
+        error: withCalls("judge down", [call("primary")]),
+      },
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(models(loopError.calls)).toEqual(["embed", "primary"])
+    expect(loopError.steps).toEqual([])
+  })
+
+  test("AC14 — a judge error with an empty calls array adds nothing", async () => {
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      judgeFailure: { onCall: 0, error: withCalls("judge down", []) },
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    expect(models((error as LoopError).calls)).toEqual(["embed"])
+  })
+
+  test("AC14 — a rewriter error carrying calls keeps them after the calls made before", async () => {
+    const { error } = await fail({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      rewriterFailure: withCalls("rewriter down", [call("r1"), call("r2")]),
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("rewriter down")
+    expect(models(loopError.calls)).toEqual(["embed", "judge", "r1", "r2"])
+    expect(loopError.steps).toHaveLength(1)
   })
 })
