@@ -26,7 +26,12 @@ import { FallbackJudge } from "../judge/fallback-judge.ts"
 import { LLMJudge } from "../judge/llm-judge.ts"
 import { SystemOneJudge } from "../judge/system-one-judge.ts"
 import { noteText, runLoop } from "../loop/loop.ts"
-import { DEFAULT_POLICY, POLICIES, type PolicyConfig } from "../loop/policy.ts"
+import {
+  DEFAULT_POLICY,
+  isKept,
+  POLICIES,
+  type PolicyConfig,
+} from "../loop/policy.ts"
 import { CodeRewriter, LLMRewriter, type Rewriter } from "../loop/rewriter.ts"
 import {
   AnthropicLLM,
@@ -70,7 +75,7 @@ interface EvalSettings {
   rewrite: RewriterKind
   candidates: number
   systemOne: SystemOneKind
-  /** A note whose best verdict is below it is judged again by the LLM. */
+  /** The lower bound of the grey zone, whose notes the LLM judges again. */
   fallback: number
 }
 
@@ -162,10 +167,18 @@ function parseChoice<T extends string>(
   return choice
 }
 
+/** A number below both thresholds of C: the grey zone sits under the keep thresholds. */
 function parseFallback(text: string): number {
   const value = text.trim() === "" ? NaN : Number(text)
   if (!(value >= 0 && value <= 1)) {
     throw new Error(`--fallback must be a number from 0 to 1, got "${text}"`)
+  }
+  const { answer, step } = POLICIES.C.thresholds
+  const ceiling = Math.min(answer, step)
+  if (value >= ceiling) {
+    throw new Error(
+      `--fallback must be below the thresholds of config C (${ceiling}), got "${text}"`
+    )
   }
   return value
 }
@@ -306,7 +319,8 @@ function pipelineB(
 
 /**
  * Config C: like B, but the system one judges the notes, and the LLM judges
- * again those on which it hesitates (`--fallback`).
+ * again those it nearly kept: the grey zone from `--fallback` to the keep
+ * thresholds of C.
  */
 function pipelineC(
   index: Index,
@@ -324,7 +338,10 @@ function pipelineC(
     new FallbackJudge(
       new SystemOneJudge(systemOne),
       new RoleTaggedJudge(new LLMJudge(llm)),
-      { threshold: settings.fallback }
+      {
+        low: settings.fallback,
+        isKept: (verdict) => isKept(verdict, POLICIES.C),
+      }
     ),
     systemOne.model
   )
@@ -338,7 +355,7 @@ interface LoopSettings {
     rewriter: RewriterKind
     candidates: number
     /** Config C only. */
-    fallbackThreshold?: number
+    fallbackLow?: number
     systemOne?: SystemOneKind
   }
 }
@@ -371,7 +388,7 @@ export function loopSettings(
     models: { judge: systemOneModel, fallback: ANSWERER_MODEL, ...models },
     loop: {
       ...loop,
-      fallbackThreshold: settings.fallback,
+      fallbackLow: settings.fallback,
       systemOne: settings.systemOne,
     },
   }
@@ -726,7 +743,7 @@ async function dryRunLoop(
     [
       `Dry run, config ${config}, ${settings.split} split (only the query embeddings were requested)`,
       `  questions:        ${questions.length}`,
-      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, fallback below ${settings.fallback}` : ""}`,
+      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, grey zone from ${settings.fallback}` : ""}`,
       `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), ${systemOne ? `up to ${systemOneCalls.length} system one (${systemOne.model}), ` : ""}up to ${anthropicCalls.length} Anthropic (${ANSWERER_MODEL})`,
       ...(systemOne
         ? [
@@ -787,9 +804,9 @@ export async function upperBoundCalls(
 
 /**
  * The calls one question can make at most with config C: the system-one calls
- * first, one per candidate note and per possible turn, sized from the request
- * the system-one judge builds for the note; then the calls of
- * `upperBoundCalls`, the worst case of the fallback, the rewriter and the
+ * first, one per possible turn, each sized as one batch holding all the
+ * candidate notes, as the request the system-one judge builds; then the calls
+ * of `upperBoundCalls`, the worst case of the fallback, the rewriter and the
  * answerer. A system-one call has no output, which is free.
  */
 export async function upperBoundCallsC(
@@ -804,20 +821,13 @@ export async function upperBoundCallsC(
     model: systemOneModel,
     decide: (request) => {
       requests.push(request)
-      return Promise.resolve({
-        answers: {
-          verdict: {
-            type: "choice",
-            choice: "none",
-            probabilities: { answer: 0, step: 0, none: 1 },
-            confidence: 1,
-          },
-        },
-        call: noCall,
-      })
+      return Promise.resolve({ answers: {}, call: noCall })
     },
   }
-  await new SystemOneJudge(recorder).judge(question, candidates)
+  await new SystemOneJudge(recorder, { maxNotesPerCall: Infinity }).judge(
+    question,
+    candidates
+  )
   const turns = 1 + policy.budgets.maxHops + policy.budgets.maxRewrites
   const turnCalls = requests.map((request): ModelCall => ({
     model: systemOneModel,
