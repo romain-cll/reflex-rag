@@ -12,16 +12,29 @@ import { SystemOneJudge } from "./system-one-judge.ts"
 const QUESTION = "Who leads the Atlas project?"
 
 /** `count` notes `notes/a0.md`, `notes/a1.md`, … */
-function manyNotes(count: number): NoteForJudge[] {
+function manyNotes(count: number, prefix = "a"): NoteForJudge[] {
   return Array.from({ length: count }, (_, index) => ({
-    path: `notes/a${index}.md`,
+    path: `notes/${prefix}${index}.md`,
     date: index % 2 === 0 ? "2025-01-01" : null,
-    text: `Text ${index}.`,
-    links: index === 0 ? [] : [`notes/a${index - 1}.md`, "people/bob.md"],
+    text: `Text ${prefix}${index}.`,
+    links:
+      index === 0 ? [] : [`notes/${prefix}${index - 1}.md`, "people/bob.md"],
   }))
 }
 
-/** Distinct and recognisable: the call made for `notes/a<n>.md` has latency `n`. */
+function noteInState(note: NoteForJudge) {
+  return {
+    path: note.path,
+    date: note.date,
+    links: note.links,
+    text: note.text,
+  }
+}
+
+/**
+ * Distinct and recognisable: the call made for a batch whose first note is
+ * `notes/a<n>.md` has latency `n`.
+ */
 function callFor(path: string): ModelCall {
   return {
     model: "fake-system-one",
@@ -31,10 +44,22 @@ function callFor(path: string): ModelCall {
   }
 }
 
-interface Script {
-  probabilities?: Record<string, number>
+interface BatchScript {
   delayMs?: number
   error?: Error
+}
+
+interface FakeOptions {
+  /** The probabilities answered for a note, by path (default: all on `answer`); undefined leaves the note without answer. */
+  probabilities?: (path: string) => Record<string, number> | undefined
+  /** The delay or error of a batch, by the path of its first note. */
+  batch?: (firstPath: string) => BatchScript
+}
+
+interface StateOfRequest {
+  question: string
+  context?: Record<string, { path: string }>
+  notes: Record<string, { path: string }>
 }
 
 function sleep(ms: number): Promise<void> {
@@ -43,10 +68,9 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * A fake system one that records its requests and the number of calls in
- * flight. `script` says, by note path, which probabilities to answer, after
- * which delay, or which error to throw (default: all on `answer`, at once).
+ * flight. It answers every question of a request about the note it names.
  */
-function fakeSystemOne(script: (path: string) => Script = () => ({})) {
+function fakeSystemOne(options: FakeOptions = {}) {
   const requests: SystemOneRequest[] = []
   const completed: string[] = []
   let inFlight = 0
@@ -55,24 +79,34 @@ function fakeSystemOne(script: (path: string) => Script = () => ({})) {
     model: "fake-system-one",
     async decide(request) {
       requests.push(request)
-      const path = (request.state as { note: { path: string } }).note.path
-      const { probabilities = { answer: 1 }, delayMs = 0, error } = script(path)
+      const state = request.state as StateOfRequest
+      // Tolerates a state of another shape, so that it fails on an assertion.
+      const firstPath = state.notes?.["n1"]?.path ?? "notes/a0.md"
+      const { delayMs = 0, error } = options.batch?.(firstPath) ?? {}
       inFlight += 1
       maxInFlight = Math.max(maxInFlight, inFlight)
       try {
         await sleep(delayMs)
       } finally {
         inFlight -= 1
-        completed.push(path)
+        completed.push(firstPath)
       }
       if (error) throw error
-      const answer: SystemOneAnswer = {
-        type: "choice",
-        choice: "answer",
-        probabilities,
-        confidence: 0.5,
+      const answers: Record<string, SystemOneAnswer> = {}
+      for (const key of Object.keys(request.questions)) {
+        const path = state.notes?.[key]?.path as string
+        const probabilities = options.probabilities
+          ? options.probabilities(path)
+          : { answer: 1 }
+        if (probabilities === undefined) continue
+        answers[key] = {
+          type: "choice",
+          choice: "answer",
+          probabilities,
+          confidence: 0.5,
+        }
       }
-      return { answers: { verdict: answer }, call: callFor(path) }
+      return { answers, call: callFor(firstPath) }
     },
   }
   return {
@@ -85,11 +119,11 @@ function fakeSystemOne(script: (path: string) => Script = () => ({})) {
 
 /** Judges one note whose answer carries `probabilities`. */
 async function mapped(probabilities: Record<string, number>) {
-  const { systemOne } = fakeSystemOne(() => ({ probabilities }))
-  const [note] = manyNotes(1)
-  const result = await new SystemOneJudge(systemOne).judge(QUESTION, [
-    note as NoteForJudge,
-  ])
+  const { systemOne } = fakeSystemOne({ probabilities: () => probabilities })
+  const result = await new SystemOneJudge(systemOne).judge(
+    QUESTION,
+    manyNotes(1)
+  )
   return result.notes["notes/a0.md"]
 }
 
@@ -106,55 +140,208 @@ async function rejection(
 }
 
 describe("SystemOneJudge", () => {
-  test("AC1 — implements Judge", () => {
+  test("AC7 — implements Judge", () => {
     const { systemOne } = fakeSystemOne()
-    const judge: Judge = new SystemOneJudge(systemOne, { concurrency: 4 })
+    const judge: Judge = new SystemOneJudge(systemOne, { maxNotesPerCall: 4 })
     expect(typeof judge.judge).toBe("function")
   })
 
-  test("AC1 — makes one decide call per note", async () => {
+  test("AC7 — makes one decide call for all the notes", async () => {
     const { systemOne, requests } = fakeSystemOne()
     await new SystemOneJudge(systemOne).judge(QUESTION, manyNotes(5))
-    expect(requests).toHaveLength(5)
+    expect(requests).toHaveLength(1)
   })
 
-  test("AC1 — the state holds the question and the whole note, and nothing else", async () => {
+  test("AC7 — the state holds the question and the notes n1..nM, and no context key without context", async () => {
     const notes = manyNotes(3)
     const { systemOne, requests } = fakeSystemOne()
     await new SystemOneJudge(systemOne).judge(QUESTION, notes)
-    const states = requests.map((request) => request.state)
-    for (const note of notes) {
-      expect(states).toContainEqual({
-        question: QUESTION,
-        note: {
-          path: note.path,
-          date: note.date,
-          links: note.links,
-          text: note.text,
-        },
-      })
-    }
+    expect(requests[0]?.state).toStrictEqual({
+      question: QUESTION,
+      notes: {
+        n1: noteInState(notes[0] as NoteForJudge),
+        n2: noteInState(notes[1] as NoteForJudge),
+        n3: noteInState(notes[2] as NoteForJudge),
+      },
+    })
   })
 
-  test("AC1 — asks the closed question of JUDGE_QUESTION as a choice named verdict", async () => {
+  test("AC7 — an empty context leaves out the context key", async () => {
     const { systemOne, requests } = fakeSystemOne()
-    await new SystemOneJudge(systemOne).judge(QUESTION, manyNotes(2))
-    for (const request of requests) {
-      expect(request.questions).toEqual({
-        verdict: {
-          type: "choice",
-          instructions: JUDGE_QUESTION.instructions,
-          criteria: JUDGE_QUESTION.criteria,
-        },
-      })
-    }
+    await new SystemOneJudge(systemOne).judge(QUESTION, manyNotes(2), [])
+    expect(Object.keys(requests[0]?.state as object)).toEqual([
+      "question",
+      "notes",
+    ])
   })
 
-  test("AC1 — makes no call and returns an empty judgement without a note", async () => {
+  test("AC7 — the context notes are k1..kJ in the state", async () => {
+    const notes = manyNotes(2)
+    const context = manyNotes(2, "c")
     const { systemOne, requests } = fakeSystemOne()
-    const result = await new SystemOneJudge(systemOne).judge(QUESTION, [])
+    await new SystemOneJudge(systemOne).judge(QUESTION, notes, context)
+    expect(requests[0]?.state).toStrictEqual({
+      question: QUESTION,
+      context: {
+        k1: noteInState(context[0] as NoteForJudge),
+        k2: noteInState(context[1] as NoteForJudge),
+      },
+      notes: {
+        n1: noteInState(notes[0] as NoteForJudge),
+        n2: noteInState(notes[1] as NoteForJudge),
+      },
+    })
+  })
+
+  test("AC7 — asks one closed question per scored note, keyed nK, and none for the context notes", async () => {
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(3),
+      manyNotes(2, "c")
+    )
+    const question = (key: string) => ({
+      type: "choice",
+      instructions: `About note ${key} of the state only. ${JUDGE_QUESTION.instructions}`,
+      criteria: JUDGE_QUESTION.criteria,
+    })
+    expect(requests[0]?.questions).toStrictEqual({
+      n1: question("n1"),
+      n2: question("n2"),
+      n3: question("n3"),
+    })
+  })
+
+  test("AC7 — makes no call and returns an empty judgement without a note", async () => {
+    const { systemOne, requests } = fakeSystemOne()
+    const judge = new SystemOneJudge(systemOne)
+    expect(await judge.judge(QUESTION, [])).toEqual({ notes: {}, calls: [] })
+    expect(await judge.judge(QUESTION, [], manyNotes(2, "c"))).toEqual({
+      notes: {},
+      calls: [],
+    })
     expect(requests).toHaveLength(0)
-    expect(result).toEqual({ notes: {}, calls: [] })
+  })
+
+  test("AC7 — splits the notes into batches of at most maxNotesPerCall, in input order", async () => {
+    const notes = manyNotes(7)
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne, { maxNotesPerCall: 3 }).judge(
+      QUESTION,
+      notes
+    )
+    const batches = requests
+      .map((request) =>
+        Object.values((request.state as StateOfRequest).notes).map(
+          (note) => note.path
+        )
+      )
+      .sort((a, b) => a[0]!.localeCompare(b[0]!))
+    expect(batches).toEqual([
+      ["notes/a0.md", "notes/a1.md", "notes/a2.md"],
+      ["notes/a3.md", "notes/a4.md", "notes/a5.md"],
+      ["notes/a6.md"],
+    ])
+  })
+
+  test("AC7 — the aliases restart at n1 in each batch, with questions to match", async () => {
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne, { maxNotesPerCall: 2 }).judge(
+      QUESTION,
+      manyNotes(5)
+    )
+    expect(requests).toHaveLength(3)
+    const shapes = requests
+      .map((request) => ({
+        notes: Object.keys((request.state as StateOfRequest).notes),
+        questions: Object.keys(request.questions),
+      }))
+      .sort((a, b) => b.notes.length - a.notes.length)
+    expect(shapes).toEqual([
+      { notes: ["n1", "n2"], questions: ["n1", "n2"] },
+      { notes: ["n1", "n2"], questions: ["n1", "n2"] },
+      { notes: ["n1"], questions: ["n1"] },
+    ])
+  })
+
+  test("AC7 — the same context is in every batch", async () => {
+    const context = manyNotes(2, "c")
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne, { maxNotesPerCall: 2 }).judge(
+      QUESTION,
+      manyNotes(5),
+      context
+    )
+    expect(requests).toHaveLength(3)
+    for (const request of requests) {
+      expect((request.state as StateOfRequest).context).toStrictEqual({
+        k1: noteInState(context[0] as NoteForJudge),
+        k2: noteInState(context[1] as NoteForJudge),
+      })
+      expect(
+        Object.keys(request.questions).filter((key) => key.startsWith("k"))
+      ).toEqual([])
+    }
+  })
+
+  test("AC7 — the default is 40 notes per call", async () => {
+    const forty = fakeSystemOne()
+    await new SystemOneJudge(forty.systemOne).judge(QUESTION, manyNotes(40))
+    expect(forty.requests).toHaveLength(1)
+
+    const more = fakeSystemOne()
+    await new SystemOneJudge(more.systemOne).judge(QUESTION, manyNotes(85))
+    expect(
+      more.requests
+        .map(
+          (request) =>
+            Object.keys((request.state as StateOfRequest).notes).length
+        )
+        .sort((a, b) => b - a)
+    ).toEqual([40, 40, 5])
+  })
+
+  test("AC7 — runs the batches in parallel", async () => {
+    const run = fakeSystemOne({ batch: () => ({ delayMs: 20 }) })
+    await new SystemOneJudge(run.systemOne, { maxNotesPerCall: 2 }).judge(
+      QUESTION,
+      manyNotes(8)
+    )
+    expect(run.requests).toHaveLength(4)
+    expect(run.maxInFlight()).toBe(4)
+  })
+
+  test("AC7 — gives every note of every batch its own verdicts", async () => {
+    const scripts: Record<string, Record<string, number>> = {
+      "notes/a0.md": { answer: 1, step: 0, none: 0 },
+      "notes/a1.md": { answer: 0, step: 1, none: 0 },
+      "notes/a2.md": { answer: 0, step: 0, none: 1 },
+      "notes/a3.md": { answer: 0.5, step: 0.5, none: 0 },
+      "notes/a4.md": { answer: 0.25, step: 0.25, none: 0.5 },
+    }
+    const { systemOne } = fakeSystemOne({
+      probabilities: (path) => scripts[path],
+    })
+    const result = await new SystemOneJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(5))
+    expect(result.notes).toEqual(scripts)
+  })
+
+  test("AC7 — a note without answer in the response gets none 1", async () => {
+    const { systemOne } = fakeSystemOne({
+      probabilities: (path) =>
+        path === "notes/a1.md" ? undefined : { answer: 1 },
+    })
+    const result = await new SystemOneJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(3)
+    )
+    expect(result.notes).toEqual({
+      "notes/a0.md": { answer: 1, step: 0, none: 0 },
+      "notes/a1.md": { answer: 0, step: 0, none: 1 },
+      "notes/a2.md": { answer: 1, step: 0, none: 0 },
+    })
   })
 
   test("AC2 — gives each note the probabilities of its own answer", async () => {
@@ -163,9 +350,9 @@ describe("SystemOneJudge", () => {
       "notes/a1.md": { answer: 0, step: 0.75, none: 0.25 },
       "notes/a2.md": { answer: 0, step: 0, none: 1 },
     }
-    const { systemOne } = fakeSystemOne((path) => ({
-      probabilities: scripts[path],
-    }))
+    const { systemOne } = fakeSystemOne({
+      probabilities: (path) => scripts[path],
+    })
     const result = await new SystemOneJudge(systemOne).judge(
       QUESTION,
       manyNotes(3)
@@ -217,68 +404,41 @@ describe("SystemOneJudge", () => {
     })
   })
 
-  test("AC2 — calls follow the order of the notes, each tagged judge", async () => {
+  test("AC7 — calls hold one call per batch, in batch order, each tagged judge", async () => {
     const { systemOne } = fakeSystemOne()
-    const result = await new SystemOneJudge(systemOne).judge(
-      QUESTION,
-      manyNotes(4)
-    )
+    const result = await new SystemOneJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(5))
+    // Batches start at notes a0, a2 and a4.
     expect(result.calls).toEqual(
-      [0, 1, 2, 3].map((index) => ({
+      [0, 2, 4].map((index) => ({
         ...callFor(`notes/a${index}.md`),
         role: "judge",
       }))
     )
   })
 
-  test("AC3 — never has more than `concurrency` calls in flight", async () => {
-    const run = fakeSystemOne(() => ({ delayMs: 10 }))
-    await new SystemOneJudge(run.systemOne, { concurrency: 3 }).judge(
-      QUESTION,
-      manyNotes(12)
-    )
-    expect(run.requests).toHaveLength(12)
-    expect(run.maxInFlight()).toBe(3)
-  })
-
-  test("AC3 — concurrency 1 makes the calls one after the other", async () => {
-    const run = fakeSystemOne(() => ({ delayMs: 5 }))
-    await new SystemOneJudge(run.systemOne, { concurrency: 1 }).judge(
-      QUESTION,
-      manyNotes(4)
-    )
-    expect(run.maxInFlight()).toBe(1)
-  })
-
-  test("AC3 — the default concurrency is 16", async () => {
-    const run = fakeSystemOne(() => ({ delayMs: 20 }))
-    await new SystemOneJudge(run.systemOne).judge(QUESTION, manyNotes(40))
-    expect(run.requests).toHaveLength(40)
-    expect(run.maxInFlight()).toBe(16)
-  })
-
-  test("AC3 — the result does not depend on the order in which calls complete", async () => {
+  test("AC7 — the result does not depend on the order in which batches complete", async () => {
     const scripts: Record<string, Record<string, number>> = {
       "notes/a0.md": { answer: 1, step: 0, none: 0 },
       "notes/a1.md": { answer: 0, step: 1, none: 0 },
       "notes/a2.md": { answer: 0, step: 0, none: 1 },
       "notes/a3.md": { answer: 0.5, step: 0.5, none: 0 },
     }
-    // The first note completes last.
+    // The first batch completes last.
     const delays: Record<string, number> = {
       "notes/a0.md": 40,
       "notes/a1.md": 30,
       "notes/a2.md": 20,
       "notes/a3.md": 1,
     }
-    const run = fakeSystemOne((path) => ({
-      probabilities: scripts[path],
-      delayMs: delays[path],
-    }))
-    const result = await new SystemOneJudge(run.systemOne).judge(
-      QUESTION,
-      manyNotes(4)
-    )
+    const run = fakeSystemOne({
+      probabilities: (path) => scripts[path],
+      batch: (firstPath) => ({ delayMs: delays[firstPath] }),
+    })
+    const result = await new SystemOneJudge(run.systemOne, {
+      maxNotesPerCall: 1,
+    }).judge(QUESTION, manyNotes(4))
     expect(run.completed).toEqual([
       "notes/a3.md",
       "notes/a2.md",
@@ -289,17 +449,22 @@ describe("SystemOneJudge", () => {
     expect(result.calls.map((call) => call.latencyMs)).toEqual([0, 1, 2, 3])
   })
 
-  test("AC4 — waits for the other calls, then throws an error carrying the completed calls", async () => {
+  test("AC4 — a failed batch makes the judge wait for the other batches, then throw an error carrying the completed calls", async () => {
     const failure = new Error("boom")
-    const run = fakeSystemOne((path) =>
-      path === "notes/a1.md"
-        ? { error: failure }
-        : { delayMs: path === "notes/a3.md" ? 60 : 30 }
-    )
+    // Batches start at notes a0, a2, a4 and a6; the second one fails.
+    const run = fakeSystemOne({
+      batch: (firstPath) =>
+        firstPath === "notes/a2.md"
+          ? { error: failure }
+          : { delayMs: firstPath === "notes/a6.md" ? 60 : 30 },
+    })
     const error = await rejection(
-      new SystemOneJudge(run.systemOne).judge(QUESTION, manyNotes(4))
+      new SystemOneJudge(run.systemOne, { maxNotesPerCall: 2 }).judge(
+        QUESTION,
+        manyNotes(8)
+      )
     )
-    // Every call had completed by the time the judge rejected.
+    // Every batch had completed by the time the judge rejected.
     expect(run.completed).toHaveLength(4)
     expect(error.message).toContain("boom")
     expect(error.calls).toHaveLength(3)
@@ -307,24 +472,35 @@ describe("SystemOneJudge", () => {
       .map(({ latencyMs, model }) => ({ latencyMs, model }))
       .sort((a, b) => a.latencyMs - b.latencyMs)
     expect(completed).toEqual(
-      [0, 2, 3].map((index) => ({ latencyMs: index, model: "fake-system-one" }))
+      [0, 4, 6].map((index) => ({ latencyMs: index, model: "fake-system-one" }))
     )
   })
 
-  test("AC4 — without a failing call there is no error", async () => {
-    const { systemOne } = fakeSystemOne(() => ({ delayMs: 1 }))
-    const result = await new SystemOneJudge(systemOne).judge(
-      QUESTION,
-      manyNotes(3)
-    )
+  test("AC4 — without a failing batch there is no error", async () => {
+    const { systemOne } = fakeSystemOne({ batch: () => ({ delayMs: 1 }) })
+    const result = await new SystemOneJudge(systemOne, {
+      maxNotesPerCall: 1,
+    }).judge(QUESTION, manyNotes(3))
     expect(result.calls).toHaveLength(3)
   })
 
-  test("AC4 — when every call fails, the error carries no call", async () => {
-    const run = fakeSystemOne(() => ({ error: new Error("down") }))
+  test("AC4 — when every batch fails, the error carries no call", async () => {
+    const run = fakeSystemOne({ batch: () => ({ error: new Error("down") }) })
+    const error = await rejection(
+      new SystemOneJudge(run.systemOne, { maxNotesPerCall: 1 }).judge(
+        QUESTION,
+        manyNotes(3)
+      )
+    )
+    expect(error.calls).toEqual([])
+  })
+
+  test("AC4 — a single failing call carries no call", async () => {
+    const run = fakeSystemOne({ batch: () => ({ error: new Error("down") }) })
     const error = await rejection(
       new SystemOneJudge(run.systemOne).judge(QUESTION, manyNotes(3))
     )
+    expect(error.message).toContain("down")
     expect(error.calls).toEqual([])
   })
 })
