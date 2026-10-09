@@ -16,6 +16,7 @@ interface RecordedRequest {
   method: string | undefined
   headers: Headers
   body: unknown
+  signal: AbortSignal | undefined
 }
 
 type Responder = (request: RecordedRequest) => Response | Promise<Response>
@@ -109,6 +110,7 @@ function setup(script: Responder | Responder[] = ok) {
       method: init?.method,
       headers: new Headers(init?.headers),
       body: JSON.parse(init?.body as string) as unknown,
+      signal: init?.signal ?? undefined,
     }
     requests.push(recorded)
     const responder = Array.isArray(script)
@@ -119,7 +121,12 @@ function setup(script: Responder | Responder[] = ok) {
   }
 
   const build = (
-    options: { model?: string; apiKey?: string; retryBaseMs?: number } = {}
+    options: {
+      model?: string
+      apiKey?: string
+      retryBaseMs?: number
+      timeoutMs?: number
+    } = {}
   ) =>
     new HttpSystemOne({
       baseUrl: BASE_URL,
@@ -590,5 +597,130 @@ describe("AC5 — no real calls in tests", () => {
 
   test("AC5 — the test environment holds no real TypeSafe key", () => {
     expect(process.env.TYPESAFE_API_KEY).toBeUndefined()
+  })
+})
+
+/**
+ * An attempt that never answers until its signal aborts it (the rejection of
+ * a real fetch). If the client sets no signal, it answers a 500 after a
+ * while, so that the test fails on an assertion rather than hangs.
+ */
+const hang: Responder = (request) =>
+  new Promise<Response>((resolve, reject) => {
+    const giveUp = setTimeout(
+      () => resolve(new Response("never aborted", { status: 500 })),
+      300
+    )
+    request.signal?.addEventListener("abort", () => {
+      clearTimeout(giveUp)
+      reject(new DOMException("The operation was aborted.", "AbortError"))
+    })
+  })
+
+/** An attempt that answers after `delayMs`, unless it is aborted first. */
+const slow =
+  (delayMs: number): Responder =>
+  (request) =>
+    new Promise<Response>((resolve, reject) => {
+      const answer = setTimeout(() => resolve(jsonResponse(apiBody())), delayMs)
+      request.signal?.addEventListener("abort", () => {
+        clearTimeout(answer)
+        reject(new DOMException("The operation was aborted.", "AbortError"))
+      })
+    })
+
+describe("system-one-client AC6 — request timeout", () => {
+  test("system-one-client AC6 — an attempt that does not answer in time is aborted and retried", async () => {
+    const t = setup([hang, ok])
+    const result = await t.build({ timeoutMs: 30 }).decide(REQUEST)
+    expect(t.requests).toHaveLength(2)
+    expect(t.requests[0]?.signal?.aborted).toBe(true)
+    expect(result.answers.next).toEqual(CHOICE_ANSWER)
+    expect(result.answers.enough).toEqual(NOUL_ANSWER)
+  })
+
+  test("system-one-client AC6 — the retry sends the same request, on a signal of its own", async () => {
+    const t = setup([hang, ok])
+    await t.build({ timeoutMs: 30 }).decide(REQUEST)
+    expect(t.requests[1]?.body).toEqual(t.requests[0]?.body)
+    expect(t.requests[0]?.signal).toBeDefined()
+    expect(t.requests[1]?.signal).toBeDefined()
+    expect(t.requests[1]?.signal).not.toBe(t.requests[0]?.signal)
+    expect(t.requests[1]?.signal?.aborted).toBe(false)
+  })
+
+  test("system-one-client AC6 — fails after 4 attempts when none answers in time, with a request error", async () => {
+    const t = setup(hang)
+    const error = await rejection(
+      t.build({ timeoutMs: 30, retryBaseMs: 0 }).decide(REQUEST)
+    )
+    expect(t.requests).toHaveLength(4)
+    for (const request of t.requests) expect(request.signal?.aborted).toBe(true)
+    expect(error.message).toContain("System-one request failed")
+    expect(error.message).not.toContain("500")
+  })
+
+  test("system-one-client AC6 — succeeds on the last attempt if only the first three time out", async () => {
+    const t = setup([hang, hang, hang, ok])
+    const result = await t.build({ timeoutMs: 30 }).decide(REQUEST)
+    expect(t.requests).toHaveLength(4)
+    for (const request of t.requests.slice(0, 3)) {
+      expect(request.signal?.aborted).toBe(true)
+    }
+    expect(result.answers.next).toEqual(CHOICE_ANSWER)
+  })
+
+  test("system-one-client AC6 — an attempt that answers within the timeout is not aborted", async () => {
+    const t = setup(slow(20))
+    const result = await t.build({ timeoutMs: 400 }).decide(REQUEST)
+    expect(t.requests).toHaveLength(1)
+    expect(t.requests[0]?.signal?.aborted).toBe(false)
+    expect(result.answers.next).toEqual(CHOICE_ANSWER)
+  })
+
+  test("system-one-client AC6 — an attempt slower than the timeout is aborted, a faster one after it answers", async () => {
+    const t = setup([slow(300), slow(1)])
+    const result = await t.build({ timeoutMs: 60 }).decide(REQUEST)
+    expect(t.requests).toHaveLength(2)
+    expect(t.requests[0]?.signal?.aborted).toBe(true)
+    expect(result.answers.next).toEqual(CHOICE_ANSWER)
+  })
+
+  test("system-one-client AC6 — the default timeout is long: a 150 ms answer is not aborted", async () => {
+    const t = setup(slow(150))
+    const result = await t.build().decide(REQUEST)
+    expect(t.requests).toHaveLength(1)
+    expect(t.requests[0]?.signal?.aborted).toBe(false)
+    expect(result.answers.next).toEqual(CHOICE_ANSWER)
+  })
+})
+
+describe("system-one-client AC7 — OLLAMA_HOST as Ollama reads it", () => {
+  const urlFor = async (host: string): Promise<string | undefined> => {
+    process.env.OLLAMA_HOST = host
+    const t = setup()
+    await clefSystemOne({ fetch: t.fetch, retryBaseMs: 0 }).decide(REQUEST)
+    return t.requests[0]?.url
+  }
+
+  test("system-one-client AC7 — a host:port without a scheme gets http://", async () => {
+    expect(await urlFor("127.0.0.1:11434")).toBe(
+      "http://127.0.0.1:11434/v1/systemone"
+    )
+  })
+
+  test("system-one-client AC7 — a host without a scheme or a port gets http:// and :11434", async () => {
+    expect(await urlFor("0.0.0.0")).toBe("http://0.0.0.0:11434/v1/systemone")
+    expect(await urlFor("ollama.internal")).toBe(
+      "http://ollama.internal:11434/v1/systemone"
+    )
+  })
+
+  test("system-one-client AC7 — a value with a scheme and a port is left as it is", async () => {
+    expect(await urlFor("http://h:1234")).toBe("http://h:1234/v1/systemone")
+  })
+
+  test("system-one-client AC7 — an empty value means the default", async () => {
+    expect(await urlFor("")).toBe("http://localhost:11434/v1/systemone")
   })
 })

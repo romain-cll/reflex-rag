@@ -89,7 +89,7 @@ interface RunSpec {
   failureSeed: number
   /** The share of judged notes, and of questions, judged again; `null` for a run without a fallback. */
   fallback?: { noteRate: number; questionRate: number }
-  /** Median wall-clock time of each stage, and mean cost of each role. */
+  /** Median and mean wall-clock time of each stage, and mean cost of each role. */
   stage?: StageProfile
   /** A summary from before the stage and fallback metrics: it has none of their fields. */
   legacy?: boolean
@@ -100,11 +100,19 @@ const ROLES = ["embed", "judge", "fallback", "rewrite", "answer"]
 
 interface StageProfile {
   medianMs: Record<(typeof STAGES)[number], number>
+  meanMs: Record<(typeof STAGES)[number], number>
   costUsd: Record<(typeof ROLES)[number], number>
 }
 
 const NO_STAGE: StageProfile = {
   medianMs: {
+    searchMs: 0,
+    judgeMs: 0,
+    fallbackMs: 0,
+    rewriteMs: 0,
+    answerMs: 0,
+  },
+  meanMs: {
     searchMs: 0,
     judgeMs: 0,
     fallbackMs: 0,
@@ -165,6 +173,7 @@ function metricsOf(
           fallbackNoteRate: spec.fallback?.noteRate ?? null,
           fallbackQuestionRate: spec.fallback?.questionRate ?? null,
           stageMedianMs: (spec.stage ?? NO_STAGE).medianMs,
+          stageMeanMs: (spec.stage ?? NO_STAGE).meanMs,
           costByRole: (spec.stage ?? NO_STAGE).costUsd,
         }),
   }
@@ -254,6 +263,13 @@ const A_TEST: RunSpec = {
       rewriteMs: 0,
       answerMs: 1900,
     },
+    meanMs: {
+      searchMs: 97,
+      judgeMs: 0,
+      fallbackMs: 0,
+      rewriteMs: 0,
+      answerMs: 2050,
+    },
     costUsd: {
       embed: 0.0002,
       judge: 0,
@@ -305,6 +321,13 @@ const A_TUNING: RunSpec = {
       rewriteMs: 0,
       answerMs: 1650,
     },
+    meanMs: {
+      searchMs: 104,
+      judgeMs: 0,
+      fallbackMs: 0,
+      rewriteMs: 0,
+      answerMs: 1720,
+    },
     costUsd: {
       embed: 0.0003,
       judge: 0,
@@ -346,6 +369,13 @@ const B_TEST: RunSpec = {
       fallbackMs: 0,
       rewriteMs: 640,
       answerMs: 1750,
+    },
+    meanMs: {
+      searchMs: 330,
+      judgeMs: 2650,
+      fallbackMs: 0,
+      rewriteMs: 880,
+      answerMs: 1810,
     },
     costUsd: {
       embed: 0.0004,
@@ -403,9 +433,16 @@ const C_TEST: RunSpec = {
     medianMs: {
       searchMs: 290,
       judgeMs: 520,
-      fallbackMs: 1480,
+      fallbackMs: 0,
       rewriteMs: 610,
       answerMs: 1710,
+    },
+    meanMs: {
+      searchMs: 305,
+      judgeMs: 575,
+      fallbackMs: 940,
+      rewriteMs: 690,
+      answerMs: 1760,
     },
     costUsd: {
       embed: 0.0005,
@@ -562,6 +599,40 @@ function stageTable(page: string): Table {
   )
   expect({ found: table !== undefined }).toEqual({ found: true })
   return table!
+}
+
+/**
+ * The column of a stage in "By stage": its header names the stage and `kind`
+ * (median or mean), in ms. The order of the columns is not pinned.
+ */
+function stageColumn(
+  table: Table,
+  stage: string,
+  kind: "median" | "mean"
+): number {
+  const index = table.header.findIndex(
+    (cell) =>
+      new RegExp(`\\b${stage.replace("Ms", "")}\\b`, "i").test(cell) &&
+      new RegExp(`\\b${kind}\\b`, "i").test(cell) &&
+      /\bms\b/i.test(cell) &&
+      !/cost|usd/i.test(cell)
+  )
+  expect({ stage, kind, found: index >= 0 }).toEqual({
+    stage,
+    kind,
+    found: true,
+  })
+  return index
+}
+
+/** The column of the mean cost of a role in "By stage". */
+function costColumn(table: Table, role: string): number {
+  const index = table.header.findIndex(
+    (cell) =>
+      new RegExp(`\\b${role}\\b`, "i").test(cell) && /cost|usd/i.test(cell)
+  )
+  expect({ role, found: index >= 0 }).toEqual({ role, found: true })
+  return index
 }
 
 /** The index of the first header cell that matches. */
@@ -1312,29 +1383,56 @@ describe("eval-config-c AC9 — By stage", () => {
 
   test("eval-config-c AC9 — then the median of each stage in ms: search, judge, fallback, rewrite, answer", () => {
     const stage = stageTable(page())
-    const names = [/search/i, /judge/i, /fallback/i, /rewrite/i, /answer/i]
-    names.forEach((pattern, offset) => {
-      expect(stage.header[3 + offset]!).toMatch(pattern)
-    })
+    const columns = STAGES.map((name) => stageColumn(stage, name, "median"))
+    expect(columns).toEqual([...columns].sort((a, b) => a - b))
     for (const spec of WITH_C) {
       const row = rowOf(stage, spec)
       STAGES.forEach((name, offset) => {
-        expectShows(row[3 + offset]!, spec.stage!.medianMs[name]!, 0)
+        expectShows(row[columns[offset]!]!, spec.stage!.medianMs[name]!, 0)
       })
     }
   })
 
+  test("eval-config-c AC12 — and the mean of each stage in ms, in the same order", () => {
+    const stage = stageTable(page())
+    const columns = STAGES.map((name) => stageColumn(stage, name, "mean"))
+    expect(columns).toEqual([...columns].sort((a, b) => a - b))
+    for (const spec of WITH_C) {
+      const row = rowOf(stage, spec)
+      STAGES.forEach((name, offset) => {
+        expectShows(row[columns[offset]!]!, spec.stage!.meanMs[name]!, 0)
+      })
+    }
+  })
+
+  test("eval-config-c AC12 — the median and the mean of a stage are two columns of their own", () => {
+    const stage = stageTable(page())
+    const columns = STAGES.flatMap((name) => [
+      stageColumn(stage, name, "median"),
+      stageColumn(stage, name, "mean"),
+    ])
+    expect(new Set(columns).size).toBe(STAGES.length * 2)
+  })
+
+  test("eval-config-c AC12 — a fallback that runs on fewer than half the questions has a median of 0 and a mean that shows its cost", () => {
+    const stage = stageTable(page())
+    const row = rowOf(stage, C_TEST)
+    expectShows(row[stageColumn(stage, "fallbackMs", "median")]!, 0, 0)
+    expect(numberIn(row[stageColumn(stage, "fallbackMs", "mean")]!)).toBe(940)
+    // The other stages of the same run keep their own median and mean.
+    expect(numberIn(row[stageColumn(stage, "judgeMs", "median")]!)).toBe(520)
+    expect(numberIn(row[stageColumn(stage, "judgeMs", "mean")]!)).toBe(575)
+  })
+
   test("eval-config-c AC9 — then the mean cost of each role in USD: embed, judge, fallback, rewrite, answer", () => {
     const stage = stageTable(page())
-    const names = [/embed/i, /judge/i, /fallback/i, /rewrite/i, /answer/i]
-    names.forEach((pattern, offset) => {
-      expect(stage.header[8 + offset]!).toMatch(pattern)
-      expect(stage.header[8 + offset]!).toMatch(/cost|usd/i)
-    })
+    const columns = ROLES.map((role) => costColumn(stage, role))
+    expect(columns).toEqual([...columns].sort((a, b) => a - b))
+    expect(new Set(columns).size).toBe(ROLES.length)
     for (const spec of WITH_C) {
       const row = rowOf(stage, spec)
       ROLES.forEach((name, offset) => {
-        expectShows(row[8 + offset]!, spec.stage!.costUsd[name]!, 4)
+        expectShows(row[columns[offset]!]!, spec.stage!.costUsd[name]!, 4)
       })
     }
   })
@@ -1343,11 +1441,16 @@ describe("eval-config-c AC9 — By stage", () => {
     const stage = stageTable(page())
     const b = rowOf(stage, B_TEST)
     const c = rowOf(stage, C_TEST)
-    expect(numberIn(b[4]!)).toBe(2400)
-    expect(numberIn(c[4]!)).toBe(520)
-    expect(numberIn(c[5]!)).toBe(1480)
-    expect(numberIn(rowOf(stage, A_TEST)[3]!)).toBe(85)
-    expect(numberIn(rowOf(stage, A_TUNING)[3]!)).toBe(92)
+    const median = (name: string) => stageColumn(stage, name, "median")
+    const mean = (name: string) => stageColumn(stage, name, "mean")
+    expect(numberIn(b[median("judgeMs")]!)).toBe(2400)
+    expect(numberIn(c[median("judgeMs")]!)).toBe(520)
+    expect(numberIn(c[mean("fallbackMs")]!)).toBe(940)
+    expect(numberIn(rowOf(stage, A_TEST)[median("searchMs")]!)).toBe(85)
+    expect(numberIn(rowOf(stage, A_TUNING)[median("searchMs")]!)).toBe(92)
+    expect(numberIn(rowOf(stage, A_TEST)[mean("searchMs")]!)).toBe(97)
+    expect(numberIn(rowOf(stage, A_TUNING)[mean("searchMs")]!)).toBe(104)
+    expect(numberIn(b[mean("answerMs")]!)).toBe(1810)
   })
 
   test("eval-config-c AC9 — the run folders it was built from are listed under it", () => {
@@ -1367,9 +1470,11 @@ describe("eval-config-c AC9 — By stage", () => {
     const stage = stageTable(text)
     expect(stage.rows).toHaveLength(2)
     const row = rowOf(stage, B_LEGACY)
-    for (const cell of row.slice(3, 13)) expect(cell).toMatch(/^-?$/)
+    for (const cell of row.slice(3)) expect(cell).toMatch(/^-?$/)
     // The other run is not affected.
-    expect(numberIn(rowOf(stage, C_TEST)[4]!)).toBe(520)
+    const c = rowOf(stage, C_TEST)
+    expect(numberIn(c[stageColumn(stage, "judgeMs", "median")]!)).toBe(520)
+    expect(numberIn(c[stageColumn(stage, "judgeMs", "mean")]!)).toBe(575)
   })
 })
 
@@ -1426,5 +1531,82 @@ describe("eval-config-c AC9 — labels with the commit when two runs share confi
         )
       })
     }
+  })
+})
+
+describe("eval-config-c AC13 — labels with the time when two runs share config, split and commit", () => {
+  /** The same config, split and commit as B_TEST, run again later (the variance measurement). */
+  const B_TEST_REPEAT: RunSpec = {
+    ...B_TEST,
+    name: "2026-10-09T15-29-47-950Z-B-test",
+    failureSeed: 1,
+  }
+  const runs = [A_TEST, B_TEST, B_TEST_REPEAT]
+  const tables = () => {
+    const { cwd, runs: dirs } = workdir(runs)
+    return threeTables(generate(cwd, dirs))
+  }
+
+  test("eval-config-c AC13 — the column groups of the per-category table carry the time of their run", () => {
+    const [, categories] = tables()
+    const header = categories.header.join(" | ")
+    // B_TEST: 2026-10-09T08-15-00-000Z. Three measures per run.
+    expect(header.match(/\b08:15\b/g)).toHaveLength(3)
+    expect(header.match(/\b15:29\b/g)).toHaveLength(3)
+    expect(new Set(categories.header.slice(1)).size).toBe(
+      categories.header.length - 1
+    )
+  })
+
+  test("eval-config-c AC13 — the count columns of the failure table carry the time of their run", () => {
+    const [, , failures] = tables()
+    const labels = failures.header.slice(-runs.length)
+    expect(new Set(labels).size).toBe(runs.length)
+    const early = labels.filter((label) => label.includes("08:15"))
+    const late = labels.filter((label) => label.includes("15:29"))
+    expect(early).toHaveLength(1)
+    expect(late).toHaveLength(1)
+    for (const label of [...early, ...late]) {
+      expect(label).toMatch(/\bB\b[^|]*test/)
+      expect(label).toContain("bbb3333")
+    }
+  })
+
+  test("eval-config-c AC13 — the time is the HH:MM of the folder name, without the seconds", () => {
+    const [, , failures] = tables()
+    const label = failures.header.find((cell) => cell.includes("15:29")) ?? ""
+    expect(label).toContain("15:29")
+    expect(label).not.toContain("15:29:47")
+    expect(label).not.toContain("47")
+  })
+
+  test("eval-config-c AC13 — the counts of each run stay in their column", () => {
+    const [, , failures] = tables()
+    const labels = failures.header.slice(-runs.length)
+    for (const [spec, time] of [
+      [B_TEST, "08:15"],
+      [B_TEST_REPEAT, "15:29"],
+    ] as const) {
+      const index = labels.findIndex((label) => label.includes(time))
+      failures.rows.forEach((row, failure) => {
+        const id = FAILURE_IDS[failure]!
+        expect(row.slice(-runs.length)[index]!).toBe(
+          String(failuresOf(spec)[id])
+        )
+      })
+    }
+  })
+
+  test("eval-config-c AC13 — a run that shares nothing keeps its label of config and split, without a time", () => {
+    const [, categories, failures] = tables()
+    const labels = failures.header.slice(-runs.length)
+    const a = labels.filter((label) => /\bA\b[^|]*test/.test(label))
+    expect(a).toHaveLength(1)
+    expect(a[0]!).not.toMatch(/\d\d:\d\d/)
+    const aGroups = categories.header.filter((cell) =>
+      /\bA\b[^|]*test/.test(cell)
+    )
+    expect(aGroups).toHaveLength(3)
+    for (const cell of aGroups) expect(cell).not.toMatch(/\d\d:\d\d/)
   })
 })

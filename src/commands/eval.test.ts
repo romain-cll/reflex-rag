@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { NoteForJudge } from "../core/judge.ts"
+import { JudgeCallsError, type NoteForJudge } from "../core/judge.ts"
+import { LLMCallError } from "../core/llm.ts"
 import type { Chunk, ModelCall, Note } from "../core/types.ts"
 import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
 // A namespace import, for the same reason: `POLICIES` is not exported yet.
@@ -686,5 +687,304 @@ describe("eval-config-c AC8 — upperBoundCallsC makes no network call", () => {
         if (value !== undefined) process.env[key] = value
       })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// eval-config-c, revision 2
+// ---------------------------------------------------------------------------
+
+/** The settings a run is parsed into (`EvalSettings`, which is not exported). */
+const SETTINGS = {
+  split: "tuning",
+  limit: null,
+  k: 4,
+  maxCostUsd: 1,
+  dryRun: false,
+  rewrite: "llm",
+  candidates: 30,
+  systemOne: "clef",
+  fallback: 0.7,
+} as const
+
+describe("eval-config-c AC10 — loopSettings, config B", () => {
+  test("eval-config-c AC10 — the models of B: the judge, the rewriter and the answerer are the Haiku client", () => {
+    const { models } = evalCommand.loopSettings("B", SETTINGS)
+    expect(models).toEqual({ judge: HAIKU, rewriter: HAIKU, answerer: HAIKU })
+  })
+
+  test("eval-config-c AC10 — the loop of B: the policy used with k, the rewriter and the candidates", () => {
+    const { loop } = evalCommand.loopSettings("B", SETTINGS)
+    expect(loop).toEqual({
+      policy: evalCommand.loopPolicy(4, policyModule.POLICIES.B),
+      rewriter: "llm",
+      candidates: 30,
+    })
+    expect(loop.policy.budgets.maxNotes).toBe(4)
+  })
+
+  test("eval-config-c AC10 — B has no fallback model and no fallback or system-one setting, whatever the settings hold", () => {
+    const { models, loop } = evalCommand.loopSettings("B", SETTINGS)
+    expect(Object.keys(models).sort()).toEqual([
+      "answerer",
+      "judge",
+      "rewriter",
+    ])
+    expect(Object.keys(loop).sort()).toEqual([
+      "candidates",
+      "policy",
+      "rewriter",
+    ])
+  })
+
+  test("eval-config-c AC10 — B ignores a system-one model if one is given", () => {
+    const { models } = evalCommand.loopSettings("B", SETTINGS, "clef-flash")
+    expect(models.judge).toBe(HAIKU)
+    expect("fallback" in models).toBe(false)
+  })
+
+  test("eval-config-c AC10 — the code rewriter: no model, and the rewriter named in the loop", () => {
+    const { models, loop } = evalCommand.loopSettings("B", {
+      ...SETTINGS,
+      rewrite: "code",
+    })
+    expect(models.rewriter).toBe("none")
+    expect(loop.rewriter).toBe("code")
+    expect(models.judge).toBe(HAIKU)
+  })
+
+  test("eval-config-c AC10 — k and the candidates come from the settings", () => {
+    const { loop } = evalCommand.loopSettings("B", {
+      ...SETTINGS,
+      k: 9,
+      candidates: 12,
+    })
+    expect(loop.policy.budgets.maxNotes).toBe(9)
+    expect(loop.candidates).toBe(12)
+  })
+})
+
+describe("eval-config-c AC10 — loopSettings, config C", () => {
+  test("eval-config-c AC10 — the models of C: the judge is the system-one model, the fallback is the Haiku client", () => {
+    const { models } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    expect(models).toEqual({
+      judge: "clef-flash",
+      fallback: HAIKU,
+      rewriter: HAIKU,
+      answerer: HAIKU,
+    })
+  })
+
+  test("eval-config-c AC10 — the judge follows the system-one model it is given", () => {
+    const { models } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, systemOne: "jev" },
+      JEV
+    )
+    expect(models.judge).toBe(JEV)
+    expect(models.fallback).toBe(HAIKU)
+  })
+
+  test("eval-config-c AC10 — the loop of C: the policy of C with k, the rewriter, the candidates, the fallback threshold and the system one", () => {
+    const { loop } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    expect(loop).toEqual({
+      policy: evalCommand.loopPolicy(4, policyModule.POLICIES.C),
+      rewriter: "llm",
+      candidates: 30,
+      fallbackThreshold: 0.7,
+      systemOne: "clef",
+    })
+  })
+
+  test("eval-config-c AC10 — the fallback threshold and the system-one kind follow the settings", () => {
+    const { loop } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, fallback: 0.25, systemOne: "jev" },
+      JEV
+    )
+    expect(loop.fallbackThreshold).toBe(0.25)
+    expect(loop.systemOne).toBe("jev")
+  })
+
+  test("eval-config-c AC10 — the code rewriter in C", () => {
+    const { models, loop } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, rewrite: "code" },
+      "clef-flash"
+    )
+    expect(models.rewriter).toBe("none")
+    expect(models.fallback).toBe(HAIKU)
+    expect(loop.rewriter).toBe("code")
+  })
+
+  test("eval-config-c AC10 — the settings given are not mutated", () => {
+    const before = structuredClone(SETTINGS)
+    evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    evalCommand.loopSettings("B", SETTINGS)
+    expect(SETTINGS).toEqual(before)
+  })
+})
+
+function modelCall(model: string, role?: ModelCall["role"]): ModelCall {
+  return {
+    model,
+    inputTokens: 10,
+    outputTokens: 5,
+    latencyMs: 1,
+    ...(role ? { role } : {}),
+  }
+}
+
+/** The error a promise rejects with; fails the test if it resolves. */
+async function rejection(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise
+  } catch (error) {
+    return error
+  }
+  throw new Error("expected the promise to reject")
+}
+
+describe("eval-config-c AC11 — withRole", () => {
+  test("eval-config-c AC11 — sets the role of the calls that have none", () => {
+    const calls = [modelCall("a"), modelCall("b")]
+    expect(evalCommand.withRole(calls, "judge")).toEqual([
+      modelCall("a", "judge"),
+      modelCall("b", "judge"),
+    ])
+  })
+
+  test("eval-config-c AC11 — keeps the role a call already has", () => {
+    const calls = [modelCall("a", "embed"), modelCall("b")]
+    expect(evalCommand.withRole(calls, "rewrite")).toEqual([
+      modelCall("a", "embed"),
+      modelCall("b", "rewrite"),
+    ])
+  })
+
+  test("eval-config-c AC11 — returns new objects and leaves its input as it was", () => {
+    const calls = [modelCall("a"), modelCall("b", "fallback")]
+    const before = structuredClone(calls)
+    const tagged = evalCommand.withRole(calls, "answer")
+    expect(calls).toEqual(before)
+    expect(tagged).not.toBe(calls)
+    tagged.forEach((call, index) => expect(call).not.toBe(calls[index]))
+  })
+
+  test("eval-config-c AC11 — no call gives no call", () => {
+    expect(evalCommand.withRole([], "judge")).toEqual([])
+  })
+})
+
+describe("eval-config-c AC11 — roleTagged, results", () => {
+  test("eval-config-c AC11 — tags the calls of the result, keeps the rest of it", async () => {
+    const result = await evalCommand.roleTagged("judge", () =>
+      Promise.resolve({
+        verdicts: ["v1"],
+        calls: [modelCall("a"), modelCall("b", "embed")],
+      })
+    )
+    expect(result).toEqual({
+      verdicts: ["v1"],
+      calls: [modelCall("a", "judge"), modelCall("b", "embed")],
+    })
+  })
+
+  test("eval-config-c AC11 — tags the call of the result", async () => {
+    const result = await evalCommand.roleTagged("answer", () =>
+      Promise.resolve({ output: "text", call: modelCall("a") })
+    )
+    expect(result).toEqual({ output: "text", call: modelCall("a", "answer") })
+  })
+
+  test("eval-config-c AC11 — a result without a billed call (call null) stays as it is", async () => {
+    const result = await evalCommand.roleTagged("answer", () =>
+      Promise.resolve({ output: "abstained", call: null })
+    )
+    expect(result).toEqual({ output: "abstained", call: null })
+  })
+
+  test("eval-config-c AC11 — a result with a call and calls has both tagged", async () => {
+    const result = await evalCommand.roleTagged("rewrite", () =>
+      Promise.resolve({
+        call: modelCall("a"),
+        calls: [modelCall("b")],
+      })
+    )
+    expect(result).toEqual({
+      call: modelCall("a", "rewrite"),
+      calls: [modelCall("b", "rewrite")],
+    })
+  })
+
+  test("eval-config-c AC11 — runs fn once, and does not mutate the calls fn returned", async () => {
+    const calls = [modelCall("a")]
+    let runs = 0
+    await evalCommand.roleTagged("judge", () => {
+      runs++
+      return Promise.resolve({ calls })
+    })
+    expect(runs).toBe(1)
+    expect(calls).toEqual([modelCall("a")])
+  })
+})
+
+describe("eval-config-c AC11 — roleTagged, failures", () => {
+  test("eval-config-c AC11 — rethrows an LLMCallError with the same message, its billed call carrying the role", async () => {
+    const error = await rejection(
+      evalCommand.roleTagged("judge", () =>
+        Promise.reject(new LLMCallError("invalid JSON", modelCall("a")))
+      )
+    )
+    expect(error).toBeInstanceOf(LLMCallError)
+    expect((error as LLMCallError).message).toBe("invalid JSON")
+    expect((error as LLMCallError).call).toEqual(modelCall("a", "judge"))
+  })
+
+  test("eval-config-c AC11 — the billed call of an LLMCallError keeps the role it had", async () => {
+    const error = await rejection(
+      evalCommand.roleTagged("judge", () =>
+        Promise.reject(new LLMCallError("refused", modelCall("a", "fallback")))
+      )
+    )
+    expect(error).toBeInstanceOf(LLMCallError)
+    expect((error as LLMCallError).call.role).toBe("fallback")
+  })
+
+  test("eval-config-c AC11 — tags the calls of an error that carries calls", async () => {
+    const error = await rejection(
+      evalCommand.roleTagged("rewrite", () =>
+        Promise.reject(
+          new JudgeCallsError("batch failed", [
+            modelCall("a"),
+            modelCall("b", "judge"),
+          ])
+        )
+      )
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe("batch failed")
+    expect((error as JudgeCallsError).calls).toEqual([
+      modelCall("a", "rewrite"),
+      modelCall("b", "judge"),
+    ])
+  })
+
+  test("eval-config-c AC11 — another error is rethrown unchanged", async () => {
+    const original = new Error("network down")
+    const error = await rejection(
+      evalCommand.roleTagged("answer", () => Promise.reject(original))
+    )
+    expect(error).toBe(original)
+  })
+
+  test("eval-config-c AC11 — a value that is not an Error is rethrown as it is", async () => {
+    const error = await rejection(
+      evalCommand.roleTagged("answer", () =>
+        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+        Promise.reject("plain string")
+      )
+    )
+    expect(error).toBe("plain string")
   })
 })
