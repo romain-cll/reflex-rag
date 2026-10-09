@@ -39,6 +39,12 @@ Config C's judge runs many system-one calls in parallel, then sometimes an LLM f
 
 - **AC15 — context**: every `judge.judge` call of the loop receives as `context` the notes kept so far (in the sense of the policy, from earlier turns), as `NoteForJudge`; a search turn's first call has none.
 
+## Revision 6 — only the steps on the path
+
+The same replay: keeping only the step notes that link to an answer note raised precision from 0.53 to 0.63 with the same context completeness (39/48).
+
+- **AC16 — linked steps**: with the policy's `contextSteps: "linked"`, the context holds the answer notes (kept, `answer` ≥ the answer threshold), each followed by its ancestors and by the kept step notes that link to it (AC11); the other kept notes are added only when no kept note is an answer note. With `"all"` (default), AC11 applies unchanged.
+
 ## Technical plan
 
 Files:

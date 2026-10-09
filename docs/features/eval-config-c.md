@@ -31,6 +31,10 @@ Phase 4. `reflex eval --config C` runs the questions through the retrieval loop 
 
 - **AC17 — options**: `--fallback <low>` (default 0.8) must be below C's keep threshold (0.9); `--fallback-when uncertain|nothing-kept` (default `uncertain`, config C only, rejected for A and B) sets the fallback scope (docs/features/system-one-judge.md, AC10). Both are recorded in the settings (`fallbackLow`, `fallbackWhen`). The C judge passes the keep score of `POLICIES.C` to `FallbackJudge`.
 
+## Revision 5 — strategy and veto in the settings
+
+- **AC18 — settings**: B and C runs record the policy with its `strategy`; C runs also record `veto` in `loop`. The loop's steps record the `vetoed` paths of each turn (empty when none).
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.

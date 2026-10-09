@@ -28,6 +28,12 @@ In config C's run at commit c97c6ad (`runs/2026-10-09T17-38-44-205Z-C-tuning`), 
 
 - **AC8 — keep threshold**: `thresholds.keep` is optional. When it is set, a note is kept when `answer + step ≥ keep`, and the answer and step thresholds keep their other uses (`follow-steps` and the context order); when it is unset, the definition of Revision 3 applies. `isKept(verdict, config)` follows this. `POLICIES.C` sets `keep: 0.9`; `DEFAULT_POLICY` and `POLICIES.B` leave it unset.
 
+## Revision 5 — open a step only when it is the stronger lead
+
+A replay of the first turn of every tuning question (Jev, `runs/2026-10-09T19-07-56-479Z-C-tuning`) found an answer note (answer ≥ 0.7) in 43 questions, 28 of which also had a step note ≥ 0.7 whose links the policy opened although the answer was already found. A step note serves to find the answer while none is found, and to justify it once found.
+
+- **AC9 — strategy**: `PolicyConfig.strategy` is optional: `{ openSteps?: "always" | "above-best-answer"; contextSteps?: "all" | "linked" }`, defaults `"always"` and `"all"` (the behaviour so far). With `openSteps: "above-best-answer"`, `follow-steps` opens only the openable notes whose `step` is ≥ the step threshold **and** greater than the highest `answer` probability among the judged notes. `contextSteps` is used by the loop (docs/features/retrieval-loop.md, AC16). `POLICIES.B` and `POLICIES.C` set `{ openSteps: "above-best-answer", contextSteps: "linked" }`; `DEFAULT_POLICY` leaves `strategy` unset.
+
 ## Technical plan
 
 Files:
