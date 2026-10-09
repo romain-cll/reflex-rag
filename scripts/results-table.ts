@@ -102,6 +102,15 @@ function readRun(dir: string): Run {
   }
 }
 
+function parseSettings(name: string, dir: string) {
+  try {
+    return SettingsSchema.parse(readSettings(dir))
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new Error(`${name}: ${reason}`, { cause: error })
+  }
+}
+
 /** The most recent run of each config and split under `runsDir`. */
 function latestRunDirs(runsDir: string): string[] {
   if (!existsSync(runsDir)) return []
@@ -109,7 +118,7 @@ function latestRunDirs(runsDir: string): string[] {
   for (const name of readdirSync(runsDir).sort()) {
     const dir = join(runsDir, name)
     if (!existsSync(join(dir, "trace.jsonl"))) continue
-    const { config, split } = SettingsSchema.parse(readSettings(dir))
+    const { config, split } = parseSettings(name, dir)
     // The names start with their timestamp, so the last one read is the latest.
     latest.set(`${config} ${split}`, dir)
   }
@@ -176,10 +185,13 @@ const MAIN_COLUMNS: Column[] = [
       return noAnswer ? correctOverN(noAnswer) : "-"
     },
   ],
-  ["abstentions by the loop", (r) => String(r.overall.abstentions.loop)],
+  [
+    "abstentions by the loop",
+    (r) => String(r.byCategory.no_answer?.abstentions.loop ?? "-"),
+  ],
   [
     "abstentions by the answerer",
-    (r) => String(r.overall.abstentions.answerer),
+    (r) => String(r.byCategory.no_answer?.abstentions.answerer ?? "-"),
   ],
   ["hops", (r) => loopFixed(r.overall.meanHops, 2)],
   ["rewrites", (r) => loopFixed(r.overall.meanRewrites, 2)],
@@ -284,14 +296,13 @@ function run(argv: string[]): number {
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error))
   }
-  const dirs =
-    parsed.positionals.length > 0
-      ? parsed.positionals.map((dir) => resolve(dir))
-      : latestRunDirs(resolve(RUNS_DIR))
-  if (dirs.length === 0) return fail("no run found")
-
   let runs: Run[]
   try {
+    const dirs =
+      parsed.positionals.length > 0
+        ? parsed.positionals.map((dir) => resolve(dir))
+        : latestRunDirs(resolve(RUNS_DIR))
+    if (dirs.length === 0) return fail("no run found")
     runs = dirs.map(readRun)
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error))

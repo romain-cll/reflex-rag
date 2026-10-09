@@ -111,9 +111,14 @@ class Loop {
     private readonly deps: LoopDeps
   ) {}
 
-  async run(): Promise<LoopResult> {
+  run(): Promise<LoopResult> {
+    return this.loop()
+  }
+
+  /** Runs a judge or rewriter call; its failure becomes a `LoopError`. */
+  private async model<T>(call: () => Promise<T>): Promise<T> {
     try {
-      return await this.loop()
+      return await call()
     } catch (error) {
       const billed = error instanceof LLMCallError ? [error.call] : []
       throw new LoopError(
@@ -174,9 +179,11 @@ class Loop {
       [...this.judged.values()],
       ({ verdicts }) => verdicts.answer + verdicts.step
     ).slice(0, REWRITER_NOTES)
-    const { query, calls } = await this.deps.rewriter.rewrite(
-      this.question,
-      best.map(({ note }) => ({ path: note.path, text: note.text }))
+    const { query, calls } = await this.model(() =>
+      this.deps.rewriter.rewrite(
+        this.question,
+        best.map(({ note }) => ({ path: note.path, text: note.text }))
+      )
     )
     this.calls.push(...calls)
     this.rewrites++
@@ -189,7 +196,9 @@ class Loop {
     parents: Map<string, string>
   ): Promise<Pick<Turn, "judged" | "parents" | "kept">> {
     const notes = paths.map((path) => this.noteForJudge(path))
-    const judgement = await this.deps.judge.judge(this.question, notes)
+    const judgement = await this.model(() =>
+      this.deps.judge.judge(this.question, notes)
+    )
     this.calls.push(...judgement.calls)
     const judged: Record<string, Verdicts> = {}
     for (const note of notes) {

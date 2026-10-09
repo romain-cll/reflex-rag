@@ -12,7 +12,7 @@ import {
 } from "../answer/answerer.ts"
 import type { Embedder } from "../core/embedder.ts"
 import type { Judge, NoteForJudge } from "../core/judge.ts"
-import type { LLM, LLMRequest } from "../core/llm.ts"
+import { LLMCallError, type LLM, type LLMRequest } from "../core/llm.ts"
 import type { Chunk, ModelCall } from "../core/types.ts"
 import { openIndex, type Index } from "../index/read.ts"
 import { callCostUsd } from "../eval/prices.ts"
@@ -229,7 +229,7 @@ function pipelineB(
   const judge = new RoleTaggedJudge(new LLMJudge(llm))
   const rewriter =
     settings.rewrite === "llm" ? new LLMRewriter(llm) : new CodeRewriter()
-  const policy = loopPolicy(settings)
+  const policy = loopPolicy(settings.k)
   return {
     retrieve: async (query) => {
       const {
@@ -275,11 +275,11 @@ function pipelineB(
   }
 }
 
-/** The default policy, with `--k` as the cap of the notes in the context. */
-function loopPolicy(settings: EvalSettings): PolicyConfig {
+/** The default policy, with `k` as the cap of the notes in the context. */
+export function loopPolicy(k: number): PolicyConfig {
   return {
     ...DEFAULT_POLICY,
-    budgets: { ...DEFAULT_POLICY.budgets, maxNotes: settings.k },
+    budgets: { ...DEFAULT_POLICY.budgets, maxNotes: k },
   }
 }
 
@@ -298,8 +298,16 @@ class RoleTaggedJudge implements Judge {
   constructor(private readonly inner: Judge) {}
 
   async judge(...args: Parameters<Judge["judge"]>) {
-    const result = await this.inner.judge(...args)
-    return { ...result, calls: tagged(result.calls) }
+    try {
+      const result = await this.inner.judge(...args)
+      return { ...result, calls: tagged(result.calls) }
+    } catch (error) {
+      // The billed call of a failed judge counts as a judge call too.
+      if (error instanceof LLMCallError) {
+        throw new LLMCallError(error.message, tagged([error.call])[0]!)
+      }
+      throw error
+    }
   }
 }
 
@@ -341,6 +349,19 @@ export function topNotes(chunks: Chunk[], k: number): string[] {
   return [...new Set(chunks.map((chunk) => chunk.notePath))].slice(0, k)
 }
 
+/** One context item per note: its path, its date, no heading, its whole text. */
+export function notesContext(
+  index: Pick<Index, "getNote" | "chunksOf">,
+  paths: string[]
+): ContextChunk[] {
+  return paths.map((path) => ({
+    notePath: path,
+    noteDate: index.getNote(path)?.date ?? null,
+    heading: "",
+    text: noteText(index, path),
+  }))
+}
+
 /**
  * Retrieval for config A: hybrid search of `candidates` chunks, then the
  * `k` best notes, each whole with its date.
@@ -353,15 +374,13 @@ function retrieverOf(
   const retriever = new HybridRetriever(index, embedder)
   return async (query: string, k: number) => {
     const { chunks, calls } = await retriever.retrieve(query, candidates)
-    const context: ContextChunk[] = topNotes(
-      chunks.map(({ chunk }) => chunk),
-      k
-    ).map((path) => ({
-      notePath: path,
-      noteDate: index.getNote(path)?.date ?? null,
-      heading: "",
-      text: noteText(index, path),
-    }))
+    const context = notesContext(
+      index,
+      topNotes(
+        chunks.map(({ chunk }) => chunk),
+        k
+      )
+    )
     return { context, calls }
   }
 }
@@ -456,7 +475,7 @@ async function dryRunB(
   settings: EvalSettings
 ): Promise<number> {
   const retriever = new HybridRetriever(index, embedder)
-  const policy = loopPolicy(settings)
+  const policy = loopPolicy(settings.k)
   const { maxRewrites } = policy.budgets
   let embeddings = 0
   let embeddingCostUsd = 0

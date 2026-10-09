@@ -10,7 +10,7 @@ import type { LLM } from "../core/llm.ts"
 import { JUDGE_QUESTION } from "./question.ts"
 
 /** Output tokens for one `{ id, answer, step, none }` entry. */
-const TOKENS_PER_NOTE = 24
+const TOKENS_PER_NOTE = 48
 /** Output tokens for the fixed part of the answer. */
 const BASE_TOKENS = 64
 
