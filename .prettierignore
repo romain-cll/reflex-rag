@@ -5,3 +5,7 @@ corpus/*/world.json
 
 # Generated question sets
 evals/*/questions.json
+
+# Offline experiments, kept as they were run
+docs/experiments/*
+!docs/experiments/README.md
