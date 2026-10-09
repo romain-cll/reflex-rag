@@ -1,127 +1,117 @@
-import type { Assessment } from "../core/judge.ts"
-import type { Link } from "../core/types.ts"
+import type { Verdict } from "../core/judge.ts"
 
 export interface PolicyConfig {
   thresholds: {
-    /** Used by the loop to keep a chunk, not by `decide`. */
-    relevance: number
-    sufficient: number
-    link: number
+    /** A note is kept when its `answer` probability reaches it. */
+    answer: number
+    /** A note is opened when its `step` probability reaches it. */
+    step: number
   }
   budgets: {
     maxHops: number
     maxRewrites: number
+    /** Notes opened by `explore` at most. */
+    explore: number
     /** Used by the loop to cap the context, not by `decide`. */
-    maxChunks: number
+    maxNotes: number
   }
 }
 
 export const DEFAULT_POLICY: PolicyConfig = {
-  thresholds: { relevance: 0.5, sufficient: 0.7, link: 0.5 },
-  budgets: { maxHops: 3, maxRewrites: 1, maxChunks: 12 },
+  thresholds: { answer: 0.5, step: 0.5 },
+  budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 5 },
+}
+
+/** A note the judge has classified. */
+export interface JudgedNote {
+  path: string
+  verdict: Record<Verdict, number>
+  /** Its links were already opened. */
+  expanded: boolean
+  /** It links to a note not judged yet. */
+  hasUnjudgedLinks: boolean
 }
 
 export interface LoopState {
-  /** The judge's latest assessment. */
-  assessment: Assessment
-  /** The links visible from the current context. */
-  links: Link[]
-  /** Paths of the notes already in the context. */
-  contextNotes: string[]
-  /** Number of relevant chunks kept so far. */
-  relevantCount: number
+  /** Every note judged so far, in order of first judgement. */
+  notes: JudgedNote[]
   hops: number
   rewrites: number
 }
 
 /** The rules in priority order: the first that applies wins. */
 export const RULES = [
-  "sufficient",
-  "follow-link",
-  "rewrite-topic-not-found",
-  "rewrite-nothing-relevant",
-  "abstain-nothing-relevant",
-  "answer-best-effort",
+  "follow-steps",
+  "answer",
+  "explore",
+  "rewrite",
+  "abstain",
 ] as const
 
 export type Rule = (typeof RULES)[number]
 
 export type Action =
+  | { type: "expand"; rule: Rule; paths: string[] }
   | { type: "answer" | "rewrite" | "abstain"; rule: Rule }
-  | { type: "follow"; rule: Rule; link: Link; probability: number }
 
 type RuleFn = (state: LoopState, config: PolicyConfig) => Action | undefined
 
 const hopsLeft = (state: LoopState, config: PolicyConfig) =>
   state.hops < config.budgets.maxHops
 
-const rewritesLeft = (state: LoopState, config: PolicyConfig) =>
-  state.rewrites < config.budgets.maxRewrites
+const isKept = (note: JudgedNote, config: PolicyConfig) =>
+  note.verdict.answer >= config.thresholds.answer
 
-const nothingRelevant = (state: LoopState) => state.relevantCount === 0
+const isOpenable = (note: JudgedNote) => !note.expanded && note.hasUnjudgedLinks
 
-/** The unvisited link with the highest probability; ties go to the smallest id. */
-function bestLink(
-  state: LoopState
-): { link: Link; probability: number } | undefined {
-  let best: { link: Link; probability: number } | undefined
-  for (const link of state.links) {
-    const probability = state.assessment.links[link.id]
-    if (probability === undefined) continue
-    if (state.contextNotes.includes(link.targetPath)) continue
-    if (
-      best === undefined ||
-      probability > best.probability ||
-      (probability === best.probability && link.id < best.link.id)
-    ) {
-      best = { link, probability }
-    }
-  }
-  return best
+/** The notes by decreasing score; ties stay in order of judgement. */
+function ranked(
+  notes: JudgedNote[],
+  score: (note: JudgedNote) => number
+): JudgedNote[] {
+  return [...notes].sort((a, b) => score(b) - score(a))
 }
 
-const sufficient: RuleFn = (state, config) =>
-  state.assessment.sufficient >= config.thresholds.sufficient
-    ? { type: "answer", rule: "sufficient" }
-    : undefined
-
-const followLink: RuleFn = (state, config) => {
+const followSteps: RuleFn = (state, config) => {
   if (!hopsLeft(state, config)) return undefined
-  const best = bestLink(state)
-  if (best === undefined || best.probability < config.thresholds.link) {
-    return undefined
-  }
-  return { type: "follow", rule: "follow-link", ...best }
+  const steps = state.notes.filter(
+    (note) => isOpenable(note) && note.verdict.step >= config.thresholds.step
+  )
+  if (steps.length === 0) return undefined
+  const paths = ranked(steps, (note) => note.verdict.step).map(
+    (note) => note.path
+  )
+  return { type: "expand", rule: "follow-steps", paths }
 }
 
-const rewriteTopicNotFound: RuleFn = (state, config) =>
-  state.assessment.missing.choice === "topic_not_found" &&
-  rewritesLeft(state, config)
-    ? { type: "rewrite", rule: "rewrite-topic-not-found" }
+const answer: RuleFn = (state, config) =>
+  state.notes.some((note) => isKept(note, config))
+    ? { type: "answer", rule: "answer" }
     : undefined
 
-const rewriteNothingRelevant: RuleFn = (state, config) =>
-  nothingRelevant(state) && rewritesLeft(state, config)
-    ? { type: "rewrite", rule: "rewrite-nothing-relevant" }
+const explore: RuleFn = (state, config) => {
+  if (!hopsLeft(state, config)) return undefined
+  const best = ranked(
+    state.notes.filter(isOpenable),
+    (note) => note.verdict.answer + note.verdict.step
+  ).slice(0, config.budgets.explore)
+  if (best.length === 0) return undefined
+  return { type: "expand", rule: "explore", paths: best.map((n) => n.path) }
+}
+
+const rewrite: RuleFn = (state, config) =>
+  state.rewrites < config.budgets.maxRewrites
+    ? { type: "rewrite", rule: "rewrite" }
     : undefined
 
-const abstainNothingRelevant: RuleFn = (state, config) =>
-  nothingRelevant(state) && !rewritesLeft(state, config)
-    ? { type: "abstain", rule: "abstain-nothing-relevant" }
-    : undefined
-
-const answerBestEffort: RuleFn = () => ({
-  type: "answer",
-  rule: "answer-best-effort",
-})
+const abstain: RuleFn = () => ({ type: "abstain", rule: "abstain" })
 
 const RULE_FNS: readonly RuleFn[] = [
-  sufficient,
-  followLink,
-  rewriteTopicNotFound,
-  rewriteNothingRelevant,
-  abstainNothingRelevant,
-  answerBestEffort,
+  followSteps,
+  answer,
+  explore,
+  rewrite,
+  abstain,
 ]
 
 /** The next action of the retrieval loop: the first rule that applies. */
@@ -130,6 +120,6 @@ export function decide(state: LoopState, config: PolicyConfig): Action {
     const action = rule(state, config)
     if (action !== undefined) return action
   }
-  // Unreachable: `answerBestEffort` always applies.
-  return { type: "answer", rule: "answer-best-effort" }
+  // Unreachable: `abstain` always applies.
+  return { type: "abstain", rule: "abstain" }
 }
