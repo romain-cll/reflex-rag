@@ -303,7 +303,7 @@ describe("SystemOneJudge", () => {
     expect(run.completed).toHaveLength(4)
     expect(error.message).toContain("boom")
     expect(error.calls).toHaveLength(3)
-    const completed = error.calls
+    const completed = (error.calls ?? [])
       .map(({ latencyMs, model }) => ({ latencyMs, model }))
       .sort((a, b) => a.latencyMs - b.latencyMs)
     expect(completed).toEqual(
