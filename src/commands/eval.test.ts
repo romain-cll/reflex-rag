@@ -463,19 +463,26 @@ describe("eval-config-b AC11 — notesContext", () => {
 
 const JEV = "jev-1.13.0"
 
+/** The strategy of B and C's policies (system-one-judge Revision 4, retrieval-loop AC16). */
+const STRATEGY = { openSteps: "above-best-answer", contextSteps: "linked" }
+
 describe("eval-config-c AC1 — POLICIES", () => {
   test("eval-config-c AC1 — POLICIES holds the policies of B and C", () => {
     expect(Object.keys(policyModule.POLICIES).sort()).toEqual(["B", "C"])
   })
 
-  test("eval-config-c AC1 — B is DEFAULT_POLICY, in value", () => {
-    expect(policyModule.POLICIES.B).toEqual(DEFAULT_POLICY)
+  test("eval-config-c AC1 — B is DEFAULT_POLICY plus the strategy, in value", () => {
+    expect(policyModule.POLICIES.B as unknown).toEqual({
+      ...DEFAULT_POLICY,
+      strategy: STRATEGY,
+    })
   })
 
-  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY and the thresholds answer 0.7, step 0.7 and keep 0.9", () => {
-    expect(policyModule.POLICIES.C).toEqual({
+  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY, the thresholds answer 0.7, step 0.7 and keep 0.9, and the strategy", () => {
+    expect(policyModule.POLICIES.C as unknown).toEqual({
       thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
       budgets: DEFAULT_POLICY.budgets,
+      strategy: STRATEGY,
     })
     expect(policyModule.POLICIES.C.budgets).toEqual({
       maxHops: 2,
@@ -494,9 +501,12 @@ describe("eval-config-c AC1 — POLICIES", () => {
   })
 
   test("eval-config-c AC14 — loopPolicy(k, POLICIES.C) carries the thresholds of C", () => {
-    expect(evalCommand.loopPolicy(6, policyModule.POLICIES.C)).toEqual({
+    expect(
+      evalCommand.loopPolicy(6, policyModule.POLICIES.C) as unknown
+    ).toEqual({
       thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
       budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 6 },
+      strategy: STRATEGY,
     })
   })
 
@@ -801,6 +811,14 @@ describe("eval-config-c AC10 — loopSettings, config B", () => {
     expect(loop.policy.budgets.maxNotes).toBe(4)
   })
 
+  test("eval-config-c AC18 — B records the strategy of its policy and no veto", () => {
+    const { loop } = evalCommand.loopSettings("B", SETTINGS)
+    expect((loop.policy as unknown as { strategy: unknown }).strategy).toEqual(
+      STRATEGY
+    )
+    expect("veto" in loop).toBe(false)
+  })
+
   test("eval-config-c AC10 — B has no fallback model and no fallback or system-one setting, whatever the settings hold", () => {
     const { models, loop } = evalCommand.loopSettings("B", SETTINGS)
     expect(Object.keys(models).sort()).toEqual([
@@ -869,6 +887,7 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
       policy: evalCommand.loopPolicy(4, policyModule.POLICIES.C),
       rewriter: "llm",
       candidates: 30,
+      veto: { none: 0.7, best: 0.02 },
       fallbackLow: 0.6,
       fallbackWhen: "uncertain",
       systemOne: "clef",
@@ -879,6 +898,16 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
       step: 0.7,
       keep: 0.9,
     })
+  })
+
+  test("eval-config-c AC18 — C records the veto { none: 0.7, best: 0.02 } and the strategy of its policy", () => {
+    const { loop } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    const recorded = loop as unknown as {
+      veto: unknown
+      policy: { strategy: unknown }
+    }
+    expect(recorded.veto).toEqual({ none: 0.7, best: 0.02 })
+    expect(recorded.policy.strategy).toEqual(STRATEGY)
   })
 
   test("eval-config-c AC17 — the fallback scope follows the settings: fallbackLow and fallbackWhen are recorded", () => {

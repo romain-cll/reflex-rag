@@ -4,6 +4,7 @@ import {
   DEFAULT_POLICY,
   RULES,
   decide,
+  type Action,
   type JudgedNote,
   type LoopState,
   type PolicyConfig,
@@ -1173,10 +1174,13 @@ describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
   })
 
   test("decision-policy AC8 — POLICIES.C sets keep 0.9, B and DEFAULT_POLICY leave it unset", () => {
-    expect(policyModule.POLICIES.C).toEqual({
+    // `strategy` is not in `PolicyConfig` yet: a variable avoids the literal check.
+    const expectedC = {
       thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
       budgets: DEFAULT_POLICY.budgets,
-    })
+      strategy: { openSteps: "above-best-answer", contextSteps: "linked" },
+    }
+    expect(policyModule.POLICIES.C).toEqual(expectedC)
     expect(policyModule.POLICIES.C.thresholds.keep).toBe(0.9)
     expect("keep" in policyModule.POLICIES.B.thresholds).toBe(false)
     expect("keep" in DEFAULT_POLICY.thresholds).toBe(false)
@@ -1186,5 +1190,362 @@ describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
     const s = deepFreeze(state([note("a.md", { answer: 0.53, step: 0.44 })]))
     const config = deepFreeze(structuredClone(withKeep()))
     expect(decide(s, config)).toEqual({ type: "answer", rule: "answer" })
+  })
+})
+
+describe("decision-policy AC9 — strategy (Revision 5)", () => {
+  type Strategy = {
+    openSteps?: "always" | "above-best-answer"
+    contextSteps?: "all" | "linked"
+  }
+  /** `strategy` is not in `PolicyConfig` yet: attached through a cast. */
+  const withStrategy = (
+    strategy: Strategy,
+    thresholds: Partial<PolicyConfig["thresholds"]> = {
+      answer: 0.7,
+      step: 0.7,
+    },
+    budgets: Partial<PolicyConfig["budgets"]> = {}
+  ): PolicyConfig =>
+    ({ ...withConfig(thresholds, budgets), strategy }) as PolicyConfig
+  const ABOVE: Strategy = { openSteps: "above-best-answer" }
+  const above = (
+    thresholds?: Partial<PolicyConfig["thresholds"]>,
+    budgets?: Partial<PolicyConfig["budgets"]>
+  ) => withStrategy(ABOVE, thresholds, budgets)
+
+  const ANSWERED: Action = { type: "answer", rule: "answer" }
+  const opens = (
+    paths: string[],
+    rule: "follow-steps" | "explore" = "follow-steps"
+  ): Action => ({ type: "expand", rule, paths })
+
+  test("decision-policy AC9 — an answer 0.86 and another openable note with step 0.93: opens it", () => {
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.86, none: 0.14 }),
+        note("step.md", { step: 0.93, none: 0.07 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(opens(["step.md"]))
+  })
+
+  test("decision-policy AC9 — an answer 0.86 and another openable note with step 0.80: nothing is opened, answers", () => {
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.86, none: 0.14 }),
+        note("step.md", { step: 0.8, none: 0.2 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC9 — the same state opens the step note without strategy, with openSteps always, and with contextSteps alone", () => {
+    const s = state([
+      note("answer.md", { answer: 0.86, none: 0.14 }),
+      note("step.md", { step: 0.8, none: 0.2 }),
+    ])
+    const expected = opens(["step.md"])
+    expect(decide(s, withConfig({ answer: 0.7, step: 0.7 }))).toEqual(expected)
+    expect(
+      decide(
+        s,
+        withStrategy({ openSteps: "always" }, { answer: 0.7, step: 0.7 })
+      )
+    ).toEqual(expected)
+    expect(
+      decide(
+        s,
+        withStrategy({ contextSteps: "linked" }, { answer: 0.7, step: 0.7 })
+      )
+    ).toEqual(expected)
+    expect(decide(s, withStrategy({}, { answer: 0.7, step: 0.7 }))).toEqual(
+      expected
+    )
+  })
+
+  test("decision-policy AC9 — with no answer above the thresholds, step notes are opened as before", () => {
+    const action = decide(
+      state([
+        note("weak.md", { answer: 0.3, none: 0.7 }),
+        note("step.md", { step: 0.75, none: 0.25 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(opens(["step.md"]))
+  })
+
+  test("decision-policy AC9 — with no answer at all, step notes are opened as before", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.8 }), note("b.md", { step: 0.9 })]),
+      above()
+    )
+    expect(action).toEqual(opens(["b.md", "a.md"]))
+  })
+
+  test("decision-policy AC9 — a note whose step beats its own answer is opened (0.4 / 0.75)", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.4, step: 0.75, none: 0 })]),
+      above()
+    )
+    expect(action).toEqual(opens(["a.md"]))
+  })
+
+  test("decision-policy AC9 — a note whose step does not beat its own answer is not opened (0.8 / 0.8)", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.8, step: 0.8, none: 0 })]),
+      above()
+    )
+    expect(action).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC9 — equality does not open: step equal to the best answer", () => {
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.75, none: 0.25 }),
+        note("step.md", { step: 0.75, none: 0.25 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC9 — just above the best answer opens", () => {
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.75, none: 0.25 }),
+        note("step.md", { step: 0.7501, none: 0.2499 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(opens(["step.md"]))
+  })
+
+  test("decision-policy AC9 — the step threshold still applies: ≥ opens, just under does not", () => {
+    // Best answer 0.4 is under the answer threshold; the step threshold is 0.7.
+    const base = [note("answer.md", { answer: 0.4, none: 0.6 })]
+    expect(
+      decide(state([...base, note("s.md", { step: 0.7, none: 0.3 })]), above())
+    ).toEqual(opens(["s.md"]))
+    expect(
+      decide(
+        state([...base, note("s.md", { step: 0.6999, none: 0.3001 })]),
+        above()
+      ).rule
+    ).not.toBe("follow-steps")
+  })
+
+  test("decision-policy AC9 — the best answer counts even under the answer threshold", () => {
+    // Answer threshold 0.9: 0.8 is not kept, but a step 0.6 does not exceed it.
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.8, none: 0.2 }),
+        note("step.md", { step: 0.6, none: 0.4 }),
+      ]),
+      above({ answer: 0.9, step: 0.5 })
+    )
+    expect(action.rule).not.toBe("follow-steps")
+    // Without the strategy the same step note is opened.
+    expect(
+      decide(
+        state([
+          note("answer.md", { answer: 0.8, none: 0.2 }),
+          note("step.md", { step: 0.6, none: 0.4 }),
+        ]),
+        withConfig({ answer: 0.9, step: 0.5 })
+      )
+    ).toEqual(opens(["step.md"]))
+  })
+
+  test("decision-policy AC9 — the best answer is taken among all notes, expanded or not openable included", () => {
+    const step = note("step.md", { step: 0.8, none: 0.2 })
+    expect(
+      decide(
+        state([
+          note("done.md", { answer: 0.9, none: 0.1 }, { expanded: true }),
+          step,
+        ]),
+        above()
+      )
+    ).toEqual(ANSWERED)
+    expect(
+      decide(
+        state([
+          note(
+            "closed.md",
+            { answer: 0.9, none: 0.1 },
+            { hasUnjudgedLinks: false }
+          ),
+          step,
+        ]),
+        above()
+      )
+    ).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC9 — opens only the step notes above the best answer, ordered by decreasing step", () => {
+    const action = decide(
+      state([
+        note("c.md", { step: 0.8, none: 0.2 }),
+        note("best.md", { answer: 0.75, none: 0.25 }),
+        note("below.md", { step: 0.72, none: 0.28 }),
+        note("b.md", { step: 0.9, none: 0.1 }),
+        note("e.md", { step: 0.76, none: 0.24 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(opens(["b.md", "c.md", "e.md"]))
+  })
+
+  test("decision-policy AC9 — ties on step go by order of judgement", () => {
+    const action = decide(
+      state([
+        note("z.md", { step: 0.9, none: 0.1 }),
+        note("best.md", { answer: 0.75, none: 0.25 }),
+        note("m.md", { step: 0.9, none: 0.1 }),
+        note("a.md", { step: 0.8, none: 0.2 }),
+        note("b.md", { step: 0.9, none: 0.1 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(opens(["z.md", "m.md", "b.md", "a.md"]))
+  })
+
+  test("decision-policy AC9 — skips expanded notes and notes with no unjudged link", () => {
+    const action = decide(
+      state([
+        note("best.md", { answer: 0.75, none: 0.25 }),
+        note("done.md", { step: 0.95, none: 0.05 }, { expanded: true }),
+        note(
+          "closed.md",
+          { step: 0.95, none: 0.05 },
+          { hasUnjudgedLinks: false }
+        ),
+        note("open.md", { step: 0.9, none: 0.1 }),
+      ]),
+      above()
+    )
+    expect(action).toEqual(opens(["open.md"]))
+  })
+
+  test("decision-policy AC9 — the hop budget still bounds follow-steps", () => {
+    const s = state(
+      [
+        note("answer.md", { answer: 0.75, none: 0.25 }),
+        note("step.md", { step: 0.95, none: 0.05 }),
+      ],
+      { hops: MAX_HOPS }
+    )
+    expect(decide(s, above())).toEqual(ANSWERED)
+    expect(decide({ ...s, hops: MAX_HOPS - 1 }, above())).toEqual(
+      opens(["step.md"])
+    )
+  })
+
+  test("decision-policy AC9 — when no step note qualifies, the next rules apply: explore with keep set", () => {
+    // Keep 0.9: neither 0.8 (answer) nor 0.72 (step) is kept; 0.72 does not beat 0.8.
+    const config = above({ answer: 0.7, step: 0.7, keep: 0.9 })
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.8, none: 0.2 }),
+        note("step.md", { step: 0.72, none: 0.28 }),
+      ]),
+      config
+    )
+    expect(action).toEqual(opens(["answer.md", "step.md"], "explore"))
+  })
+
+  test("decision-policy AC9 — when no step note qualifies, the next rules apply: rewrite then abstain", () => {
+    const config = above({ answer: 0.7, step: 0.7, keep: 0.9 })
+    const notes = [
+      note("answer.md", { answer: 0.8, none: 0.2 }, { expanded: true }),
+      note("step.md", { step: 0.72, none: 0.28 }, { expanded: true }),
+    ]
+    expect(decide(state(notes), config)).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+    expect(decide(state(notes, { rewrites: MAX_REWRITES }), config)).toEqual({
+      type: "abstain",
+      rule: "abstain",
+    })
+  })
+
+  test("decision-policy AC9 — answer, explore, rewrite and abstain are unchanged by the strategy when no step note is openable", () => {
+    const states = [
+      state([note("a.md", { answer: 0.9 })]),
+      state([note("a.md", { answer: 0.2 })]),
+      state([note("a.md", { answer: 0.2 }, { expanded: true })]),
+      state([], { rewrites: MAX_REWRITES }),
+      state([]),
+    ]
+    for (const s of states) {
+      expect(decide(s, above({}))).toEqual(decide(s, withConfig()))
+    }
+  })
+
+  test("decision-policy AC9 — decide does not modify frozen inputs and is deterministic", () => {
+    const s = deepFreeze(
+      state([
+        note("best.md", { answer: 0.75, none: 0.25 }),
+        note("b.md", { step: 0.9, none: 0.1 }),
+        note("a.md", { step: 0.8, none: 0.2 }),
+      ])
+    )
+    const config = deepFreeze(structuredClone(above()))
+    const configBefore = structuredClone(config)
+    const first = decide(s, config)
+    expect(first).toEqual(opens(["b.md", "a.md"]))
+    expect(decide(s, config)).toEqual(first)
+    expect(config).toEqual(configBefore)
+    expect(s.notes.map((n) => n.path)).toEqual(["best.md", "b.md", "a.md"])
+  })
+
+  test("decision-policy AC9 — POLICIES.B and POLICIES.C carry the strategy, DEFAULT_POLICY has none", () => {
+    const strategy = {
+      openSteps: "above-best-answer",
+      contextSteps: "linked",
+    }
+    const expectedB = { ...DEFAULT_POLICY, strategy }
+    const expectedC = {
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+      budgets: DEFAULT_POLICY.budgets,
+      strategy,
+    }
+    expect(policyModule.POLICIES.B).toEqual(expectedB)
+    expect(policyModule.POLICIES.C).toEqual(expectedC)
+    expect("strategy" in DEFAULT_POLICY).toBe(false)
+    expect(policyModule.POLICIES.B.thresholds).toEqual(
+      DEFAULT_POLICY.thresholds
+    )
+    expect(policyModule.POLICIES.B.budgets).toEqual(DEFAULT_POLICY.budgets)
+  })
+
+  test("decision-policy AC9 — POLICIES.B and POLICIES.C do not open a step note below the best answer", () => {
+    for (const config of [policyModule.POLICIES.B, policyModule.POLICIES.C]) {
+      const kept = note("answer.md", { answer: 0.86, none: 0.14 })
+      expect(
+        decide(state([kept, note("step.md", { step: 0.8, none: 0.2 })]), config)
+      ).toEqual(ANSWERED)
+      expect(
+        decide(
+          state([kept, note("step.md", { step: 0.93, none: 0.07 })]),
+          config
+        )
+      ).toEqual(opens(["step.md"]))
+    }
+  })
+
+  test("decision-policy AC9 — DEFAULT_POLICY keeps opening a step note next to an answer", () => {
+    const action = decide(
+      state([
+        note("answer.md", { answer: 0.86, none: 0.14 }),
+        note("step.md", { step: 0.8, none: 0.2 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual(opens(["step.md"]))
   })
 })

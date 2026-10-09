@@ -227,9 +227,9 @@ describe("AC2 — the shared question", () => {
     )
   })
 
-  test("AC2 — the step verdict is described word for word", () => {
+  test("AC2, system-one-judge AC11 — the step verdict is described word for word", () => {
     expect(JUDGE_QUESTION.criteria.step).toBe(
-      "The note does not state the answer, but it leads to it: it names the person, supplier, customer, meeting or decision the question depends on, or it links to a note that likely holds the answer."
+      "The note does not state the answer, but it identifies something the answer depends on, or it links to a note likely to hold the answer."
     )
   })
 

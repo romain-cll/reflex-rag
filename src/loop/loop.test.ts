@@ -18,6 +18,15 @@ const BASE_POLICY: PolicyConfig = {
   budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 5 },
 }
 
+/** The policy of the loop tests, with the strategy given. */
+function policyWithStrategy(
+  strategy: NonNullable<PolicyConfig["strategy"]>,
+  budgets: Partial<PolicyConfig["budgets"]> = {},
+  thresholds: Partial<PolicyConfig["thresholds"]> = {}
+): PolicyConfig {
+  return { ...policyWith(budgets, thresholds), strategy }
+}
+
 function policyWith(
   budgets: Partial<PolicyConfig["budgets"]> = {},
   thresholds: Partial<PolicyConfig["thresholds"]> = {}
@@ -158,7 +167,7 @@ interface Scenario {
   /** Milliseconds each fake waits before answering. */
   delays?: { retrieve?: number; judge?: number; rewriter?: number }
   /** Extra fields of the nth judgement (from 0): fallback paths, stages. */
-  judgements?: Array<Pick<Judgement, "fallback" | "stages">>
+  judgements?: Array<Pick<Judgement, "fallback" | "stages" | "vetoed">>
 }
 
 function wait(ms: number | undefined): Promise<void> {
@@ -1014,6 +1023,7 @@ describe("AC7 — trace", () => {
         parents: {},
         kept: ["a.md"],
         fallback: [],
+        vetoed: [],
         action: { type: "expand", rule: "follow-steps", paths: ["a.md"] },
       },
       {
@@ -1023,6 +1033,7 @@ describe("AC7 — trace", () => {
         parents: { "b.md": "a.md", "c.md": "a.md" },
         kept: ["b.md"],
         fallback: [],
+        vetoed: [],
         action: { type: "answer", rule: "answer" },
       },
     ])
@@ -1043,6 +1054,7 @@ describe("AC7 — trace", () => {
         parents: {},
         kept: [],
         fallback: [],
+        vetoed: [],
         action: { type: "rewrite", rule: "rewrite" },
       },
       {
@@ -1052,6 +1064,7 @@ describe("AC7 — trace", () => {
         parents: {},
         kept: ["b.md"],
         fallback: [],
+        vetoed: [],
         action: { type: "answer", rule: "answer" },
       },
     ])
@@ -1986,5 +1999,342 @@ describe("AC15 — context of the judge", () => {
       expect(paths(contextOf(call))).toContain("a.md")
       expect(paths(contextOf(call))).not.toContain("c.md")
     }
+  })
+})
+
+describe("AC16 — linked steps", () => {
+  const linked = policyWithStrategy({ contextSteps: "linked" })
+
+  test("AC16 — a step note that links to no answer note is left out when an answer note exists", async () => {
+    const scenario: Scenario = {
+      world: worldOf([["s", "a"]], { extra: ["f"] }),
+      search: { [QUESTION]: hits("f", "s", "a") },
+      verdicts: {
+        "f.md": { step: 0.8 },
+        "s.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+      },
+    }
+    const { result } = await run({ ...scenario, policy: linked })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["a.md", "s.md"])
+    expect(result.kept).toEqual(["a.md", "s.md"])
+  })
+
+  test("AC16 — with contextSteps all, or no contextSteps, or no strategy, every kept step note is in the context", async () => {
+    const scenario: Scenario = {
+      world: worldOf([["s", "a"]], { extra: ["f"] }),
+      search: { [QUESTION]: hits("f", "s", "a") },
+      verdicts: {
+        "f.md": { step: 0.8 },
+        "s.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+      },
+    }
+    for (const policy of [
+      policyWithStrategy({ contextSteps: "all" }),
+      policyWithStrategy({}),
+      policyWith(),
+    ]) {
+      const { result } = await run({ ...scenario, policy })
+      expect(contextPaths(result)).toEqual(["a.md", "s.md", "f.md"])
+      expect(result.kept).toEqual(["a.md", "s.md", "f.md"])
+    }
+  })
+
+  test("AC16 — the ancestors of an answer note stay, the free step notes do not", async () => {
+    // p opens q (the answer note); f is a step note that links nowhere.
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([["p", "q"]], { extra: ["f"] }),
+      search: { [QUESTION]: hits("p", "f") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "f.md": { step: 0.95 },
+        "q.md": { answer: 0.9 },
+      },
+    })
+    expect(result.steps[1]!.parents).toEqual({ "q.md": "p.md" })
+    expect(contextPaths(result)).toEqual(["q.md", "p.md"])
+    expect(result.kept).toEqual(["q.md", "p.md"])
+  })
+
+  test("AC16 — a step note that links only to a step note is left out", async () => {
+    // s links to t, a kept step note, not to the answer note a.
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([
+        ["s", "t"],
+        ["t", "a"],
+      ]),
+      search: { [QUESTION]: hits("s", "t", "a") },
+      verdicts: {
+        "s.md": { step: 0.9 },
+        "t.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "t.md"])
+  })
+
+  test("AC16 — the step notes of an answer note go by decreasing step probability, ties by order of judgement", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([
+        ["s1", "a"],
+        ["s2", "a"],
+        ["s3", "a"],
+      ]),
+      search: { [QUESTION]: hits("s1", "s2", "s3", "a") },
+      verdicts: {
+        "s1.md": { step: 0.6 },
+        "s2.md": { step: 0.9 },
+        "s3.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "s2.md", "s1.md", "s3.md"])
+  })
+
+  test("AC16 — a step note linking to two answer notes appears once, after the first of them", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([
+        ["s", "a1"],
+        ["s", "a2"],
+      ]),
+      search: { [QUESTION]: hits("s", "a1", "a2") },
+      verdicts: {
+        "s.md": { step: 0.7 },
+        "a1.md": { answer: 0.6 },
+        "a2.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a2.md", "s.md", "a1.md"])
+    expect(result.kept).toEqual(["a2.md", "s.md", "a1.md"])
+  })
+
+  test("AC16 — a note kept on both counts is an answer note and brings its own step notes", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([["t", "n"]], { extra: ["m", "f"] }),
+      search: { [QUESTION]: hits("f", "t", "n", "m") },
+      verdicts: {
+        "f.md": { step: 0.9 },
+        "t.md": { step: 0.6 },
+        "n.md": { answer: 0.6, step: 0.9 },
+        "m.md": { answer: 0.55 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["n.md", "t.md", "m.md"])
+  })
+
+  test("AC16 — an answer note is a note whose answer probability reaches the answer threshold of the policy", async () => {
+    // x is kept for its step probability only: it links to nothing, so it is
+    // left out. Under the default thresholds (0.5) it would be an answer note.
+    const { result } = await run({
+      policy: policyWithStrategy(
+        { contextSteps: "linked" },
+        {},
+        { answer: 0.8 }
+      ),
+      world: worldOf([], { extra: ["x", "y"] }),
+      search: { [QUESTION]: hits("x", "y") },
+      verdicts: { "x.md": { answer: 0.7, step: 0.9 }, "y.md": { answer: 0.8 } },
+    })
+    expect(contextPaths(result)).toEqual(["y.md"])
+    expect(result.kept).toEqual(["y.md"])
+  })
+
+  test("AC16 — without an answer note the kept step notes are added by decreasing step probability, as before", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([["r1", "r2"]], { extra: ["r3", "w"] }),
+      search: { [QUESTION]: hits("r1", "r2", "r3", "w") },
+      verdicts: {
+        "r1.md": { step: 0.6 },
+        "r2.md": { step: 0.8 },
+        "r3.md": { step: 0.6 },
+        // Under the answer threshold: not an answer note.
+        "w.md": { answer: 0.49, step: 0.5 },
+      },
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["r2.md", "r1.md", "r3.md", "w.md"])
+    expect(result.kept).toEqual(["r2.md", "r1.md", "r3.md", "w.md"])
+  })
+
+  test("AC16 — without an answer note the ancestors still follow their kept note", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([["p", "q"]], { extra: ["f"] }),
+      search: { [QUESTION]: hits("p", "f") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "f.md": { step: 0.95 },
+        "q.md": { step: 0.7 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["f.md", "p.md", "q.md"])
+  })
+
+  test("AC16 — nothing kept still abstains with an empty context", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.49, step: 0.49 } },
+    })
+    expect(result.outcome).toEqual({ type: "abstain", rule: "abstain" })
+    expect(result.context).toEqual([])
+    expect(result.kept).toEqual([])
+  })
+
+  // The scrambled scenario of AC11, with its free step notes r1, r2, r3.
+  const scrambled: Scenario = {
+    world: worldOf(
+      [
+        ["u", "a1"],
+        ["t", "a2"],
+      ],
+      { extra: ["r1", "r2", "r3", "v", "w"] }
+    ),
+    search: {
+      [QUESTION]: hits("r1", "u", "v", "r2", "a2", "t", "w", "r3", "a1"),
+    },
+    verdicts: {
+      "a1.md": { answer: 0.9 },
+      "a2.md": { answer: 0.7 },
+      "u.md": { step: 0.5 },
+      "t.md": { step: 0.55 },
+      "r1.md": { step: 0.6 },
+      "r2.md": { step: 0.8 },
+      "r3.md": { step: 0.6 },
+      "v.md": { step: 0.49 },
+      "w.md": { answer: 0.49 },
+    },
+  }
+  const linkedOrder = ["a1.md", "u.md", "a2.md", "t.md"]
+
+  test("AC16 — full order: answer notes by decreasing answer, each with its linked step notes; the free step notes are gone", async () => {
+    const { result } = await run({
+      ...scrambled,
+      policy: policyWithStrategy({ contextSteps: "linked" }, { maxNotes: 10 }),
+    })
+    expect(contextPaths(result)).toEqual(linkedOrder)
+    expect(result.kept).toEqual(linkedOrder)
+  })
+
+  test("AC16 — the cut applies to that list and kept is not cut", async () => {
+    const { result } = await run({
+      ...scrambled,
+      policy: policyWithStrategy({ contextSteps: "linked" }, { maxNotes: 3 }),
+    })
+    expect(contextPaths(result)).toEqual(["a1.md", "u.md", "a2.md"])
+    expect(result.kept).toEqual(linkedOrder)
+  })
+
+  test("AC16 — a context item of a linked step note is built like any other", async () => {
+    const { result } = await run({
+      policy: linked,
+      world: SECTIONS,
+      search: { [QUESTION]: ["b2", "d1"] },
+      verdicts: { "d.md": { answer: 0.9 }, "b.md": { step: 0.8 } },
+    })
+    expect(result.context).toEqual([
+      {
+        notePath: "d.md",
+        noteDate: "2025-04-04",
+        heading: "",
+        text: "## Plan > D\ntext of d",
+      },
+      {
+        notePath: "b.md",
+        noteDate: "2025-02-02",
+        heading: "",
+        text: "## B one\nfirst of b\n\n## B two\nsecond of b",
+      },
+    ])
+  })
+
+  test("AC16 — the strategy changes neither the kept notes of a step nor the judge's context", async () => {
+    const { result, judgeCalls } = await run({
+      policy: linked,
+      world: worldOf([["a", "x"]], { extra: ["e", "f"] }),
+      search: { [QUESTION]: hits("f", "a", "e") },
+      verdicts: {
+        "a.md": { step: 0.9 },
+        "e.md": { answer: 0.9 },
+        "f.md": { step: 0.7 },
+      },
+    })
+    expect(result.steps[0]!.kept).toEqual(["f.md", "a.md", "e.md"])
+    expect(paths(judgeCalls[1]!.context ?? [])).toEqual([
+      "f.md",
+      "a.md",
+      "e.md",
+    ])
+  })
+})
+
+describe("AC18 — vetoed in the trace", () => {
+  test("AC18 — a judgement without vetoed gives an empty list on every step", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    expect(result.steps).toHaveLength(2)
+    expect(result.steps.map((s) => s.vetoed)).toEqual([[], []])
+  })
+
+  test("AC18 — a step records the paths vetoed by the judge that turn", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+      judgements: [{ vetoed: ["a.md"] }, {}],
+    })
+    expect(result.steps.map((s) => s.vetoed)).toEqual([["a.md"], []])
+  })
+
+  test("AC18 — each turn keeps its own list, in the judge's order", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+      judgements: [{ vetoed: ["a.md"] }, { vetoed: ["c.md", "b.md"] }],
+    })
+    expect(result.steps.map((s) => s.vetoed)).toEqual([
+      ["a.md"],
+      ["c.md", "b.md"],
+    ])
+  })
+
+  test("AC18 — an empty vetoed list from the judge gives an empty list", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+      judgements: [{ vetoed: [] }],
+    })
+    expect(result.steps[0]!.vetoed).toEqual([])
+  })
+
+  test("AC18 — an abstention keeps the vetoed paths of its turns", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      policy: policyWith({ maxRewrites: 0 }),
+      judgements: [{ vetoed: ["a.md"] }],
+    })
+    expect(result.outcome.type).toBe("abstain")
+    expect(result.steps[0]!.vetoed).toEqual(["a.md"])
+  })
+
+  test("AC18 — a rewrite turn without judged notes has an empty list", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      judgements: [{ vetoed: ["a.md"] }],
+    })
+    expect(result.steps.map((s) => s.kind)).toEqual(["search", "rewrite"])
+    expect(result.steps.map((s) => s.vetoed)).toEqual([["a.md"], []])
   })
 })
