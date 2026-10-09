@@ -21,6 +21,12 @@ The unit is now the note: the hybrid search finds chunks, the loop turns them in
 - **AC9 — failures keep their cost**: an error thrown by `retrieve` or the index propagates unchanged; when the judge or the rewriter throws, `runLoop` throws a `LoopError` carrying the original error's message, every call made so far (including the billed call the original error carries, if any) and the steps completed so far.
 - **AC10 — rewriters**: `Rewriter.rewrite(question, notes)` takes the best notes (path and text). `CodeRewriter` builds a query from the question plus up to 6 terms taken from the notes' texts (capitalized words and phrases absent from the question, by frequency, ties by order of appearance), with no model call. `LLMRewriter` asks the `LLM` for one new query given the question and the paths of the notes found so far, none of which answered, and returns its call.
 
+## Revision 3 — step notes in the context
+
+Kept notes now include step notes (docs/features/decision-policy.md, Revision 3). This revision supersedes AC5's context and the `kept` lists of AC6 and AC7.
+
+- **AC11 — context with steps**: on `answer`, the context starts with the notes whose `answer` probability is ≥ the answer threshold, by decreasing `answer` probability (ties by order of judgement); each is followed by its ancestors through the parent links, then by the kept step notes (`step` ≥ the step threshold) that link to it, in decreasing `step` probability, skipping notes already in the context; then come the remaining kept step notes, by decreasing `step` probability (ties by order of judgement); the list is cut to the note budget. `kept` (AC6) is that list before the cut; a step's `kept` (AC7) lists the notes judged that turn that are kept in the sense of the policy.
+
 ## Technical plan
 
 Files:

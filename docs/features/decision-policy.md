@@ -18,6 +18,10 @@ The policy of the first version read a per-turn assessment (sufficient, missing,
 - **AC6 — configuration**: `DEFAULT_POLICY` holds the thresholds (answer 0.5, step 0.5) and budgets (2 hops, 1 rewrite, 3 notes opened by `explore`, 5 notes in the context). The context budget is used by the loop, not by `decide`; it lives in the same configuration so that a run traces one object. The defaults are config B's starting point; config C gets its own thresholds, chosen on the tuning split.
 - **AC7 — purity**: `decide` reads only its arguments, changes neither of them, and returns the same action for the same inputs.
 
+## Revision 3 — step notes are kept
+
+The config B run on the tuning split at commit 341aac8 (`runs/2026-10-09T15-14-56-163Z-B-tuning`: multi-hop context complete 0/15, 12 `judge_rejected`) showed the judge marking the intermediate notes of multi-hop questions as `step` (0.7–0.8: account handoffs, pilot kickoffs, tooling sign-offs) and the loop dropping them whenever the answer note was found by the search rather than through their links. This revision supersedes the definition of a kept note: a note is **kept** when its `answer` probability is ≥ the answer threshold **or** its `step` probability is ≥ the step threshold. The rules and their order are unchanged; AC2 thus answers as soon as a step note is kept and no rule before it applies.
+
 ## Technical plan
 
 Files:
