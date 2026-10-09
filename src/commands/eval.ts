@@ -21,7 +21,10 @@ import { LLMJudge } from "../judge/llm-judge.ts"
 import { noteText, runLoop } from "../loop/loop.ts"
 import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
 import { CodeRewriter, LLMRewriter } from "../loop/rewriter.ts"
-import { AnthropicLLM } from "../models/anthropic-llm.ts"
+import {
+  AnthropicLLM,
+  THINKING_HEADROOM_TOKENS,
+} from "../models/anthropic-llm.ts"
 import { MistralEmbedder } from "../models/mistral-embedder.ts"
 import { HybridRetriever } from "../retrieval/hybrid.ts"
 
@@ -416,14 +419,17 @@ function recordingLLM(requests: LLMRequest[]): LLM {
   }
 }
 
-/** The call a request would make, at its largest: all `maxTokens` come back. */
+/**
+ * The call a request would make, at its largest: all `maxTokens` of visible
+ * output come back, after the whole thinking headroom.
+ */
 function estimatedCall(request: LLMRequest): ModelCall {
   return {
     model: ANSWERER_MODEL,
     inputTokens: Math.ceil(
       ((request.system?.length ?? 0) + request.prompt.length) / CHARS_PER_TOKEN
     ),
-    outputTokens: request.maxTokens,
+    outputTokens: request.maxTokens + THINKING_HEADROOM_TOKENS,
     latencyMs: 0,
   }
 }
@@ -521,7 +527,8 @@ async function dryRunB(
  * possible hop and rewrite, each time on all of them, with one rewriter call
  * per possible rewrite, and the answerer ends it. The prompts are built by the
  * judge, the rewriter and the answerer themselves, against a recording LLM;
- * every call is priced with its full `maxTokens` of output. The rewriter and
+ * every call is priced with its full `maxTokens` of output plus the thinking
+ * headroom. The rewriter and
  * the answerer see the longest candidates, within the note budget.
  */
 export async function upperBoundCalls(

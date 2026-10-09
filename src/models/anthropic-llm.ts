@@ -9,6 +9,13 @@ import {
 } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
 
+/**
+ * Haiku 5.5 thinks adaptively by default, and its thinking tokens count
+ * against `max_tokens`. A request's `maxTokens` is the budget of the visible
+ * output; this headroom is added on top for the thinking.
+ */
+export const THINKING_HEADROOM_TOKENS = 4096
+
 export interface AnthropicLLMOptions {
   client?: Anthropic
   model?: string
@@ -81,7 +88,7 @@ export class AnthropicLLM implements LLM {
   private baseParams(request: LLMRequest) {
     return {
       model: this.model,
-      max_tokens: request.maxTokens,
+      max_tokens: request.maxTokens + THINKING_HEADROOM_TOKENS,
       ...(request.system === undefined ? {} : { system: request.system }),
       messages: [{ role: "user" as const, content: request.prompt }],
     }
