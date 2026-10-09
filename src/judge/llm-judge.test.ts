@@ -584,20 +584,20 @@ describe("AC5 — budget and errors", () => {
     }
   })
 
-  test("AC5 — maxTokens grows by exactly 24 per note added", async () => {
+  test("AC5 — maxTokens grows by exactly 48 per note added", async () => {
     const two = await budgetFor(2)
     const three = await budgetFor(3)
 
-    expect(three - two).toBe(24)
+    expect(three - two).toBe(48)
   })
 
-  test("AC5 — maxTokens is a fixed base plus 24 per note across batch sizes", async () => {
+  test("AC5 — maxTokens is a fixed base plus 48 per note across batch sizes", async () => {
     const one = await budgetFor(1)
     const five = await budgetFor(5)
     const thirty = await budgetFor(30)
 
-    expect(five - one).toBe(4 * 24)
-    expect(thirty - one).toBe(29 * 24)
+    expect(five - one).toBe(4 * 48)
+    expect(thirty - one).toBe(29 * 48)
   })
 
   test("AC5 — the budget depends on the number of notes, not on their length", async () => {

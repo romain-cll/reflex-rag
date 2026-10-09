@@ -153,6 +153,8 @@ interface Scenario {
   /** The nth call (from 0) of `judge.judge` rejects with this error. */
   judgeFailure?: { onCall: number; error: Error }
   rewriterFailure?: Error
+  /** The nth call (from 0) of `retrieve` rejects with this error. */
+  retrieveFailure?: { onCall: number; error: Error }
 }
 
 function setup(scenario: Scenario) {
@@ -162,7 +164,11 @@ function setup(scenario: Scenario) {
 
   const retrieveCalls: Array<[string, number]> = []
   const retrieve: LoopDeps["retrieve"] = (query, k) => {
+    const n = retrieveCalls.length
     retrieveCalls.push([query, k])
+    if (scenario.retrieveFailure?.onCall === n) {
+      return Promise.reject(scenario.retrieveFailure.error)
+    }
     const ids = scenario.search?.[query] ?? []
     const retrieval: Retrieval = {
       chunks: ids.map((id, i) => ({
@@ -1206,5 +1212,32 @@ describe("AC9 — failures keep their cost", () => {
     const loopError = error as LoopError
     expect(loopError.message).toBe("empty query")
     expect(models(loopError.calls)).toEqual(["embed", "judge", "billed"])
+  })
+
+  test("AC9 — an error thrown by retrieve on the first search propagates unchanged", async () => {
+    const failure = new LLMCallError("embedder down", call("billed"))
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      retrieveFailure: { onCall: 0, error: failure },
+    })
+    expect(error).toBe(failure)
+    expect(error).not.toBeInstanceOf(LoopError)
+  })
+
+  test("AC9 — an error thrown by retrieve on a rewrite search propagates unchanged", async () => {
+    const failure = new Error("retrieve down")
+    const { error, retrieveCalls, rewriterCalls } = await fail({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      rewrites: ["a better query"],
+      retrieveFailure: { onCall: 1, error: failure },
+    })
+    expect(retrieveCalls.map(([query]) => query)).toEqual([
+      QUESTION,
+      "a better query",
+    ])
+    expect(rewriterCalls).toHaveLength(1)
+    expect(error).toBe(failure)
+    expect(error).not.toBeInstanceOf(LoopError)
   })
 })

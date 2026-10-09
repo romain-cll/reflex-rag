@@ -73,7 +73,12 @@ interface RunSpec {
   p95: number
   notesInContext: number
   inputTokens: number
+  /** Abstentions of the `no_answer` category: the ones the main table shows. */
   abstentions: { loop: number; answerer: number }
+  /** Abstentions over all the questions: distinct, they must not be shown. */
+  overallAbstentions: { loop: number; answerer: number }
+  /** Summary without a `no_answer` category. */
+  withoutNoAnswer?: boolean
   loop: {
     hops: number
     rewrites: number
@@ -123,7 +128,12 @@ function metricsOf(
     meanPrecision: spec.precision,
     meanNotesInContext: spec.notesInContext,
     failuresByFamily: familyCounts(spec),
-    abstentions: spec.abstentions,
+    abstentions:
+      category === "no_answer"
+        ? spec.abstentions
+        : category === null
+          ? spec.overallAbstentions
+          : { loop: 17, answerer: 19 },
   }
 }
 
@@ -139,7 +149,9 @@ function summaryOf(spec: RunSpec) {
   return {
     overall: metricsOf(spec, totalN(), totalCorrect(spec), null),
     byCategory: Object.fromEntries(
-      CATEGORIES.map((category) => [
+      CATEGORIES.filter(
+        (category) => !(spec.withoutNoAnswer && category === "no_answer")
+      ).map((category) => [
         category,
         metricsOf(spec, CATEGORY_N[category], spec.correct[category], category),
       ])
@@ -198,6 +210,7 @@ const A_TEST: RunSpec = {
   notesInContext: 4.5,
   inputTokens: 1682,
   abstentions: { loop: 0, answerer: 10 },
+  overallAbstentions: { loop: 0, answerer: 13 },
   loop: null,
   failureSeed: 0,
 }
@@ -233,6 +246,7 @@ const A_TUNING: RunSpec = {
   precision: 0.4,
   recall: 0.65,
   abstentions: { loop: 0, answerer: 7 },
+  overallAbstentions: { loop: 0, answerer: 16 },
   failureSeed: 1,
 }
 
@@ -257,6 +271,7 @@ const B_TEST: RunSpec = {
   notesInContext: 3.5,
   inputTokens: 1200,
   abstentions: { loop: 5, answerer: 3 },
+  overallAbstentions: { loop: 11, answerer: 14 },
   loop: { hops: 1.5, rewrites: 0.5, judgeCalls: 4, rules: { sufficient: 40 } },
   failureSeed: 3,
 }
@@ -276,6 +291,7 @@ const B_TUNING: RunSpec = {
   contextComplete: 0.95,
   precision: 0.65,
   abstentions: { loop: 6, answerer: 2 },
+  overallAbstentions: { loop: 12, answerer: 15 },
   failureSeed: 4,
 }
 
@@ -284,6 +300,14 @@ const B_TUNING_OLD: RunSpec = {
   name: "2026-10-08T22-00-00-000Z-B-tuning",
   commit: "old0002",
   failureSeed: 1,
+}
+
+/** A loop run whose summary has no `no_answer` category. */
+const B_NO_NO_ANSWER: RunSpec = {
+  ...B_TEST,
+  name: "2026-10-09T10-00-00-000Z-B-test",
+  commit: "bbb5555",
+  withoutNoAnswer: true,
 }
 
 /** The runs of the default selection: the latest of each config and split. */
@@ -735,6 +759,59 @@ describe("AC2 — main table", () => {
     expect(bTuning).toContain("9/10")
     expect(bTuning).toMatch(/(^|\D)6(\D|$)/)
     expect(bTuning).toMatch(/(^|\D)2(\D|$)/)
+  })
+
+  test("AC2 — the loop's and the answerer's counts come from the no_answer category, not from the overall metrics", () => {
+    const [main] = threeTables(page())
+    const cells = (spec: RunSpec) => {
+      const row = rowOf(main, spec)
+      return main.header
+        .flatMap((cell, index) =>
+          /abstention/i.test(cell) ? [row[index]!] : []
+        )
+        .join(" ")
+    }
+    const shown = (spec: RunSpec): string[] => cells(spec).match(/\d+/g) ?? []
+    // The overall counts (and the other categories') never show up.
+    for (const spec of LATEST) {
+      const numbers = shown(spec)
+      for (const forbidden of [
+        spec.overallAbstentions.loop,
+        spec.overallAbstentions.answerer,
+        17,
+        19,
+      ]) {
+        if (
+          forbidden === spec.abstentions.loop ||
+          forbidden === spec.abstentions.answerer
+        )
+          continue
+        expect(numbers).not.toContain(String(forbidden))
+      }
+    }
+    // The no_answer counts do, next to correct/n.
+    for (const count of ["8", "10", "5", "3"])
+      expect(shown(B_TEST)).toContain(count)
+    for (const count of ["9", "10", "6", "2"])
+      expect(shown(B_TUNING)).toContain(count)
+    expect(shown(A_TUNING)).toContain("7")
+  })
+
+  test("AC2 — without a no_answer category, the loop's and the answerer's counts are - and the overall counts are not shown", () => {
+    const { cwd } = workdir([B_NO_NO_ANSWER])
+    const [main] = threeTables(generate(cwd))
+    const row = rowOf(main, B_NO_NO_ANSWER)
+    const text = main.header
+      .flatMap((cell, index) => (/abstention/i.test(cell) ? [row[index]!] : []))
+      .join(" ")
+    expect(text).toContain("-")
+    const numbers: string[] = text.match(/\d+/g) ?? []
+    expect(numbers).not.toContain(
+      String(B_NO_NO_ANSWER.overallAbstentions.loop)
+    )
+    expect(numbers).not.toContain(
+      String(B_NO_NO_ANSWER.overallAbstentions.answerer)
+    )
   })
 
   test("AC2 — hops, rewrites and judge calls are empty for config A", () => {

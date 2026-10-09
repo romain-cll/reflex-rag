@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { NoteForJudge } from "../core/judge.ts"
-import type { Chunk } from "../core/types.ts"
+import type { Chunk, Note } from "../core/types.ts"
 import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
 // A namespace import: a symbol that is not exported yet fails its own tests,
 // not the whole file.
@@ -328,5 +328,98 @@ describe("eval-config-b AC10 — upperBoundCalls makes no network call", () => {
         if (value !== undefined) process.env[key] = value
       })
     }
+  })
+})
+
+describe("eval-config-b AC11 — loopPolicy", () => {
+  test("AC11 — the default policy with the note budget set to k", () => {
+    const policy = evalCommand.loopPolicy(7)
+    expect(policy.budgets.maxNotes).toBe(7)
+    expect(policy).toEqual({
+      thresholds: DEFAULT_POLICY.thresholds,
+      budgets: { ...DEFAULT_POLICY.budgets, maxNotes: 7 },
+    })
+  })
+
+  test("AC11 — every other setting is the default one", () => {
+    expect({
+      ...evalCommand.loopPolicy(2).budgets,
+      maxNotes: DEFAULT_POLICY.budgets.maxNotes,
+    }).toEqual(DEFAULT_POLICY.budgets)
+    expect(evalCommand.loopPolicy(2).thresholds).toEqual(
+      DEFAULT_POLICY.thresholds
+    )
+  })
+
+  test("AC11 — DEFAULT_POLICY is not mutated, and each call returns its own policy", () => {
+    const before = structuredClone(DEFAULT_POLICY)
+    const small = evalCommand.loopPolicy(1)
+    const large = evalCommand.loopPolicy(9)
+    expect(DEFAULT_POLICY).toEqual(before)
+    expect(small.budgets.maxNotes).toBe(1)
+    expect(large.budgets.maxNotes).toBe(9)
+    expect(small).not.toBe(DEFAULT_POLICY)
+    expect(small.budgets).not.toBe(DEFAULT_POLICY.budgets)
+  })
+})
+
+describe("eval-config-b AC11 — notesContext", () => {
+  const chunks: Record<string, Chunk[]> = {
+    "a.md": [
+      { id: "a1", notePath: "a.md", heading: "", text: "intro of a" },
+      { id: "a2", notePath: "a.md", heading: "Owner", text: "owner of a" },
+    ],
+    "b.md": [{ id: "b1", notePath: "b.md", heading: "B", text: "text of b" }],
+    "c.md": [{ id: "c1", notePath: "c.md", heading: "", text: "only c" }],
+  }
+  const dates: Record<string, string | null> = {
+    "a.md": "2025-01-01",
+    "b.md": null,
+    "c.md": "2025-03-03",
+  }
+  const index = {
+    getNote(path: string): Note | null {
+      const date = dates[path]
+      if (date === undefined) return null
+      return { path, title: path, date, summary: "", frontmatter: {} }
+    },
+    chunksOf: (path: string): Chunk[] => chunks[path] ?? [],
+  }
+
+  test("AC11 — one item per path, in the order of the paths", () => {
+    const context = evalCommand.notesContext(index, ["c.md", "a.md", "b.md"])
+    expect(context.map((item) => item.notePath)).toEqual([
+      "c.md",
+      "a.md",
+      "b.md",
+    ])
+  })
+
+  test("AC11 — each item holds the note path, its date, an empty heading and the note text", () => {
+    expect(evalCommand.notesContext(index, ["a.md", "c.md"])).toEqual([
+      {
+        notePath: "a.md",
+        noteDate: "2025-01-01",
+        heading: "",
+        text: "intro of a\n\n## Owner\nowner of a",
+      },
+      {
+        notePath: "c.md",
+        noteDate: "2025-03-03",
+        heading: "",
+        text: "only c",
+      },
+    ])
+  })
+
+  test("AC11 — a note without a date, or unknown to the index, has a null date", () => {
+    const context = evalCommand.notesContext(index, ["b.md", "missing.md"])
+    expect(context[0]!.noteDate).toBeNull()
+    expect(context[1]!.noteDate).toBeNull()
+    expect(context[1]!.text).toBe("")
+  })
+
+  test("AC11 — no path gives an empty context", () => {
+    expect(evalCommand.notesContext(index, [])).toEqual([])
   })
 })
