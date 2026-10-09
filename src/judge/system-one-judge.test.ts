@@ -303,15 +303,11 @@ describe("SystemOneJudge", () => {
     expect(run.completed).toHaveLength(4)
     expect(error.message).toContain("boom")
     expect(error.calls).toHaveLength(3)
-    expect(error.calls).toEqual(
-      expect.arrayContaining(
-        [0, 2, 3].map((index) =>
-          expect.objectContaining({
-            latencyMs: index,
-            model: "fake-system-one",
-          })
-        )
-      )
+    const completed = error.calls
+      .map(({ latencyMs, model }) => ({ latencyMs, model }))
+      .sort((a, b) => a.latencyMs - b.latencyMs)
+    expect(completed).toEqual(
+      [0, 2, 3].map((index) => ({ latencyMs: index, model: "fake-system-one" }))
     )
   })
 
