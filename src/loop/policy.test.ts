@@ -1178,7 +1178,10 @@ describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
     const expectedC = {
       thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
       budgets: DEFAULT_POLICY.budgets,
-      strategy: { openSteps: "above-best-answer", contextSteps: "linked" },
+      strategy: {
+        openSteps: "above-best-answer",
+        contextSteps: "linked",
+      } as const,
     }
     expect(policyModule.POLICIES.C).toEqual(expectedC)
     expect(policyModule.POLICIES.C.thresholds.keep).toBe(0.9)
@@ -1206,8 +1209,7 @@ describe("decision-policy AC9 — strategy (Revision 5)", () => {
       step: 0.7,
     },
     budgets: Partial<PolicyConfig["budgets"]> = {}
-  ): PolicyConfig =>
-    ({ ...withConfig(thresholds, budgets), strategy }) as PolicyConfig
+  ): PolicyConfig => ({ ...withConfig(thresholds, budgets), strategy })
   const ABOVE: Strategy = { openSteps: "above-best-answer" }
   const above = (
     thresholds?: Partial<PolicyConfig["thresholds"]>,
@@ -1507,7 +1509,7 @@ describe("decision-policy AC9 — strategy (Revision 5)", () => {
     const strategy = {
       openSteps: "above-best-answer",
       contextSteps: "linked",
-    }
+    } as const
     const expectedB = { ...DEFAULT_POLICY, strategy }
     const expectedC = {
       thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
@@ -1525,13 +1527,14 @@ describe("decision-policy AC9 — strategy (Revision 5)", () => {
 
   test("decision-policy AC9 — POLICIES.B and POLICIES.C do not open a step note below the best answer", () => {
     for (const config of [policyModule.POLICIES.B, policyModule.POLICIES.C]) {
-      const kept = note("answer.md", { answer: 0.86, none: 0.14 })
+      // 0.92 is kept under both B (answer ≥ 0.5) and C (answer + step ≥ 0.9).
+      const kept = note("answer.md", { answer: 0.92, none: 0.08 })
       expect(
         decide(state([kept, note("step.md", { step: 0.8, none: 0.2 })]), config)
       ).toEqual(ANSWERED)
       expect(
         decide(
-          state([kept, note("step.md", { step: 0.93, none: 0.07 })]),
+          state([kept, note("step.md", { step: 0.96, none: 0.04 })]),
           config
         )
       ).toEqual(opens(["step.md"]))

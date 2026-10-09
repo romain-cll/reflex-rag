@@ -550,6 +550,7 @@ describe("eval-config-c AC1 — loopPolicy with a policy", () => {
     expect(evalCommand.loopPolicy(3, policyModule.POLICIES.C)).toEqual({
       thresholds: policyModule.POLICIES.C.thresholds,
       budgets: { ...policyModule.POLICIES.C.budgets, maxNotes: 3 },
+      strategy: policyModule.POLICIES.C.strategy,
     })
   })
 })

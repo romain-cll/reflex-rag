@@ -634,7 +634,7 @@ const VETO = { none: 0.7, best: 0.02 }
 
 /** A judge with the veto option, which the options type may not know yet. */
 function vetoJudge(systemOne: SystemOne, extra: object = {}) {
-  return new SystemOneJudge(systemOne, { veto: VETO, ...extra } as never)
+  return new SystemOneJudge(systemOne, { veto: VETO, ...extra })
 }
 
 /** The paths vetoed, whether the judgement has the field or not. */
@@ -887,10 +887,10 @@ describe("system-one-judge AC13 — the veto", () => {
     const strict = vetoFake({ cross, best })
     const high = await new SystemOneJudge(lax.systemOne, {
       veto: { none: 0.9, best: 0.02 },
-    } as never).judge(QUESTION, manyNotes(1))
+    }).judge(QUESTION, manyNotes(1))
     const low = await new SystemOneJudge(strict.systemOne, {
       veto: { none: 0.5, best: 0.02 },
-    } as never).judge(QUESTION, manyNotes(1))
+    }).judge(QUESTION, manyNotes(1))
     expect(vetoedOf(high)).toEqual([])
     expect(vetoedOf(low)).toEqual(["notes/a0.md"])
   })
