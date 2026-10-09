@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import type { Missing } from "../core/judge.ts"
 import {
   LLMCallError,
   type LLM,
@@ -7,13 +6,13 @@ import {
   type LLMRequest,
   type LLMResponse,
 } from "../core/llm.ts"
-import type { Chunk, ModelCall } from "../core/types.ts"
+import type { ModelCall } from "../core/types.ts"
 import { CodeRewriter, LLMRewriter } from "./rewriter.ts"
 
 const QUESTION = "Who owns the Borealis budget?"
 
-function chunk(id: string, heading: string, text: string): Chunk {
-  return { id, notePath: `${id}.md`, heading, text }
+function note(path: string, text: string): { path: string; text: string } {
+  return { path, text }
 }
 
 /** "saw Zephyr and saw Zephyr": the term repeated `count` times, never first in a sentence. */
@@ -21,13 +20,12 @@ function mentions(term: string, count: number): string {
   return Array.from({ length: count }, () => `saw ${term}`).join(" and ")
 }
 
-describe("AC9 — CodeRewriter", () => {
+describe("AC10 — CodeRewriter", () => {
   // Frequencies: Zephyr 8, Quokka 7, Marta 6, Pavel 5, Quartz 4, Lumen 3,
   // Harbor 2, Tundra 1. Borealis (9) is in the question.
-  const kept = [
-    chunk(
-      "c1",
-      "notes > first",
+  const notes = [
+    note(
+      "first.md",
       [
         mentions("Zephyr", 5),
         mentions("Quokka", 4),
@@ -36,9 +34,8 @@ describe("AC9 — CodeRewriter", () => {
         mentions("Borealis", 9),
       ].join(" and ") + "."
     ),
-    chunk(
-      "c2",
-      "notes > second",
+    note(
+      "second.md",
       [
         mentions("Zephyr", 3),
         mentions("Quokka", 3),
@@ -52,35 +49,23 @@ describe("AC9 — CodeRewriter", () => {
     ),
   ]
 
-  test("AC9 — makes no model call", async () => {
-    const { calls } = await new CodeRewriter().rewrite(
-      QUESTION,
-      kept,
-      "unidentified"
-    )
+  test("AC10 — makes no model call", async () => {
+    const { calls } = await new CodeRewriter().rewrite(QUESTION, notes)
     expect(calls).toEqual([])
   })
 
-  test("AC9 — has a kind", () => {
+  test("AC10 — has a kind", () => {
     expect(new CodeRewriter().kind).toBeString()
     expect(new CodeRewriter().kind).not.toBe("")
   })
 
-  test("AC9 — the query starts with the question", async () => {
-    const { query } = await new CodeRewriter().rewrite(
-      QUESTION,
-      kept,
-      "topic_not_found"
-    )
+  test("AC10 — the query starts with the question", async () => {
+    const { query } = await new CodeRewriter().rewrite(QUESTION, notes)
     expect(query.startsWith(QUESTION)).toBe(true)
   })
 
-  test("AC9 — adds at most 6 terms, the most frequent ones", async () => {
-    const { query } = await new CodeRewriter().rewrite(
-      QUESTION,
-      kept,
-      "unidentified"
-    )
+  test("AC10 — adds at most 6 terms, the most frequent ones across the notes", async () => {
+    const { query } = await new CodeRewriter().rewrite(QUESTION, notes)
     const terms = query
       .slice(QUESTION.length)
       .split(/[\s,]+/)
@@ -97,56 +82,58 @@ describe("AC9 — CodeRewriter", () => {
     expect(query).not.toContain("Tundra")
   })
 
-  test("AC9 — skips the terms already in the question", async () => {
-    const { query } = await new CodeRewriter().rewrite(
-      QUESTION,
-      kept,
-      "unidentified"
-    )
-    // Borealis is the most frequent capitalized word of the chunks (9) but it
+  test("AC10 — skips the terms already in the question", async () => {
+    const { query } = await new CodeRewriter().rewrite(QUESTION, notes)
+    // Borealis is the most frequent capitalized word of the notes (9) but it
     // is in the question: it appears once, from the question itself.
     expect(query.split("Borealis")).toHaveLength(2)
   })
 
-  test("AC9 — adds every term when there are fewer than 6", async () => {
-    const { query } = await new CodeRewriter().rewrite(
-      QUESTION,
-      [
-        chunk(
-          "c3",
-          "x",
-          `${mentions("Marta", 2)} and ${mentions("Pavel", 1)}.`
-        ),
-      ],
-      "unidentified"
-    )
+  test("AC10 — ties are broken by order of first appearance", async () => {
+    const { query } = await new CodeRewriter().rewrite(QUESTION, [
+      note("one.md", `${mentions("Orion", 2)} and ${mentions("Atlas", 2)}.`),
+      note("two.md", `${mentions("Nova", 2)} and ${mentions("Cedar", 1)}.`),
+    ])
+    expect(
+      query
+        .slice(QUESTION.length)
+        .trim()
+        .split(/[\s,]+/)
+    ).toEqual(["Orion", "Atlas", "Nova", "Cedar"])
+  })
+
+  test("AC10 — a capitalized phrase is one term", async () => {
+    const { query } = await new CodeRewriter().rewrite(QUESTION, [
+      note("people.md", `${mentions("Marta Keller", 2)}.`),
+    ])
+    expect(query).toBe(`${QUESTION} Marta Keller`)
+  })
+
+  test("AC10 — adds every term when there are fewer than 6", async () => {
+    const { query } = await new CodeRewriter().rewrite(QUESTION, [
+      note("small.md", `${mentions("Marta", 2)} and ${mentions("Pavel", 1)}.`),
+    ])
     expect(query).toContain("Marta")
     expect(query).toContain("Pavel")
     expect(query.indexOf("Marta")).toBeLessThan(query.indexOf("Pavel"))
   })
 
-  test("AC9 — adds nothing when the chunks hold no capitalized term", async () => {
-    const { query, calls } = await new CodeRewriter().rewrite(
-      QUESTION,
-      [chunk("c4", "x", "nothing here starts with a capital letter.")],
-      "unidentified"
-    )
+  test("AC10 — adds nothing when the notes hold no capitalized term", async () => {
+    const { query, calls } = await new CodeRewriter().rewrite(QUESTION, [
+      note("plain.md", "nothing here starts with a capital letter."),
+    ])
     expect(query.trim()).toBe(QUESTION)
     expect(calls).toEqual([])
   })
 
-  test("AC9 — has no term to take when nothing was kept", async () => {
-    const { query, calls } = await new CodeRewriter().rewrite(
-      QUESTION,
-      [],
-      "topic_not_found"
-    )
+  test("AC10 — has no term to take when there is no note", async () => {
+    const { query, calls } = await new CodeRewriter().rewrite(QUESTION, [])
     expect(query.trim()).toBe(QUESTION)
     expect(calls).toEqual([])
   })
 })
 
-describe("AC9 — LLMRewriter", () => {
+describe("AC10 — LLMRewriter", () => {
   const CALL: ModelCall = {
     model: "fake-llm",
     inputTokens: 200,
@@ -170,67 +157,47 @@ describe("AC9 — LLMRewriter", () => {
     return { llm, requests }
   }
 
-  const kept = [
-    chunk("c1", "Budget > Owner", "ALPHA-TEXT the owner is named here."),
-    chunk("c2", "Planning > Q3", "BRAVO-TEXT the Q3 plan."),
+  const notes = [
+    note("budget/owner.md", "ALPHA-TEXT the owner is named here."),
+    note("planning/q3.md", "BRAVO-TEXT the Q3 plan."),
   ]
 
-  test("AC9 — has a kind different from the code rewriter's", () => {
+  test("AC10 — has a kind different from the code rewriter's", () => {
     const rewriter = new LLMRewriter(fakeLLM().llm)
     expect(rewriter.kind).toBeString()
     expect(rewriter.kind).not.toBe(new CodeRewriter().kind)
   })
 
-  test("AC9 — makes one call whose prompt holds the question, the kept headings and the missing choice", async () => {
+  test("AC10 — makes one call whose prompt holds the question and the paths of the notes", async () => {
     const { llm, requests } = fakeLLM()
-    await new LLMRewriter(llm).rewrite(QUESTION, kept, "newer_version")
+    await new LLMRewriter(llm).rewrite(QUESTION, notes)
     expect(requests).toHaveLength(1)
     const prompt = requests[0]!.prompt
     expect(prompt).toContain(QUESTION)
-    expect(prompt).toContain("Budget > Owner")
-    expect(prompt).toContain("Planning > Q3")
-    expect(prompt).toContain("newer_version")
+    expect(prompt).toContain("budget/owner.md")
+    expect(prompt).toContain("planning/q3.md")
     expect(requests[0]!.maxTokens).toBeGreaterThan(0)
   })
 
-  test("AC9 — states the missing choice it was given", async () => {
-    for (const missing of [
-      "detail_in_linked_note",
-      "topic_not_found",
-    ] satisfies Missing[]) {
-      const { llm, requests } = fakeLLM()
-      await new LLMRewriter(llm).rewrite(QUESTION, kept, missing)
-      expect(requests[0]!.prompt).toContain(missing)
-    }
-  })
-
-  test("AC9 — returns the reformulated query and the call", async () => {
+  test("AC10 — returns the reformulated query, trimmed, and the call", async () => {
     const { llm } = fakeLLM("  budget owner Borealis 2025\n")
-    const result = await new LLMRewriter(llm).rewrite(
-      QUESTION,
-      kept,
-      "topic_not_found"
-    )
+    const result = await new LLMRewriter(llm).rewrite(QUESTION, notes)
     expect(result).toEqual({
       query: "budget owner Borealis 2025",
       calls: [CALL],
     })
   })
 
-  test("AC9 — still asks when nothing was kept", async () => {
+  test("AC10 — still asks when no note was found", async () => {
     const { llm, requests } = fakeLLM("another phrasing")
-    const result = await new LLMRewriter(llm).rewrite(
-      QUESTION,
-      [],
-      "topic_not_found"
-    )
+    const result = await new LLMRewriter(llm).rewrite(QUESTION, [])
     expect(requests).toHaveLength(1)
     expect(requests[0]!.prompt).toContain(QUESTION)
     expect(result.query).toBe("another phrasing")
     expect(result.calls).toEqual([CALL])
   })
 
-  test("AC9 — passes the errors of the LLM through unchanged", async () => {
+  test("AC10 — passes the errors of the LLM through unchanged", async () => {
     const error = new LLMCallError("bad output", CALL)
     const llm: LLM = {
       model: "fake-llm",
@@ -239,7 +206,7 @@ describe("AC9 — LLMRewriter", () => {
     }
     let thrown: unknown
     try {
-      await new LLMRewriter(llm).rewrite(QUESTION, kept, "unidentified")
+      await new LLMRewriter(llm).rewrite(QUESTION, notes)
     } catch (e) {
       thrown = e
     }

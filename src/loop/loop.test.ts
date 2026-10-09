@@ -1,34 +1,45 @@
 import { describe, expect, test } from "bun:test"
-import type { Assessment, Judge, Missing, Relevance } from "../core/judge.ts"
-import type { Chunk, DatedChunk, Link, ModelCall, Note } from "../core/types.ts"
-import type { Index } from "../index/read.ts"
+import type { Judge, NoteForJudge, Verdict } from "../core/judge.ts"
+import { LLMCallError } from "../core/llm.ts"
+import type { Chunk, Link, ModelCall, Note } from "../core/types.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
-import { runLoop, type LoopDeps } from "./loop.ts"
-import { DEFAULT_POLICY, type PolicyConfig } from "./policy.ts"
+import { LoopError, noteText, runLoop, type LoopDeps } from "./loop.ts"
+import type { PolicyConfig } from "./policy.ts"
 import type { Rewriter } from "./rewriter.ts"
 
 // The loop runs the real `decide`. The fakes below sit at the boundaries only:
 // the retriever, the index, the judge and the rewriter. The judge's scripted
-// probabilities drive the policy down each path.
+// verdicts drive the policy down each path.
 
 const QUESTION = "Who owns the Borealis budget?"
+
+const BASE_POLICY: PolicyConfig = {
+  thresholds: { answer: 0.5, step: 0.5 },
+  budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 5 },
+}
+
+function policyWith(
+  budgets: Partial<PolicyConfig["budgets"]> = {},
+  thresholds: Partial<PolicyConfig["thresholds"]> = {}
+): PolicyConfig {
+  return {
+    thresholds: { ...BASE_POLICY.thresholds, ...thresholds },
+    budgets: { ...BASE_POLICY.budgets, ...budgets },
+  }
+}
 
 function call(model: string): ModelCall {
   return { model, inputTokens: 10, outputTokens: 2, latencyMs: 5 }
 }
 
-function chunk(id: string, notePath: string): Chunk {
-  return {
-    id,
-    notePath,
-    heading: `heading of ${id}`,
-    text: `text of ${id}`,
-  }
+type Probabilities = Partial<Record<Verdict, number>>
+
+/** The verdicts of a note as the fake judge returns them. */
+function verdict(p: Probabilities): Record<Verdict, number> {
+  return { answer: 0, step: 0, none: 0, ...p }
 }
 
-function link(id: string, sourcePath: string, targetPath: string): Link {
-  return { id, sourcePath, targetPath, label: `label of ${id}` }
-}
+const NONE = verdict({ none: 1 })
 
 interface World {
   /** Note path to note date. A path absent from the map is not a note. */
@@ -37,10 +48,60 @@ interface World {
   links: Link[]
 }
 
+function stemOf(path: string): string {
+  return path.replace(/\.md$/, "")
+}
+
+/** The id of the only chunk of a generated note. */
+function hit(stem: string): string {
+  return `${stem}#1`
+}
+
+function hits(...stems: string[]): string[] {
+  return stems.map(hit)
+}
+
 /**
- * a -> b, a -> c, b -> d, d -> a. Chunks a1 a2 (a), b1 b2 (b), c1 (c), d1 (d).
+ * A world of notes `<stem>.md`, each with one preamble chunk
+ * `text of <stem>`, linked as given. `extra` adds notes without links.
  */
-const WORLD: World = {
+function worldOf(
+  links: Array<[string, string]>,
+  options: { extra?: string[]; dates?: Record<string, string | null> } = {}
+): World {
+  const stems = [...new Set([...links.flat(), ...(options.extra ?? [])])]
+  return {
+    notes: Object.fromEntries(
+      stems.map((s) => [`${s}.md`, options.dates?.[s] ?? null])
+    ),
+    chunks: stems.map((s) => ({
+      id: hit(s),
+      notePath: `${s}.md`,
+      heading: "",
+      text: `text of ${s}`,
+    })),
+    links: links.map(([source, target], i) => ({
+      id: `l${i}`,
+      sourcePath: `${source}.md`,
+      targetPath: `${target}.md`,
+      label: `${source} to ${target}`,
+    })),
+  }
+}
+
+/** a -> b, a -> c, b -> d, d -> a. */
+const GRAPH = worldOf(
+  [
+    ["a", "b"],
+    ["a", "c"],
+    ["b", "d"],
+    ["d", "a"],
+  ],
+  { dates: { a: "2025-01-01", b: "2025-02-02", d: "2025-04-04" } }
+)
+
+/** Notes with several sections, a preamble, a duplicate link and no date. */
+const SECTIONS: World = {
   notes: {
     "a.md": "2025-01-01",
     "b.md": "2025-02-02",
@@ -48,23 +109,23 @@ const WORLD: World = {
     "d.md": "2025-04-04",
   },
   chunks: [
-    chunk("a1", "a.md"),
-    chunk("a2", "a.md"),
-    chunk("b1", "b.md"),
-    chunk("b2", "b.md"),
-    chunk("c1", "c.md"),
-    chunk("d1", "d.md"),
+    { id: "a1", notePath: "a.md", heading: "", text: "intro of a" },
+    { id: "a2", notePath: "a.md", heading: "Owner", text: "owner of a" },
+    { id: "b1", notePath: "b.md", heading: "B one", text: "first of b" },
+    { id: "b2", notePath: "b.md", heading: "B two", text: "second of b" },
+    { id: "c1", notePath: "c.md", heading: "", text: "only c" },
+    { id: "d1", notePath: "d.md", heading: "Plan > D", text: "text of d" },
   ],
   links: [
-    link("l1", "a.md", "b.md"),
-    link("l2", "a.md", "c.md"),
-    link("l3", "b.md", "d.md"),
-    link("l4", "d.md", "a.md"),
+    { id: "l1", sourcePath: "a.md", targetPath: "b.md", label: "a to b" },
+    { id: "l2", sourcePath: "a.md", targetPath: "c.md", label: "a to c" },
+    { id: "l3", sourcePath: "a.md", targetPath: "b.md", label: "a to b again" },
+    { id: "l4", sourcePath: "b.md", targetPath: "d.md", label: "b to d" },
   ],
 }
 
 function fakeIndex(world: World): LoopDeps["index"] {
-  const index: Pick<Index, "chunksOf" | "getNote" | "outgoingLinks"> = {
+  return {
     chunksOf: (path) => world.chunks.filter((c) => c.notePath === path),
     getNote(pathOrTitle) {
       const date = world.notes[pathOrTitle]
@@ -80,16 +141,6 @@ function fakeIndex(world: World): LoopDeps["index"] {
     },
     outgoingLinks: (path) => world.links.filter((l) => l.sourcePath === path),
   }
-  return index
-}
-
-interface AssessSpec {
-  sufficient?: number
-  missing?: Missing
-  /** Probability by link id. */
-  links?: Record<string, number>
-  /** Probability of every link not listed in `links`. Default 0. */
-  linkProbability?: number
 }
 
 interface Scenario {
@@ -97,31 +148,19 @@ interface Scenario {
   world?: World
   /** Chunk ids returned by the retriever, by query, best first. */
   search?: Record<string, string[]>
-  /**
-   * Probability by chunk id. An array is consumed one value per judgement of
-   * that chunk, the last value repeating. A chunk not listed gets 0.
-   */
-  relevance?: Record<string, number | number[]>
-  /** One per assessment, the last repeating. */
-  assessments?: AssessSpec[]
+  /** Verdicts by note path. A note not listed is `none`. */
+  verdicts?: Record<string, Probabilities>
   policy?: PolicyConfig
   candidates?: number
   /** Queries returned by the rewriter, in order. */
   rewrites?: string[]
+  /** The nth call (from 0) of `judge.judge` rejects with this error. */
+  judgeFailure?: { onCall: number; error: Error }
+  rewriterFailure?: Error
 }
 
-function policyWith(
-  budgets: Partial<PolicyConfig["budgets"]> = {},
-  thresholds: Partial<PolicyConfig["thresholds"]> = {}
-): PolicyConfig {
-  return {
-    thresholds: { ...DEFAULT_POLICY.thresholds, ...thresholds },
-    budgets: { ...DEFAULT_POLICY.budgets, ...budgets },
-  }
-}
-
-async function run(scenario: Scenario) {
-  const world = scenario.world ?? WORLD
+function setup(scenario: Scenario) {
+  const world = scenario.world ?? GRAPH
   const question = scenario.question ?? QUESTION
   const byId = new Map(world.chunks.map((c) => [c.id, c]))
 
@@ -141,75 +180,38 @@ async function run(scenario: Scenario) {
     return Promise.resolve(retrieval)
   }
 
-  const relevanceCalls: Array<{ question: string; chunks: DatedChunk[] }> = []
-  const assessCalls: Array<{
-    question: string
-    chunks: DatedChunk[]
-    links: Link[]
-  }> = []
-  const consumed = new Map<string, number>()
-  const specs = scenario.assessments ?? [{}]
+  const judgeCalls: Array<{ question: string; notes: NoteForJudge[] }> = []
   const judge: Judge = {
-    relevance(q, chunks) {
-      relevanceCalls.push({ question: q, chunks: [...chunks] })
-      const probabilities: Record<string, number> = {}
-      for (const c of chunks) {
-        const scripted = scenario.relevance?.[c.id] ?? 0
-        const n = consumed.get(c.id) ?? 0
-        consumed.set(c.id, n + 1)
-        probabilities[c.id] =
-          typeof scripted === "number"
-            ? scripted
-            : scripted[Math.min(n, scripted.length - 1)]!
+    judge(q, notes) {
+      const n = judgeCalls.length
+      judgeCalls.push({ question: q, notes: structuredClone(notes) })
+      if (scenario.judgeFailure?.onCall === n) {
+        return Promise.reject(scenario.judgeFailure.error)
       }
-      // Like the real judges, no call when there is nothing to judge.
-      const relevance: Relevance = {
-        chunks: probabilities,
-        calls: chunks.length === 0 ? [] : [call("relevance")],
-      }
-      return Promise.resolve(relevance)
-    },
-    assess(q, chunks, links) {
-      const spec: AssessSpec =
-        specs[Math.min(assessCalls.length, specs.length - 1)] ?? {}
-      assessCalls.push({ question: q, chunks: [...chunks], links: [...links] })
-      const choice = spec.missing ?? "unidentified"
-      const probabilities = {
-        detail_in_linked_note: 0,
-        newer_version: 0,
-        topic_not_found: 0,
-        unidentified: 0,
-        [choice]: 1,
-      } as Record<Missing, number>
-      const assessment: Assessment = {
-        sufficient: spec.sufficient ?? 0,
-        missing: { choice, probabilities },
-        links: Object.fromEntries(
-          links.map((l) => [
-            l.id,
-            spec.links?.[l.id] ?? spec.linkProbability ?? 0,
-          ])
+      return Promise.resolve({
+        notes: Object.fromEntries(
+          notes.map((note) => {
+            const scripted = scenario.verdicts?.[note.path]
+            return [note.path, scripted ? verdict(scripted) : { ...NONE }]
+          })
         ),
-        calls: [call("assess")],
-      }
-      return Promise.resolve(assessment)
+        // Like the real judges, no call when there is nothing to judge.
+        calls: notes.length === 0 ? [] : [call("judge")],
+      })
     },
   }
 
   const rewriterCalls: Array<{
     question: string
-    keptIds: string[]
-    missing: Missing
+    notes: Array<{ path: string; text: string }>
   }> = []
   const rewriter: Rewriter = {
     kind: "fake",
-    rewrite(q, kept, missing) {
+    rewrite(q, notes) {
       const n = rewriterCalls.length
-      rewriterCalls.push({
-        question: q,
-        keptIds: kept.map((c) => c.id),
-        missing,
-      })
+      rewriterCalls.push({ question: q, notes: structuredClone(notes) })
+      if (scenario.rewriterFailure)
+        return Promise.reject(scenario.rewriterFailure)
       return Promise.resolve({
         query: scenario.rewrites?.[n] ?? `rewritten ${n + 1}`,
         calls: [call("rewriter")],
@@ -222,29 +224,74 @@ async function run(scenario: Scenario) {
     index: fakeIndex(world),
     judge,
     rewriter,
-    policy: scenario.policy ?? DEFAULT_POLICY,
+    policy: scenario.policy ?? BASE_POLICY,
     ...(scenario.candidates === undefined
       ? {}
       : { candidates: scenario.candidates }),
   }
-  const result = await runLoop(question, deps)
-  return { result, retrieveCalls, relevanceCalls, assessCalls, rewriterCalls }
+  return { question, deps, retrieveCalls, judgeCalls, rewriterCalls }
 }
 
-function ids(chunks: Array<{ id: string }>): string[] {
-  return chunks.map((c) => c.id)
+async function run(scenario: Scenario) {
+  const t = setup(scenario)
+  const result = await runLoop(t.question, t.deps)
+  return { ...t, result }
+}
+
+async function fail(scenario: Scenario) {
+  const t = setup(scenario)
+  const error = await runLoop(t.question, t.deps).then(
+    () => {
+      throw new Error("expected runLoop to throw")
+    },
+    (e: unknown) => e
+  )
+  return { ...t, error }
+}
+
+function paths(items: Array<{ path: string }>): string[] {
+  return items.map((item) => item.path)
+}
+
+function models(calls: ModelCall[]): string[] {
+  return calls.map((c) => c.model)
+}
+
+function contextPaths(result: { context: Array<{ notePath: string }> }) {
+  return result.context.map((c) => c.notePath)
 }
 
 function sorted(values: string[]): string[] {
   return [...values].sort()
 }
 
-describe("AC1 — first turn", () => {
+describe("AC1 — noteText", () => {
+  const index = fakeIndex(SECTIONS)
+
+  test("AC1 — a preamble chunk is its text alone, a section gets a `## ` heading line", () => {
+    expect(noteText(index, "a.md")).toBe("intro of a\n\n## Owner\nowner of a")
+  })
+
+  test("AC1 — sections are joined in the order of the chunks", () => {
+    expect(noteText(index, "b.md")).toBe(
+      "## B one\nfirst of b\n\n## B two\nsecond of b"
+    )
+  })
+
+  test("AC1 — a note of one preamble chunk is that text", () => {
+    expect(noteText(index, "c.md")).toBe("only c")
+  })
+
+  test("AC1 — a nested heading path is kept whole after `## `", () => {
+    expect(noteText(index, "d.md")).toBe("## Plan > D\ntext of d")
+  })
+})
+
+describe("AC1 — search", () => {
   test("AC1 — retrieves 50 candidates for the question by default", async () => {
     const { retrieveCalls } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.9 }],
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
     })
     expect(retrieveCalls).toEqual([[QUESTION, 50]])
   })
@@ -252,723 +299,917 @@ describe("AC1 — first turn", () => {
   test("AC1 — retrieves the configured number of candidates", async () => {
     const { retrieveCalls } = await run({
       candidates: 7,
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.9 }],
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
     })
     expect(retrieveCalls).toEqual([[QUESTION, 7]])
   })
 
-  test("AC1 — asks the judge about every candidate, dated from its note", async () => {
-    const { relevanceCalls } = await run({
-      search: { [QUESTION]: ["a1", "c1", "b1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.9 }],
+  test("AC1 — lists the notes in order of first appearance of their chunks, in one judge call", async () => {
+    const { judgeCalls } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["b2", "a1", "b1", "c1", "a2"] },
+      verdicts: { "b.md": { answer: 0.9 } },
     })
-    expect(relevanceCalls).toHaveLength(1)
-    expect(relevanceCalls[0]!.question).toBe(QUESTION)
-    expect(relevanceCalls[0]!.chunks).toEqual([
-      { ...chunk("a1", "a.md"), noteDate: "2025-01-01" },
-      { ...chunk("c1", "c.md"), noteDate: null },
-      { ...chunk("b1", "b.md"), noteDate: "2025-02-02" },
-    ])
+    expect(judgeCalls).toHaveLength(1)
+    expect(judgeCalls[0]!.question).toBe(QUESTION)
+    expect(paths(judgeCalls[0]!.notes)).toEqual(["b.md", "a.md", "c.md"])
   })
 
-  test("AC1 — keeps the chunks at or above the relevance threshold", async () => {
-    const { result } = await run({
-      search: { [QUESTION]: ["a1", "a2", "b1"] },
-      relevance: { a1: 0.5, a2: 0.49, b1: 0.9 },
-      assessments: [{ sufficient: 0.9 }],
+  test("AC1 — sends each note with its path, date, text and distinct link targets", async () => {
+    const { judgeCalls } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["a2", "c1"] },
+      verdicts: { "a.md": { answer: 0.9 } },
     })
-    expect(sorted(result.steps[0]!.kept)).toEqual(["a1", "b1"])
-    expect(result.context.map((c) => c.text)).toEqual([
-      "text of b1",
-      "text of a1",
-    ])
+    const [a, c] = judgeCalls[0]!.notes
+    expect(a).toEqual({
+      path: "a.md",
+      date: "2025-01-01",
+      text: "intro of a\n\n## Owner\nowner of a",
+      links: expect.any(Array),
+    })
+    // a links to b twice: the target is listed once.
+    expect(sorted(a!.links)).toEqual(["b.md", "c.md"])
+    expect(c).toEqual({
+      path: "c.md",
+      date: null,
+      text: "only c",
+      links: [],
+    })
   })
 
-  test("AC1 — uses the relevance threshold of the policy", async () => {
-    const { result } = await run({
-      policy: policyWith({}, { relevance: 0.8 }),
-      search: { [QUESTION]: ["a1", "b1"] },
-      relevance: { a1: 0.79, b1: 0.8 },
-      assessments: [{ sufficient: 0.9 }],
+  test("AC1 — the text holds all the sections of the note, even those not retrieved", async () => {
+    const { judgeCalls } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["b2"] },
+      verdicts: { "b.md": { answer: 0.9 } },
     })
-    expect(result.steps[0]!.kept).toEqual(["b1"])
-    expect(result.context.map((c) => c.text)).toEqual(["text of b1"])
-  })
-})
-
-describe("AC2 — assessment", () => {
-  test("AC2 — assesses the kept chunks best first, dated", async () => {
-    const { assessCalls } = await run({
-      search: { [QUESTION]: ["a1", "a2", "b1"] },
-      relevance: { a1: 0.9, a2: 0.6, b1: 0.7 },
-      assessments: [{ sufficient: 0.9 }],
-    })
-    expect(assessCalls).toHaveLength(1)
-    expect(assessCalls[0]!.question).toBe(QUESTION)
-    expect(assessCalls[0]!.chunks).toEqual([
-      { ...chunk("a1", "a.md"), noteDate: "2025-01-01" },
-      { ...chunk("b1", "b.md"), noteDate: "2025-02-02" },
-      { ...chunk("a2", "a.md"), noteDate: "2025-01-01" },
-    ])
-  })
-
-  test("AC2 — assesses at most the chunk budget", async () => {
-    const { assessCalls } = await run({
-      policy: policyWith({ maxChunks: 2 }),
-      search: { [QUESTION]: ["a1", "a2", "b1"] },
-      relevance: { a1: 0.9, a2: 0.6, b1: 0.7 },
-      assessments: [{ sufficient: 0.9 }],
-    })
-    expect(ids(assessCalls[0]!.chunks)).toEqual(["a1", "b1"])
-  })
-
-  test("AC2 — lists the links out of the notes of the kept chunks, to notes not in the context", async () => {
-    // a and b are in the context: l1 (a -> b) leads to a note already there.
-    // d only has an unkept chunk: l4 (d -> a) is not visible.
-    const { assessCalls } = await run({
-      search: { [QUESTION]: ["a1", "b1", "d1"] },
-      relevance: { a1: 0.9, b1: 0.8, d1: 0.1 },
-      assessments: [{ sufficient: 0.9 }],
-    })
-    expect(sorted(ids(assessCalls[0]!.links))).toEqual(["l2", "l3"])
-    expect(assessCalls[0]!.links.find((l) => l.id === "l2")).toEqual(
-      WORLD.links[1]
+    expect(judgeCalls[0]!.notes[0]!.text).toBe(
+      "## B one\nfirst of b\n\n## B two\nsecond of b"
     )
   })
 
-  test("AC2 — assesses once per turn and lists no link when nothing is kept", async () => {
-    const { assessCalls, result } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.1 },
-      policy: policyWith({ maxRewrites: 0 }),
+  test("AC1 — a new search skips the notes already judged", async () => {
+    const { judgeCalls, retrieveCalls } = await run({
+      world: worldOf([], { extra: ["a", "b", "c"] }),
+      search: {
+        [QUESTION]: hits("a", "b"),
+        "new query": hits("a", "c", "b"),
+      },
+      rewrites: ["new query"],
     })
-    expect(assessCalls).toHaveLength(result.steps.length)
-    expect(assessCalls[0]!.chunks).toEqual([])
-    expect(assessCalls[0]!.links).toEqual([])
-  })
-
-  test("AC2 — decides with the real policy: a sufficient context is answered", async () => {
-    const { result } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.7, linkProbability: 1 }],
-    })
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "sufficient",
-    })
-    expect(result.hops).toBe(0)
-  })
-
-  test("AC2 — decides with the policy it is given", async () => {
-    const { result } = await run({
-      policy: policyWith({}, { sufficient: 0.95 }),
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.9 }],
-    })
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
+    expect(retrieveCalls.map(([query]) => query)).toEqual([
+      QUESTION,
+      "new query",
+    ])
+    expect(paths(judgeCalls[0]!.notes)).toEqual(["a.md", "b.md"])
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["c.md"])
   })
 })
 
-describe("AC3 — follow a link", () => {
-  const hop: Scenario = {
-    search: { [QUESTION]: ["a1", "a2"] },
-    relevance: { a1: 0.9, a2: 0.1, b1: 0.8, b2: 0.2 },
-    assessments: [
-      { sufficient: 0.2, links: { l1: 0.9, l2: 0.1 } },
-      { sufficient: 0.9 },
-    ],
+describe("AC2 — decide", () => {
+  test("AC2 — a note with a step verdict and unjudged links is opened even when another is kept", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9, step: 0.9 } },
+    })
+    expect(result.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
+    })
+  })
+
+  test("AC2 — answers a kept note once the hops are used", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 0 }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9, step: 0.9 } },
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(result.hops).toBe(0)
+  })
+
+  test("AC2 — a note without outgoing links is not openable", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("c") },
+      verdicts: { "c.md": { answer: 0.9, step: 0.9 } },
+      world: GRAPH,
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(result.hops).toBe(0)
+  })
+
+  test("AC2 — a note whose link targets are all judged is not openable", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["a", "c"],
+      ]),
+      search: { [QUESTION]: hits("a", "b", "c") },
+      verdicts: { "a.md": { step: 0.9 } },
+    })
+    expect(result.steps[0]!.action.rule).toBe("rewrite")
+    expect(result.hops).toBe(0)
+  })
+
+  test("AC2 — explore opens the notes with unjudged links, not those already opened or without links", async () => {
+    // a opened first; then b (links to d) is the only openable note, c has no
+    // link and a has all its targets judged.
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 1 } },
+    })
+    expect(result.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
+    })
+    expect(result.steps[1]!.action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["b.md"],
+    })
+  })
+
+  test("AC2 — passes the hops used: none left after the budget", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 1 }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 1 } },
+    })
+    expect(result.steps[0]!.action.rule).toBe("follow-steps")
+    expect(result.steps[1]!.action.rule).toBe("rewrite")
+  })
+
+  test("AC2 — passes the rewrites used: none left after the budget", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.steps.map((s) => s.action.rule)).toEqual([
+      "rewrite",
+      "abstain",
+    ])
+  })
+
+  test("AC2 — abstains when there is no rewrite budget and nothing to open", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxRewrites: 0 }),
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.outcome).toEqual({ type: "abstain", rule: "abstain" })
+  })
+
+  test("AC2 — a note at the answer threshold is kept", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a", "b"] }),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: { "a.md": { answer: 0.5 }, "b.md": { answer: 0.49 } },
+    })
+    expect(result.outcome.type).toBe("answer")
+    expect(contextPaths(result)).toEqual(["a.md"])
+  })
+
+  test("AC2 — uses the answer threshold of the policy", async () => {
+    const { result } = await run({
+      policy: policyWith({}, { answer: 0.8 }),
+      world: worldOf([], { extra: ["a", "b"] }),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: { "a.md": { answer: 0.79 }, "b.md": { answer: 0.8 } },
+    })
+    expect(contextPaths(result)).toEqual(["b.md"])
+  })
+
+  test("AC2 — uses the step threshold of the policy", async () => {
+    const lowStep = await run({
+      policy: policyWith({}, { step: 0.4 }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.4 } },
+    })
+    expect(lowStep.result.steps[0]!.action.rule).toBe("follow-steps")
+    const defaultStep = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.4 } },
+    })
+    expect(defaultStep.result.steps[0]!.action.rule).toBe("explore")
+  })
+})
+
+describe("AC3 — expand", () => {
+  test("AC3 — judges the never-judged link targets of the opened note in one call and counts a hop", async () => {
+    const { result, judgeCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    expect(judgeCalls).toHaveLength(2)
+    expect(judgeCalls[1]!.question).toBe(QUESTION)
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["b.md", "c.md"])
+    expect(result.hops).toBe(1)
+    expect(result.steps[1]!.expanded).toEqual(["a.md"])
+  })
+
+  test("AC3 — sends the reached notes like the searched ones", async () => {
+    const { judgeCalls } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["a1"] },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    const [b, c] = judgeCalls[1]!.notes
+    expect(b).toEqual({
+      path: "b.md",
+      date: "2025-02-02",
+      text: "## B one\nfirst of b\n\n## B two\nsecond of b",
+      links: ["d.md"],
+    })
+    expect(c).toEqual({ path: "c.md", date: null, text: "only c", links: [] })
+  })
+
+  test("AC3 — does not judge a target again", async () => {
+    const { result, judgeCalls } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["a", "c"],
+      ]),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: { "a.md": { step: 0.9 } },
+    })
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["c.md"])
+    expect(result.steps[1]!.parents).toEqual({ "c.md": "a.md" })
+  })
+
+  test("AC3 — a target linked by two opened notes is judged once, its parent the first note of the action", async () => {
+    // e has the higher step probability, so the action lists e before a, even
+    // though a was judged first.
+    const { result, judgeCalls } = await run({
+      world: worldOf([
+        ["a", "x"],
+        ["e", "x"],
+      ]),
+      search: { [QUESTION]: hits("a", "e") },
+      verdicts: { "a.md": { step: 0.6 }, "e.md": { step: 0.9 } },
+    })
+    expect(result.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["e.md", "a.md"],
+    })
+    expect(
+      judgeCalls.flatMap((c) => paths(c.notes)).filter((p) => p === "x.md")
+    ).toHaveLength(1)
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["x.md"])
+    expect(result.steps[1]!.expanded).toEqual(["e.md", "a.md"])
+    expect(result.steps[1]!.parents).toEqual({ "x.md": "e.md" })
+    expect(result.hops).toBe(1)
+  })
+
+  test("AC3 — an explore expand works the same way", async () => {
+    const { result, judgeCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md"],
+    })
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["b.md", "c.md"])
+    expect(result.steps[1]!.kind).toBe("expand")
+    expect(result.hops).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe("AC4 — rewrite", () => {
+  // Seven isolated notes judged in one turn. Score = answer + step (exact
+  // binary fractions); none is kept and none is openable, so the loop rewrites.
+  const isolated = worldOf([], {
+    extra: ["n1", "n2", "n3", "n4", "n5", "n6", "n7"],
+  })
+  const verdicts = {
+    "n1.md": { answer: 0.0625, step: 0.0625 }, // 0.125
+    "n2.md": { answer: 0.25, step: 0.125 }, // 0.375
+    "n3.md": { answer: 0.125, step: 0.25 }, // 0.375, judged after n2
+    "n4.md": { answer: 0.375, step: 0.375 }, // 0.75
+    "n5.md": { answer: 0.03125 }, // 0.03125
+    "n6.md": { answer: 0.25, step: 0.375 }, // 0.625
+    "n7.md": {}, // 0
   }
 
-  test("AC3 — follows the promising link, then answers", async () => {
-    const { result, retrieveCalls } = await run(hop)
-    expect(result.steps).toHaveLength(2)
-    expect(result.steps[0]!.action).toMatchObject({
-      type: "follow",
-      rule: "follow-link",
-      probability: 0.9,
-      link: { id: "l1" },
+  test("AC4 — gives the rewriter the question and the 5 best notes, ties by order of judgement", async () => {
+    const { rewriterCalls } = await run({
+      world: isolated,
+      search: { [QUESTION]: hits("n1", "n2", "n3", "n4", "n5", "n6", "n7") },
+      verdicts,
     })
-    expect(result.steps[1]!.kind).toBe("follow")
-    expect(result.outcome).toMatchObject({ type: "answer", rule: "sufficient" })
-    expect(result.hops).toBe(1)
-    expect(result.rewrites).toBe(0)
-    expect(result.context.map((c) => c.notePath)).toEqual(["a.md", "b.md"])
-    // Following a link does not search again.
-    expect(retrieveCalls).toHaveLength(1)
+    expect(rewriterCalls).toHaveLength(1)
+    expect(rewriterCalls[0]!.question).toBe(QUESTION)
+    expect(rewriterCalls[0]!.notes).toEqual(
+      ["n4", "n6", "n2", "n3", "n1"].map((stem) => ({
+        path: `${stem}.md`,
+        text: `text of ${stem}`,
+      }))
+    )
   })
 
-  test("AC3 — judges the chunks of the target note, dated, and keeps the relevant ones", async () => {
-    const { result, relevanceCalls } = await run(hop)
-    expect(relevanceCalls).toHaveLength(2)
-    expect(relevanceCalls[1]!.question).toBe(QUESTION)
-    expect(relevanceCalls[1]!.chunks).toEqual([
-      { ...chunk("b1", "b.md"), noteDate: "2025-02-02" },
-      { ...chunk("b2", "b.md"), noteDate: "2025-02-02" },
+  test("AC4 — gives the rewriter fewer notes when fewer were judged", async () => {
+    const { rewriterCalls } = await run({
+      world: isolated,
+      search: { [QUESTION]: hits("n1", "n7") },
+      verdicts,
+    })
+    expect(rewriterCalls[0]!.notes.map((n) => n.path)).toEqual([
+      "n1.md",
+      "n7.md",
     ])
-    expect(result.steps[1]!.kept).toEqual(["b1"])
   })
 
-  test("AC3 — assesses again with the links of the new context", async () => {
-    // b is in the context now: l1 is gone; l3 (b -> d) appears.
-    const { assessCalls } = await run(hop)
-    expect(assessCalls).toHaveLength(2)
-    expect(sorted(ids(assessCalls[1]!.links))).toEqual(["l2", "l3"])
-    expect(ids(assessCalls[1]!.chunks)).toEqual(["a1", "b1"])
-  })
-
-  test("AC3 — marks the target as followed when nothing was kept there", async () => {
-    const { result, assessCalls } = await run({
-      ...hop,
-      relevance: { a1: 0.9, a2: 0.1, b1: 0.1, b2: 0.2 },
-      assessments: [{ sufficient: 0.2, links: { l1: 0.9, l2: 0.1 } }, {}],
-    })
-    expect(result.steps[1]!.kind).toBe("follow")
-    expect(result.steps[1]!.kept).toEqual([])
-    expect(result.hops).toBe(1)
-    // l1 is not offered again, l2 still is.
-    expect(ids(assessCalls[1]!.links)).toEqual(["l2"])
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-    expect(result.context.map((c) => c.notePath)).toEqual(["a.md"])
-  })
-
-  test("AC3 — counts a hop for a target note without chunks", async () => {
-    const world: World = {
-      ...WORLD,
-      notes: { ...WORLD.notes, "e.md": null },
-      links: [...WORLD.links, link("l5", "a.md", "e.md")],
-    }
-    const { result, assessCalls } = await run({
-      world,
+  test("AC4 — gives the note text of AC1, with its sections", async () => {
+    const { rewriterCalls } = await run({
+      world: SECTIONS,
+      policy: policyWith({ maxHops: 0 }),
       search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.2, links: { l5: 0.9 } }, {}],
     })
-    expect(result.hops).toBe(1)
-    expect(result.steps.map((s) => s.kind)).toEqual(["search", "follow"])
-    expect(ids(assessCalls[1]!.links)).not.toContain("l5")
-  })
-
-  test("AC3 — follows the best of several links, the smallest id on a tie", async () => {
-    const { result } = await run({
-      ...hop,
-      assessments: [
-        { sufficient: 0.2, links: { l1: 0.6, l2: 0.6 } },
-        { sufficient: 0.9 },
-      ],
-    })
-    expect(result.steps[0]!.action).toMatchObject({
-      type: "follow",
-      link: { id: "l1" },
-    })
-  })
-})
-
-describe("AC4 — search again", () => {
-  test("AC4 — rewrites when nothing relevant was kept, then answers", async () => {
-    const { result, retrieveCalls, relevanceCalls, rewriterCalls } = await run({
-      rewrites: ["better query"],
-      search: {
-        [QUESTION]: ["d1"],
-        "better query": ["d1", "b1", "b2"],
-      },
-      relevance: { d1: 0.1, b1: 0.8, b2: 0.6 },
-      assessments: [{ missing: "unidentified" }, { sufficient: 0.9 }],
-    })
-    expect(result.steps[0]!.action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-nothing-relevant",
-    })
-    expect(rewriterCalls).toEqual([
-      { question: QUESTION, keptIds: [], missing: "unidentified" },
-    ])
-    expect(retrieveCalls).toEqual([
-      [QUESTION, 50],
-      ["better query", 50],
-    ])
-    // d1 was already judged: only the new chunks go to the judge.
-    expect(relevanceCalls).toHaveLength(2)
-    expect(ids(relevanceCalls[1]!.chunks)).toEqual(["b1", "b2"])
-    expect(relevanceCalls[1]!.question).toBe(QUESTION)
-    expect(result.steps.map((s) => s.kind)).toEqual(["search", "rewrite"])
-    expect(result.steps[1]!.query).toBe("better query")
-    expect(result.rewrites).toBe(1)
-    expect(result.hops).toBe(0)
-    expect(result.outcome).toMatchObject({ type: "answer", rule: "sufficient" })
-    expect(result.context.map((c) => c.text)).toEqual([
-      "text of b1",
-      "text of b2",
+    expect(rewriterCalls[0]!.notes).toEqual([
+      { path: "a.md", text: "intro of a\n\n## Owner\nowner of a" },
     ])
   })
 
-  test("AC4 — retrieves the configured number of candidates for the new query", async () => {
-    const { retrieveCalls } = await run({
+  test("AC4 — searches again with the query the rewriter returns and counts a rewrite", async () => {
+    const { result, retrieveCalls } = await run({
+      world: isolated,
       candidates: 9,
-      rewrites: ["q2"],
-      search: { q2: ["b1"] },
-      relevance: { b1: 0.8 },
-      assessments: [{}, { sufficient: 0.9 }],
+      search: {
+        [QUESTION]: hits("n1"),
+        "better query": hits("n2"),
+      },
+      rewrites: ["better query"],
+      verdicts: { "n2.md": { answer: 0.9 } },
     })
     expect(retrieveCalls).toEqual([
       [QUESTION, 9],
-      ["q2", 9],
+      ["better query", 9],
     ])
+    expect(result.rewrites).toBe(1)
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["n2.md"])
   })
 
-  test("AC4 — gives the rewriter the kept chunks and the missing choice", async () => {
-    const { result, rewriterCalls } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["a1", "b1"], q2: ["a1", "c1"] },
-      relevance: { a1: 0.8, b1: 0.9, c1: 0.95 },
-      assessments: [
-        { sufficient: 0.2, missing: "topic_not_found" },
-        { sufficient: 0.9 },
-      ],
-    })
-    expect(result.steps[0]!.action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-topic-not-found",
-    })
-    expect(rewriterCalls).toEqual([
-      { question: QUESTION, keptIds: ["b1", "a1"], missing: "topic_not_found" },
-    ])
-  })
-
-  test("AC4 — merges the new relevant chunks with the kept ones", async () => {
-    const { result, relevanceCalls } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["a1", "d1"], q2: ["a1", "c1", "d1"] },
-      relevance: { a1: 0.8, c1: 0.9, d1: 0.1 },
-      assessments: [
-        { sufficient: 0.2, missing: "topic_not_found" },
-        { sufficient: 0.9 },
-      ],
-    })
-    expect(ids(relevanceCalls[1]!.chunks)).toEqual(["c1"])
-    expect(result.steps[1]!.judged).toEqual({ c1: 0.9 })
-    expect(result.context.map((c) => c.text)).toEqual([
-      "text of c1",
-      "text of a1",
-    ])
-  })
-
-  test("AC4 — the next decision knows a rewrite happened: nothing relevant after it abstains", async () => {
-    const { result, retrieveCalls, rewriterCalls } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["d1"], q2: ["d1"] },
-      relevance: { d1: 0.1 },
+  test("AC4 — the rewritten search finds notes judged for the first time only", async () => {
+    const { rewriterCalls, judgeCalls } = await run({
+      world: isolated,
+      search: {
+        [QUESTION]: hits("n1", "n2"),
+        "better query": hits("n2", "n3"),
+      },
+      rewrites: ["better query"],
     })
     expect(rewriterCalls).toHaveLength(1)
-    expect(retrieveCalls).toHaveLength(2)
-    expect(result.rewrites).toBe(1)
-    expect(result.steps).toHaveLength(2)
-    expect(result.outcome).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
-    })
-  })
-
-  test("AC4 — the next decision knows a rewrite happened: topic not found again answers with what was found", async () => {
-    const { result, rewriterCalls } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["a1"], q2: ["d1"] },
-      relevance: { a1: 0.8, d1: 0.1 },
-      assessments: [{ missing: "topic_not_found" }],
-    })
-    expect(rewriterCalls).toHaveLength(1)
-    expect(result.rewrites).toBe(1)
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-    expect(result.context.map((c) => c.text)).toEqual(["text of a1"])
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["n3.md"])
   })
 })
 
-describe("AC5 — end", () => {
-  test("AC5 — answers with the kept chunks by relevance, ties by retrieval rank, cut to the budget", async () => {
+describe("AC5 — answer", () => {
+  test("AC5 — the context item holds the note path, its date, an empty heading and the note text", async () => {
     const { result } = await run({
-      policy: policyWith({ maxChunks: 3 }),
-      search: { [QUESTION]: ["a1", "b1", "c1", "d1", "a2"] },
-      relevance: { a1: 0.8, b1: 0.9, c1: 0.8, d1: 0.8, a2: 0.6 },
-      assessments: [{ sufficient: 0.9 }],
+      world: SECTIONS,
+      search: { [QUESTION]: ["a2", "c1"] },
+      verdicts: { "a.md": { answer: 0.9 }, "c.md": { answer: 0.6 } },
     })
-    // b1 first; a1, c1 and d1 tie and keep their retrieval order; a2 is cut.
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
     expect(result.context).toEqual([
-      {
-        notePath: "b.md",
-        noteDate: "2025-02-02",
-        heading: "heading of b1",
-        text: "text of b1",
-      },
       {
         notePath: "a.md",
         noteDate: "2025-01-01",
-        heading: "heading of a1",
-        text: "text of a1",
+        heading: "",
+        text: "intro of a\n\n## Owner\nowner of a",
       },
-      {
-        notePath: "c.md",
-        noteDate: null,
-        heading: "heading of c1",
-        text: "text of c1",
-      },
+      { notePath: "c.md", noteDate: null, heading: "", text: "only c" },
     ])
   })
 
-  test("AC5 — the default chunk budget is 12", async () => {
-    const notes = { "n.md": "2025-05-05" }
-    const chunks = Array.from({ length: 15 }, (_, i) =>
-      chunk(`n${String(i + 1).padStart(2, "0")}`, "n.md")
-    )
+  test("AC5 — keeps the notes at or above the threshold, by decreasing answer probability, ties by order of judgement", async () => {
     const { result } = await run({
-      world: { notes, chunks, links: [] },
-      search: { [QUESTION]: ids(chunks) },
-      relevance: Object.fromEntries(
-        chunks.map((c, i) => [c.id, 0.95 - i * 0.01])
+      world: worldOf([], { extra: ["n1", "n2", "n3", "n4", "n5"] }),
+      search: { [QUESTION]: hits("n1", "n2", "n3", "n4", "n5") },
+      verdicts: {
+        "n1.md": { answer: 0.9 },
+        "n2.md": { answer: 0.9 },
+        "n3.md": { answer: 0.95 },
+        "n4.md": { answer: 0.5 },
+        "n5.md": { answer: 0.49 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["n3.md", "n1.md", "n2.md", "n4.md"])
+  })
+
+  test("AC5 — a kept note is followed by its ancestors, parent first, then the parent's parent", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 3 }),
+      world: worldOf([
+        ["p", "q"],
+        ["q", "r"],
+        ["r", "s"],
+      ]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "q.md": { step: 0.9 },
+        "r.md": { step: 0.9 },
+        "s.md": { answer: 0.9 },
+      },
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(result.hops).toBe(3)
+    expect(contextPaths(result)).toEqual(["s.md", "r.md", "q.md", "p.md"])
+  })
+
+  test("AC5 — an ancestor already in the context is not added again", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["p", "q"],
+        ["p", "r"],
+      ]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "q.md": { answer: 0.9 },
+        "r.md": { answer: 0.8 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["q.md", "p.md", "r.md"])
+  })
+
+  test("AC5 — an ancestor that is itself kept appears once, at its place after its child", async () => {
+    const { result } = await run({
+      world: worldOf([["p", "q"]]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { answer: 0.6, step: 0.9 },
+        "q.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["q.md", "p.md"])
+  })
+
+  test("AC5 — a note found by search has no ancestor", async () => {
+    const { result } = await run({
+      world: worldOf([["p", "q"]]),
+      search: { [QUESTION]: hits("q") },
+      verdicts: { "q.md": { answer: 0.9 } },
+    })
+    expect(contextPaths(result)).toEqual(["q.md"])
+  })
+
+  test("AC5 — cuts the context to the note budget", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxNotes: 2 }),
+      world: worldOf([], { extra: ["n1", "n2", "n3"] }),
+      search: { [QUESTION]: hits("n1", "n2", "n3") },
+      verdicts: {
+        "n1.md": { answer: 0.7 },
+        "n2.md": { answer: 0.9 },
+        "n3.md": { answer: 0.8 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["n2.md", "n3.md"])
+  })
+
+  test("AC5 — the cut applies after the ancestors are added", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 3, maxNotes: 2 }),
+      world: worldOf([
+        ["p", "q"],
+        ["q", "r"],
+        ["r", "s"],
+      ]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "q.md": { step: 0.9 },
+        "r.md": { step: 0.9 },
+        "s.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["s.md", "r.md"])
+  })
+
+  test("AC5 — the default budget keeps 5 notes", async () => {
+    const stems = ["n1", "n2", "n3", "n4", "n5", "n6", "n7"]
+    const { result } = await run({
+      world: worldOf([], { extra: stems }),
+      search: { [QUESTION]: hits(...stems) },
+      verdicts: Object.fromEntries(
+        stems.map((s, i) => [`${s}.md`, { answer: 0.9 - i * 0.05 }])
       ),
-      assessments: [{ sufficient: 0.9 }],
     })
-    expect(result.context).toHaveLength(12)
-    expect(result.context[0]!.text).toBe("text of n01")
-    expect(result.context[11]!.text).toBe("text of n12")
+    expect(contextPaths(result)).toEqual(
+      ["n1", "n2", "n3", "n4", "n5"].map((s) => `${s}.md`)
+    )
   })
 
-  test("AC5 — sorts chunks found by following a link with the others", async () => {
+  test("AC5 — abstain gives an empty context and the abstain action as outcome", async () => {
     const { result } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.6, b1: 0.9 },
-      assessments: [
-        { sufficient: 0.2, links: { l1: 0.9 } },
-        { sufficient: 0.9 },
-      ],
-    })
-    expect(result.context.map((c) => c.text)).toEqual([
-      "text of b1",
-      "text of a1",
-    ])
-  })
-
-  test("AC5 — answers with what was found when no link is promising", async () => {
-    const { result } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.8 },
-      assessments: [{ sufficient: 0.2, links: { l1: 0.4, l2: 0.1 } }],
-    })
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-    expect(result.context.map((c) => c.text)).toEqual(["text of a1"])
-  })
-
-  test("AC5 — abstains with an empty context when nothing is relevant and no search is left", async () => {
-    const { result, retrieveCalls, rewriterCalls } = await run({
       policy: policyWith({ maxRewrites: 0 }),
-      search: { [QUESTION]: ["a1", "b1"] },
-      relevance: { a1: 0.2, b1: 0.3 },
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
     })
     expect(result.context).toEqual([])
-    expect(result.outcome).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
-    })
-    expect(result.steps).toHaveLength(1)
-    expect(result.hops).toBe(0)
-    expect(result.rewrites).toBe(0)
-    expect(retrieveCalls).toHaveLength(1)
-    expect(rewriterCalls).toEqual([])
+    expect(result.outcome).toEqual({ type: "abstain", rule: "abstain" })
   })
 
-  test("AC5 — the outcome is the final action", async () => {
-    const answered = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.8 },
-      assessments: [{ sufficient: 0.9 }],
+  test("AC5 — the outcome is the action of the last step", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
     })
-    expect(answered.result.outcome).toEqual(
-      answered.result.steps.at(-1)!.action
-    )
-    const abstained = await run({
-      policy: policyWith({ maxRewrites: 0 }),
-      search: {},
-    })
-    expect(abstained.result.outcome).toEqual(
-      abstained.result.steps.at(-1)!.action
-    )
+    expect(result.outcome).toEqual({ type: "abstain", rule: "abstain" })
+    expect(result.outcome).toEqual(result.steps.at(-1)!.action)
   })
 })
 
-describe("AC6 — kept chunks", () => {
-  test("AC6 — a chunk judged twice keeps its highest probability", async () => {
-    // b2 is judged irrelevant (0.3) in the search, then relevant (0.8) when
-    // its note is followed; b1 is 0.6 there.
+describe("AC6 — result fields", () => {
+  test("AC6 — judged maps every judged note, from every turn, to its verdict probabilities", async () => {
     const { result } = await run({
-      search: { [QUESTION]: ["a1", "b2"] },
-      relevance: { a1: 0.9, b2: [0.3, 0.8], b1: 0.6 },
-      assessments: [
-        { sufficient: 0.2, links: { l1: 0.9 } },
-        { sufficient: 0.9 },
-      ],
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { step: 0.9, none: 0.1 },
+        "b.md": { answer: 0.8, none: 0.2 },
+      },
     })
-    expect(result.steps[0]!.judged["b2"]).toBe(0.3)
-    expect(result.steps[0]!.kept).toEqual(["a1"])
-    expect(result.steps[1]!.judged["b2"]).toBe(0.8)
-    expect(sorted(result.steps[1]!.kept)).toEqual(["b1", "b2"])
-    // Ranked by the 0.8 of the second judgement: above b1 (0.6).
-    expect(result.context.map((c) => c.text)).toEqual([
-      "text of a1",
-      "text of b2",
-      "text of b1",
-    ])
+    expect(result.judged).toEqual({
+      "a.md": verdict({ step: 0.9, none: 0.1 }),
+      "b.md": verdict({ answer: 0.8, none: 0.2 }),
+      "c.md": NONE,
+    })
   })
 
-  test("AC6 — the kept set has no duplicates", async () => {
-    const { result, assessCalls } = await run({
-      search: { [QUESTION]: ["a1", "a1", "b1"] },
-      relevance: { a1: 0.9, b1: 0.8 },
-      assessments: [{ sufficient: 0.9 }],
+  test("AC6 — judged also holds the notes of a rewritten search", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a", "b"] }),
+      search: { [QUESTION]: hits("a"), "rewritten 1": hits("b") },
+      verdicts: { "b.md": { answer: 0.7, none: 0.3 } },
     })
-    expect(result.context.map((c) => c.text)).toEqual([
-      "text of a1",
-      "text of b1",
-    ])
-    expect(ids(assessCalls[0]!.chunks)).toEqual(["a1", "b1"])
-    expect(sorted(result.steps[0]!.kept)).toEqual(["a1", "b1"])
+    expect(Object.keys(result.judged)).toEqual(["a.md", "b.md"])
+    expect(result.judged["b.md"]).toEqual(verdict({ answer: 0.7, none: 0.3 }))
+  })
+
+  test("AC6 — kept lists the kept notes in context order", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["n1", "n2", "n3"] }),
+      search: { [QUESTION]: hits("n1", "n2", "n3") },
+      verdicts: {
+        "n1.md": { answer: 0.6 },
+        "n2.md": { answer: 0.9 },
+        "n3.md": { answer: 0.2 },
+      },
+    })
+    expect(result.kept).toEqual(["n2.md", "n1.md"])
+    expect(result.kept).toEqual(contextPaths(result))
+  })
+
+  test("AC6 — kept holds the ancestors and is not cut to the note budget", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 3, maxNotes: 2 }),
+      world: worldOf([
+        ["p", "q"],
+        ["q", "r"],
+        ["r", "s"],
+      ]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "q.md": { step: 0.9 },
+        "r.md": { step: 0.9 },
+        "s.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["s.md", "r.md"])
+    expect(result.kept).toEqual(["s.md", "r.md", "q.md", "p.md"])
+  })
+
+  test("AC6 — kept is empty when nothing is kept", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.kept).toEqual([])
+  })
+
+  test("AC6 — frontier lists the link targets of judged notes that were never judged", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 0, maxRewrites: 0 }),
+      world: worldOf([
+        ["a", "b"],
+        ["a", "c"],
+        ["d", "c"],
+        ["d", "e"],
+      ]),
+      search: { [QUESTION]: hits("a", "d") },
+    })
+    expect(result.outcome.type).toBe("abstain")
+    expect(sorted(result.frontier)).toEqual(["b.md", "c.md", "e.md"])
+  })
+
+  test("AC6 — frontier does not hold a target judged in the meantime", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["a", "c"],
+        ["c", "d"],
+      ]),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: { "a.md": { step: 0.9 }, "c.md": { answer: 0.9 } },
+    })
+    // b was found by the search, c was reached through a: only d is left.
+    expect(result.frontier).toEqual(["d.md"])
+  })
+
+  test("AC6 — frontier is empty when every link target was judged", async () => {
+    const { result } = await run({
+      world: worldOf([["a", "b"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    expect(result.frontier).toEqual([])
+  })
+
+  test("AC6 — frontier counts the link targets of every judged note, kept or not", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 0 }),
+      world: worldOf([["a", "b"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+    })
+    expect(result.outcome.type).toBe("answer")
+    expect(result.frontier).toEqual(["b.md"])
   })
 })
 
 describe("AC7 — trace", () => {
-  test("AC7 — one entry per turn, with what was judged, kept, assessed and decided", async () => {
+  test("AC7 — one step per turn with its kind, query or expanded notes, judged, parents, kept and action", async () => {
     const { result } = await run({
-      search: { [QUESTION]: ["a1", "a2"] },
-      relevance: { a1: 0.9, a2: 0.1, b1: 0.8, b2: 0.2 },
-      assessments: [
-        {
-          sufficient: 0.2,
-          missing: "detail_in_linked_note",
-          links: { l1: 0.9 },
-        },
-        { sufficient: 0.9 },
-      ],
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { answer: 0.6, step: 0.9 },
+        "b.md": { answer: 0.9 },
+      },
     })
-    expect(result.steps).toHaveLength(2)
-    const [search, follow] = result.steps as [
-      (typeof result.steps)[number],
-      (typeof result.steps)[number],
-    ]
-
-    expect(search.kind).toBe("search")
-    expect(search.query).toBe(QUESTION)
-    expect(search.judged).toEqual({ a1: 0.9, a2: 0.1 })
-    expect(search.kept).toEqual(["a1"])
-    expect(search.assessment.sufficient).toBe(0.2)
-    expect(search.assessment.missing.choice).toBe("detail_in_linked_note")
-    expect(search.assessment.links).toEqual({ l1: 0.9, l2: 0 })
-    expect(search.action).toMatchObject({ type: "follow", rule: "follow-link" })
-
-    expect(follow.kind).toBe("follow")
-    expect(follow).toMatchObject({ link: WORLD.links[0] })
-    expect(follow.judged).toEqual({ b1: 0.8, b2: 0.2 })
-    expect(follow.kept).toEqual(["b1"])
-    expect(follow.assessment.sufficient).toBe(0.9)
-    expect(follow.action).toMatchObject({ type: "answer", rule: "sufficient" })
-  })
-
-  test("AC7 — a rewrite turn holds the new query and only the chunks judged for it", async () => {
-    const { result } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["d1"], q2: ["d1", "b1"] },
-      relevance: { d1: 0.1, b1: 0.8 },
-      assessments: [{}, { sufficient: 0.9 }],
-    })
-    const [first, second] = result.steps
-    expect(first).toMatchObject({ kind: "search", query: QUESTION })
-    expect(first!.judged).toEqual({ d1: 0.1 })
-    expect(first!.kept).toEqual([])
-    expect(second).toMatchObject({ kind: "rewrite", query: "q2" })
-    expect(second!.judged).toEqual({ b1: 0.8 })
-    expect(second!.kept).toEqual(["b1"])
-    expect(second!.action).toMatchObject({ type: "answer", rule: "sufficient" })
-  })
-
-  test("AC7 — an abstaining run ends its last entry on the abstain rule", async () => {
-    const { result } = await run({
-      policy: policyWith({ maxRewrites: 0 }),
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.1 },
-    })
-    expect(result.steps).toHaveLength(1)
-    expect(result.steps[0]!.kept).toEqual([])
-    expect(result.steps[0]!.action).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
-    })
-  })
-
-  test("AC7 — calls lists every model call in order: one hop", async () => {
-    const { result } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9, b1: 0.8 },
-      assessments: [
-        { sufficient: 0.2, links: { l1: 0.9 } },
-        { sufficient: 0.9 },
-      ],
-    })
-    expect(result.calls.map((c) => c.model)).toEqual([
-      "embed",
-      "relevance",
-      "assess",
-      "relevance",
-      "assess",
+    expect(result.steps).toEqual([
+      {
+        kind: "search",
+        query: QUESTION,
+        judged: { "a.md": verdict({ answer: 0.6, step: 0.9 }) },
+        parents: {},
+        kept: ["a.md"],
+        action: { type: "expand", rule: "follow-steps", paths: ["a.md"] },
+      },
+      {
+        kind: "expand",
+        expanded: ["a.md"],
+        judged: { "b.md": verdict({ answer: 0.9 }), "c.md": NONE },
+        parents: { "b.md": "a.md", "c.md": "a.md" },
+        kept: ["b.md"],
+        action: { type: "answer", rule: "answer" },
+      },
     ])
   })
 
-  test("AC7 — calls lists every model call in order: one rewrite", async () => {
+  test("AC7 — a rewrite turn has the kind rewrite and the new query", async () => {
     const { result } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["d1"], q2: ["b1"] },
-      relevance: { d1: 0.1, b1: 0.8 },
-      assessments: [{}, { sufficient: 0.9 }],
+      world: worldOf([], { extra: ["a", "b"] }),
+      search: { [QUESTION]: hits("a"), "new query": hits("b") },
+      rewrites: ["new query"],
+      verdicts: { "b.md": { answer: 0.9 } },
     })
-    expect(result.calls.map((c) => c.model)).toEqual([
+    expect(result.steps).toEqual([
+      {
+        kind: "search",
+        query: QUESTION,
+        judged: { "a.md": NONE },
+        parents: {},
+        kept: [],
+        action: { type: "rewrite", rule: "rewrite" },
+      },
+      {
+        kind: "rewrite",
+        query: "new query",
+        judged: { "b.md": verdict({ answer: 0.9 }) },
+        parents: {},
+        kept: ["b.md"],
+        action: { type: "answer", rule: "answer" },
+      },
+    ])
+  })
+
+  test("AC7 — the steps of an abstention end with the abstain action", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.steps.map((s) => s.kind)).toEqual(["search", "rewrite"])
+    expect(result.steps.map((s) => s.action.rule)).toEqual([
+      "rewrite",
+      "abstain",
+    ])
+    expect(result.steps[1]!.judged).toEqual({})
+  })
+
+  test("AC7 — the kept notes of a step are those judged this turn", async () => {
+    const { result } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { answer: 0.6, step: 0.9 },
+        "b.md": { answer: 0.9 },
+      },
+    })
+    expect(result.steps[0]!.kept).toEqual(["a.md"])
+    expect(result.steps[1]!.kept).toEqual(["b.md"])
+  })
+
+  test("AC7 — a step of an expand lists the parent of each note reached, searched notes have none", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["a", "c"],
+      ]),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: { "a.md": { step: 0.9 } },
+    })
+    expect(result.steps[0]!.parents).toEqual({})
+    expect(result.steps[1]!.parents).toEqual({ "c.md": "a.md" })
+  })
+
+  test("AC7 — calls holds the retrieval, judge and rewriter calls in order", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a", "b"] }),
+      search: { [QUESTION]: hits("a"), "new query": hits("b") },
+      rewrites: ["new query"],
+      verdicts: { "b.md": { answer: 0.9 } },
+    })
+    expect(models(result.calls)).toEqual([
       "embed",
-      "relevance",
-      "assess",
+      "judge",
       "rewriter",
       "embed",
-      "relevance",
-      "assess",
+      "judge",
     ])
   })
 
-  test("AC7 — calls holds the calls themselves", async () => {
+  test("AC7 — calls holds the judge call of every expand", async () => {
     const { result } = await run({
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9 },
-      assessments: [{ sufficient: 0.9 }],
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
     })
-    expect(result.calls).toEqual([
-      call("embed"),
-      call("relevance"),
-      call("assess"),
-    ])
+    expect(models(result.calls)).toEqual(["embed", "judge", "judge"])
   })
 })
 
 describe("AC8 — termination", () => {
-  /** n0 -> n1 -> ... -> n5, one chunk per note. */
-  const chain: World = {
-    notes: Object.fromEntries(
-      Array.from({ length: 6 }, (_, i) => [`n${i}.md`, null])
-    ),
-    chunks: Array.from({ length: 6 }, (_, i) => chunk(`c${i}`, `n${i}.md`)),
-    links: Array.from({ length: 5 }, (_, i) =>
-      link(`k${i}`, `n${i}.md`, `n${i + 1}.md`)
-    ),
-  }
-  const chainRun: Scenario = {
-    world: chain,
-    search: { [QUESTION]: ["c0"] },
-    relevance: Object.fromEntries(chain.chunks.map((c) => [c.id, 0.9])),
-    assessments: [{ sufficient: 0, linkProbability: 1 }],
-  }
-
-  test("AC8 — the hop budget bounds the hops (3 by default)", async () => {
-    const { result } = await run(chainRun)
-    expect(result.hops).toBe(3)
-    expect(result.steps.map((s) => s.kind)).toEqual([
-      "search",
-      "follow",
-      "follow",
-      "follow",
-    ])
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-    expect(result.context).toHaveLength(4)
-  })
-
-  test("AC8 — the hop budget of the policy is used", async () => {
+  test("AC8 — never opens more notes than the hop budget allows", async () => {
     const { result } = await run({
-      ...chainRun,
       policy: policyWith({ maxHops: 1 }),
+      search: { [QUESTION]: hits("a") },
     })
     expect(result.hops).toBe(1)
-    expect(result.steps).toHaveLength(2)
+    expect(result.rewrites).toBe(1)
+    expect(result.steps.map((s) => s.kind)).toEqual([
+      "search",
+      "expand",
+      "rewrite",
+    ])
+    expect(result.outcome.type).toBe("abstain")
   })
 
-  test("AC8 — no hop and no rewrite budget: one turn", async () => {
-    const { result, retrieveCalls } = await run({
-      ...chainRun,
-      policy: policyWith({ maxHops: 0, maxRewrites: 0 }),
+  test("AC8 — no hop budget goes straight to a rewrite", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 0 }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 } },
+    })
+    expect(result.hops).toBe(0)
+    expect(result.steps[0]!.action.rule).toBe("rewrite")
+  })
+
+  test("AC8 — uses every turn the budgets allow and stops there", async () => {
+    // search a, open a, open b, rewrite: 1 + 2 hops + 1 rewrite = 4 turns.
+    const { result, rewriterCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.steps.map((s) => s.kind)).toEqual([
+      "search",
+      "expand",
+      "expand",
+      "rewrite",
+    ])
+    expect(result.steps.length).toBeLessThanOrEqual(1 + 2 + 1)
+    expect(result.hops).toBe(2)
+    expect(result.rewrites).toBe(1)
+    expect(rewriterCalls).toHaveLength(1)
+    expect(result.outcome).toEqual({ type: "abstain", rule: "abstain" })
+    expect(result.context).toEqual([])
+  })
+
+  test("AC8 — rewrites stop at the rewrite budget", async () => {
+    const { result, rewriterCalls, retrieveCalls } = await run({
+      policy: policyWith({ maxRewrites: 3 }),
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+    })
+    expect(result.rewrites).toBe(3)
+    expect(rewriterCalls).toHaveLength(3)
+    expect(retrieveCalls).toHaveLength(4)
+    expect(result.steps).toHaveLength(1 + 0 + 3)
+    expect(result.outcome.type).toBe("abstain")
+  })
+
+  test("AC8 — answers as soon as a note is kept, without using the remaining budget", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
     })
     expect(result.steps).toHaveLength(1)
     expect(result.hops).toBe(0)
     expect(result.rewrites).toBe(0)
-    expect(retrieveCalls).toHaveLength(1)
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
+  })
+})
+
+describe("AC9 — failures keep their cost", () => {
+  test("AC9 — a judge error becomes a LoopError with the message, the calls made and the steps completed", async () => {
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 } },
+      judgeFailure: { onCall: 1, error: new Error("judge down") },
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    expect(error).toBeInstanceOf(Error)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("judge down")
+    expect(models(loopError.calls)).toEqual(["embed", "judge"])
+    expect(loopError.steps).toHaveLength(1)
+    expect(loopError.steps[0]!.kind).toBe("search")
+    expect(loopError.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
     })
   })
 
-  test("AC8 — the rewrite budget bounds the rewrites", async () => {
-    const { result, retrieveCalls, rewriterCalls } = await run({
-      policy: policyWith({ maxRewrites: 2 }),
-      search: { [QUESTION]: ["d1"] },
-      relevance: { d1: 0.1 },
+  test("AC9 — a judge error on the first turn leaves no step and the retrieval call", async () => {
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      judgeFailure: { onCall: 0, error: new Error("judge down") },
     })
-    expect(result.rewrites).toBe(2)
-    expect(rewriterCalls).toHaveLength(2)
-    expect(retrieveCalls).toHaveLength(3)
-    expect(result.steps.map((s) => s.kind)).toEqual([
-      "search",
-      "rewrite",
-      "rewrite",
-    ])
-    expect(result.outcome).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("judge down")
+    expect(models(loopError.calls)).toEqual(["embed"])
+    expect(loopError.steps).toEqual([])
+  })
+
+  test("AC9 — the billed call carried by a judge error is added to the calls", async () => {
+    const { error } = await fail({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 } },
+      judgeFailure: {
+        onCall: 1,
+        error: new LLMCallError("bad output", call("billed")),
+      },
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("bad output")
+    expect(models(loopError.calls)).toEqual(["embed", "judge", "billed"])
+    expect(loopError.steps).toHaveLength(1)
+  })
+
+  test("AC9 — a rewriter error becomes a LoopError with the calls made and the steps completed", async () => {
+    const { error } = await fail({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      rewriterFailure: new Error("rewriter down"),
+    })
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("rewriter down")
+    expect(models(loopError.calls)).toEqual(["embed", "judge"])
+    expect(loopError.steps).toHaveLength(1)
+    expect(loopError.steps[0]!.action).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
     })
   })
 
-  test("AC8 — links that form a cycle are followed once each, even with large budgets", async () => {
-    // a -> b, a -> c, b -> d, d -> a: b, c and d can each be followed once.
-    const { result } = await run({
-      policy: policyWith({ maxHops: 100, maxRewrites: 100 }),
-      search: { [QUESTION]: ["a1"] },
-      relevance: { a1: 0.9, b1: 0.9, c1: 0.9, d1: 0.9 },
-      assessments: [{ sufficient: 0, linkProbability: 1 }],
+  test("AC9 — the billed call carried by a rewriter error is added to the calls", async () => {
+    const { error } = await fail({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      rewriterFailure: new LLMCallError("empty query", call("billed")),
     })
-    expect(result.hops).toBe(3)
-    expect(result.steps).toHaveLength(4)
-    expect(result.outcome).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-  })
-
-  test("AC8 — there is one turn more than there are hops and rewrites", async () => {
-    const { result } = await run({
-      rewrites: ["q2"],
-      search: { [QUESTION]: ["d1"], q2: ["a1"] },
-      relevance: { d1: 0.1, a1: 0.9, b1: 0.9 },
-      assessments: [{}, { sufficient: 0, links: { l1: 0.9 } }, {}],
-    })
-    expect(result.hops).toBe(1)
-    expect(result.rewrites).toBe(1)
-    expect(result.steps).toHaveLength(result.hops + result.rewrites + 1)
+    expect(error).toBeInstanceOf(LoopError)
+    const loopError = error as LoopError
+    expect(loopError.message).toBe("empty query")
+    expect(models(loopError.calls)).toEqual(["embed", "judge", "billed"])
   })
 })
