@@ -1,59 +1,45 @@
 import { describe, expect, test } from "bun:test"
-import { MISSING, type Assessment, type Missing } from "../core/judge.ts"
-import type { Link } from "../core/types.ts"
+import type { Verdict } from "../core/judge.ts"
 import {
   DEFAULT_POLICY,
   RULES,
   decide,
+  type JudgedNote,
   type LoopState,
   type PolicyConfig,
 } from "./policy.ts"
 
-function link(id: string, targetPath: string): Link {
+/**
+ * A judged note. By default it is a dead end for every rule: `none` verdict,
+ * links not opened yet and some unjudged link (so it is openable).
+ */
+function note(
+  path: string,
+  verdict: Partial<Record<Verdict, number>> = {},
+  overrides: { expanded?: boolean; hasUnjudgedLinks?: boolean } = {}
+): JudgedNote {
   return {
-    id,
-    sourcePath: "source.md",
-    targetPath,
-    label: `See [[${targetPath}]].`,
+    path,
+    verdict: { answer: 0, step: 0, none: 1, ...verdict },
+    expanded: overrides.expanded ?? false,
+    hasUnjudgedLinks: overrides.hasUnjudgedLinks ?? true,
   }
 }
 
-/**
- * An assessment where nothing is sufficient and no link is promising. The
- * `missing` choice defaults to `unidentified`, which triggers no rule.
- */
-function assessment(
-  overrides: {
-    sufficient?: number
-    choice?: Missing
-    links?: Record<string, number>
-  } = {}
-): Assessment {
-  const choice = overrides.choice ?? "unidentified"
-  const probabilities = Object.fromEntries(
-    MISSING.map((m) => [m, m === choice ? 0.9 : 0.03])
-  ) as Record<Missing, number>
-  return {
-    sufficient: overrides.sufficient ?? 0.1,
-    missing: { choice, probabilities },
-    links: overrides.links ?? {},
-    calls: [],
-  }
+function state(
+  notes: JudgedNote[],
+  overrides: Partial<Omit<LoopState, "notes">> = {}
+): LoopState {
+  return { notes, hops: 0, rewrites: 0, ...overrides }
 }
 
-/**
- * A state with some relevant chunks, no budget used, and nothing that would
- * make a rule fire: the policy falls through to `answer-best-effort`.
- */
-function state(overrides: Partial<LoopState> = {}): LoopState {
+function withConfig(
+  thresholds: Partial<PolicyConfig["thresholds"]> = {},
+  budgets: Partial<PolicyConfig["budgets"]> = {}
+): PolicyConfig {
   return {
-    assessment: assessment(),
-    links: [],
-    contextNotes: ["start.md"],
-    relevantCount: 2,
-    hops: 0,
-    rewrites: 0,
-    ...overrides,
+    thresholds: { ...DEFAULT_POLICY.thresholds, ...thresholds },
+    budgets: { ...DEFAULT_POLICY.budgets, ...budgets },
   }
 }
 
@@ -65,671 +51,736 @@ function deepFreeze<T>(value: T): T {
   return value
 }
 
-describe("AC1 — sufficient", () => {
-  test("AC1 — answers when the context is sufficient", () => {
+const MAX_HOPS = DEFAULT_POLICY.budgets.maxHops
+const MAX_REWRITES = DEFAULT_POLICY.budgets.maxRewrites
+
+describe("AC1 — follow-steps", () => {
+  test("AC1 — opens a step note and carries its path", () => {
     const action = decide(
-      state({ assessment: assessment({ sufficient: 0.95 }) }),
+      state([note("a.md", { step: 0.8, none: 0.2 })]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({ type: "answer", rule: "sufficient" })
-  })
-
-  test("AC1 — answers at exactly the sufficiency threshold (≥ applies)", () => {
-    const action = decide(
-      state({ assessment: assessment({ sufficient: 0.7 }) }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "answer", rule: "sufficient" })
-  })
-
-  test("AC1 — does not answer just under the sufficiency threshold", () => {
-    const action = decide(
-      state({ assessment: assessment({ sufficient: 0.6999 }) }),
-      DEFAULT_POLICY
-    )
-    expect(action.rule).not.toBe("sufficient")
-  })
-
-  test("AC1 — uses the threshold of the configuration, not a constant", () => {
-    const strict: PolicyConfig = {
-      ...DEFAULT_POLICY,
-      thresholds: { ...DEFAULT_POLICY.thresholds, sufficient: 0.9 },
-    }
-    const lenient: PolicyConfig = {
-      ...DEFAULT_POLICY,
-      thresholds: { ...DEFAULT_POLICY.thresholds, sufficient: 0.3 },
-    }
-    const s = state({ assessment: assessment({ sufficient: 0.8 }) })
-    expect(decide(s, strict).rule).not.toBe("sufficient")
-    expect(decide(s, lenient).rule).toBe("sufficient")
-  })
-
-  test("AC1 — a sufficient context with a promising link answers", () => {
-    const l = link("l1", "next.md")
-    const action = decide(
-      state({
-        assessment: assessment({ sufficient: 0.9, links: { l1: 0.99 } }),
-        links: [l],
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "answer", rule: "sufficient" })
-  })
-
-  test("AC1 — answers regardless of the missing choice", () => {
-    for (const choice of MISSING) {
-      const action = decide(
-        state({ assessment: assessment({ sufficient: 0.8, choice }) }),
-        DEFAULT_POLICY
-      )
-      expect(action).toMatchObject({ type: "answer", rule: "sufficient" })
-    }
-  })
-
-  test("AC1 — a sufficient context answers even with no relevant chunk kept and no budget left", () => {
-    const action = decide(
-      state({
-        assessment: assessment({ sufficient: 0.8 }),
-        relevantCount: 0,
-        hops: DEFAULT_POLICY.budgets.maxHops,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "answer", rule: "sufficient" })
-  })
-})
-
-describe("AC2 — follow-link", () => {
-  test("AC2 — follows a promising link and carries the link and its probability", () => {
-    const l = link("l1", "next.md")
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.8 } }),
-        links: [l],
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({
-      type: "follow",
-      rule: "follow-link",
-      probability: 0.8,
-    })
-    expect(action).toHaveProperty("link", l)
-  })
-
-  test("AC2 — follows the link with the highest probability", () => {
-    const links = [link("l1", "a.md"), link("l2", "b.md"), link("l3", "c.md")]
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.6, l2: 0.9, l3: 0.7 } }),
-        links,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({
-      type: "follow",
-      rule: "follow-link",
-      probability: 0.9,
-    })
-    expect(action).toHaveProperty("link", links[1])
-  })
-
-  test("AC2 — follows at exactly the link threshold (≥ applies)", () => {
-    const l = link("l1", "next.md")
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.5 } }),
-        links: [l],
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({
-      type: "follow",
-      rule: "follow-link",
-      probability: 0.5,
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
     })
   })
 
-  test("AC2 — does not follow a link just under the link threshold", () => {
+  test("AC1 — opens all the step notes, not only the best one", () => {
     const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.4999 } }),
-        links: [link("l1", "next.md")],
-      }),
+      state([
+        note("a.md", { step: 0.6 }),
+        note("b.md", { step: 0.9 }),
+        note("c.md", { step: 0.7 }),
+      ]),
       DEFAULT_POLICY
     )
-    expect(action.type).not.toBe("follow")
+    expect(action).toMatchObject({ type: "expand", rule: "follow-steps" })
+    expect(action).toHaveProperty("paths")
+    expect((action as { paths: string[] }).paths).toHaveLength(3)
   })
 
-  test("AC2 — uses the link threshold of the configuration", () => {
-    const strict: PolicyConfig = {
-      ...DEFAULT_POLICY,
-      thresholds: { ...DEFAULT_POLICY.thresholds, link: 0.9 },
-    }
-    const s = state({
-      assessment: assessment({ links: { l1: 0.8 } }),
-      links: [link("l1", "next.md")],
-    })
-    expect(decide(s, strict).type).not.toBe("follow")
-    expect(decide(s, DEFAULT_POLICY).type).toBe("follow")
-  })
-
-  test("AC2 — skips links whose target is already in the context", () => {
-    const links = [link("l1", "seen.md"), link("l2", "new.md")]
+  test("AC1 — orders the paths by decreasing step probability", () => {
     const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.95, l2: 0.6 } }),
-        links,
-        contextNotes: ["start.md", "seen.md"],
-      }),
+      state([
+        note("a.md", { step: 0.6 }),
+        note("b.md", { step: 0.9 }),
+        note("c.md", { step: 0.7 }),
+      ]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "follow",
-      rule: "follow-link",
-      probability: 0.6,
-    })
-    expect(action).toHaveProperty("link", links[1])
-  })
-
-  test("AC2 — does not follow when every promising link is already visited", () => {
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.95 } }),
-        links: [link("l1", "seen.md")],
-        contextNotes: ["seen.md"],
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action.type).not.toBe("follow")
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["b.md", "c.md", "a.md"],
     })
   })
 
-  test("AC2 — a visited link does not hide a promising one below the threshold", () => {
+  test("AC1 — ties on step go by order of judgement", () => {
     const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.95, l2: 0.4 } }),
-        links: [link("l1", "seen.md"), link("l2", "new.md")],
-        contextNotes: ["seen.md"],
-      }),
+      state([
+        note("z.md", { step: 0.7 }),
+        note("a.md", { step: 0.9 }),
+        note("m.md", { step: 0.7 }),
+        note("b.md", { step: 0.7 }),
+      ]),
       DEFAULT_POLICY
     )
-    expect(action.type).not.toBe("follow")
-  })
-
-  test("AC2 — ties go to the smallest link id", () => {
-    const links = [
-      link("link-c", "c.md"),
-      link("link-a", "a.md"),
-      link("link-b", "b.md"),
-    ]
-    const action = decide(
-      state({
-        assessment: assessment({
-          links: { "link-c": 0.7, "link-a": 0.7, "link-b": 0.7 },
-        }),
-        links,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "follow", probability: 0.7 })
-    expect(action).toHaveProperty("link", links[1])
-  })
-
-  test("AC2 — a tie is decided among the highest probability only", () => {
-    const links = [
-      link("link-a", "a.md"),
-      link("link-b", "b.md"),
-      link("link-c", "c.md"),
-    ]
-    const action = decide(
-      state({
-        assessment: assessment({
-          links: { "link-a": 0.6, "link-b": 0.8, "link-c": 0.8 },
-        }),
-        links,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toHaveProperty("link", links[1])
-  })
-
-  test("AC2 — a tie skips a visited target and goes to the next smallest id", () => {
-    const links = [
-      link("link-a", "seen.md"),
-      link("link-b", "b.md"),
-      link("link-c", "c.md"),
-    ]
-    const action = decide(
-      state({
-        assessment: assessment({
-          links: { "link-a": 0.7, "link-b": 0.7, "link-c": 0.7 },
-        }),
-        links,
-        contextNotes: ["seen.md"],
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toHaveProperty("link", links[1])
-  })
-
-  test("AC2 — follows a link on the last hop available", () => {
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.8 } }),
-        links: [link("l1", "next.md")],
-        hops: DEFAULT_POLICY.budgets.maxHops - 1,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "follow", rule: "follow-link" })
-  })
-
-  test("AC2 — does not follow once the hops are used up", () => {
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.99 } }),
-        links: [link("l1", "next.md")],
-        hops: DEFAULT_POLICY.budgets.maxHops,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action.type).not.toBe("follow")
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md", "z.md", "m.md", "b.md"],
     })
   })
 
-  test("AC2 — the hop budget comes from the configuration", () => {
-    const noHops: PolicyConfig = {
-      ...DEFAULT_POLICY,
-      budgets: { ...DEFAULT_POLICY.budgets, maxHops: 0 },
-    }
-    const s = state({
-      assessment: assessment({ links: { l1: 0.99 } }),
-      links: [link("l1", "next.md")],
-    })
-    expect(decide(s, noHops).type).not.toBe("follow")
-    expect(decide(s, DEFAULT_POLICY).type).toBe("follow")
-  })
-
-  test("AC2 — a promising link wins over topic_not_found", () => {
+  test("AC1 — leaves out the notes below the step threshold", () => {
     const action = decide(
-      state({
-        assessment: assessment({
-          choice: "topic_not_found",
-          links: { l1: 0.8 },
-        }),
-        links: [link("l1", "next.md")],
-      }),
+      state([
+        note("low.md", { step: 0.3 }),
+        note("high.md", { step: 0.8 }),
+        note("mid.md", { step: 0.49 }),
+      ]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({ type: "follow", rule: "follow-link" })
-  })
-
-  test("AC2 — a promising link wins over a search when nothing relevant was kept", () => {
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.8 } }),
-        links: [link("l1", "next.md")],
-        relevantCount: 0,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "follow", rule: "follow-link" })
-  })
-
-  test("AC2 — a promising link wins over abstaining when no rewrite is left", () => {
-    const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.8 } }),
-        links: [link("l1", "next.md")],
-        relevantCount: 0,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({ type: "follow", rule: "follow-link" })
-  })
-})
-
-describe("AC3 — rewrite-topic-not-found", () => {
-  test("AC3 — searches again when the topic was not found", () => {
-    const action = decide(
-      state({ assessment: assessment({ choice: "topic_not_found" }) }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-topic-not-found",
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["high.md"],
     })
   })
 
-  test("AC3 — searches again on the last rewrite available", () => {
+  test("AC1 — opens a step note at exactly the step threshold (≥ applies)", () => {
     const action = decide(
-      state({
-        assessment: assessment({ choice: "topic_not_found" }),
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites - 1,
-      }),
+      state([note("a.md", { step: 0.5, none: 0.5 })]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-topic-not-found",
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
     })
   })
 
-  test("AC3 — does not search again once the rewrites are used up", () => {
+  test("AC1 — does not open a step note just under the step threshold", () => {
     const action = decide(
-      state({
-        assessment: assessment({ choice: "topic_not_found" }),
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
-      }),
+      state([note("a.md", { step: 0.4999, none: 0.5001 })]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
+    expect(action.rule).not.toBe("follow-steps")
+    expect(action.type).not.toBe("expand")
+  })
+
+  test("AC1 — uses the step threshold of the configuration", () => {
+    const s = state([note("a.md", { step: 0.6 })])
+    expect(decide(s, withConfig({ step: 0.8 })).rule).not.toBe("follow-steps")
+    expect(decide(s, withConfig({ step: 0.3 }))).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
     })
   })
 
-  test("AC3 — the rewrite budget comes from the configuration", () => {
-    const twoRewrites: PolicyConfig = {
-      ...DEFAULT_POLICY,
-      budgets: { ...DEFAULT_POLICY.budgets, maxRewrites: 2 },
-    }
-    const s = state({
-      assessment: assessment({ choice: "topic_not_found" }),
-      rewrites: 1,
-    })
-    expect(decide(s, twoRewrites).rule).toBe("rewrite-topic-not-found")
-    expect(decide(s, DEFAULT_POLICY).rule).toBe("answer-best-effort")
-  })
-
-  test("AC3 — other missing choices do not trigger a search when chunks are relevant", () => {
-    for (const choice of MISSING.filter((m) => m !== "topic_not_found")) {
-      const action = decide(
-        state({ assessment: assessment({ choice }) }),
-        DEFAULT_POLICY
-      )
-      expect(action.type).toBe("answer")
-      expect(action.rule).toBe("answer-best-effort")
-    }
-  })
-
-  test("AC3 — wins over rewrite-nothing-relevant when both apply", () => {
+  test("AC1 — opens a step note even when another note is kept", () => {
     const action = decide(
-      state({
-        assessment: assessment({ choice: "topic_not_found" }),
-        relevantCount: 0,
-      }),
+      state([note("kept.md", { answer: 0.9 }), note("step.md", { step: 0.8 })]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-topic-not-found",
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["step.md"],
     })
   })
 
-  test("AC3 — wins over abstaining only while a rewrite remains", () => {
+  test("AC1 — a note both kept and step is opened", () => {
     const action = decide(
-      state({
-        assessment: assessment({ choice: "topic_not_found" }),
-        relevantCount: 0,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
-      }),
+      state([note("both.md", { answer: 0.6, step: 0.6 })]),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["both.md"],
+    })
+  })
+
+  test("AC1 — skips a step note already expanded", () => {
+    const action = decide(
+      state([
+        note("done.md", { step: 0.95 }, { expanded: true }),
+        note("open.md", { step: 0.6 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["open.md"],
+    })
+  })
+
+  test("AC1 — skips a step note with no unjudged link", () => {
+    const action = decide(
+      state([
+        note("closed.md", { step: 0.95 }, { hasUnjudgedLinks: false }),
+        note("open.md", { step: 0.6 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["open.md"],
+    })
+  })
+
+  test("AC1 — does not apply when the only step notes are expanded or have no unjudged link", () => {
+    const action = decide(
+      state([
+        note("done.md", { step: 0.95 }, { expanded: true }),
+        note("closed.md", { step: 0.95 }, { hasUnjudgedLinks: false }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action.rule).not.toBe("follow-steps")
+    expect(action.type).not.toBe("expand")
+  })
+
+  test("AC1 — applies on the last hop available", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.8 })], { hops: MAX_HOPS - 1 }),
+      DEFAULT_POLICY
+    )
+    expect(action).toMatchObject({ type: "expand", rule: "follow-steps" })
+  })
+
+  test("AC1 — does not apply once the hops are used up", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.99 })], { hops: MAX_HOPS }),
+      DEFAULT_POLICY
+    )
+    expect(action.rule).not.toBe("follow-steps")
+    expect(action.type).not.toBe("expand")
+  })
+
+  test("AC1 — the hop budget comes from the configuration", () => {
+    const s = state([note("a.md", { step: 0.99 })], { hops: 1 })
+    expect(decide(s, withConfig({}, { maxHops: 1 })).rule).not.toBe(
+      "follow-steps"
+    )
+    expect(decide(s, withConfig({}, { maxHops: 2 })).rule).toBe("follow-steps")
+  })
+
+  test("AC1 — a zero hop budget never opens anything", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.99 })]),
+      withConfig({}, { maxHops: 0 })
+    )
+    expect(action.type).not.toBe("expand")
+  })
+
+  test("AC1 — the explore budget does not cap follow-steps", () => {
+    const notes = ["a", "b", "c", "d", "e"].map((p) =>
+      note(`${p}.md`, { step: 0.9 })
+    )
+    const action = decide(state(notes), withConfig({}, { explore: 2 }))
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md", "b.md", "c.md", "d.md", "e.md"],
     })
   })
 })
 
-describe("AC4 — rewrite-nothing-relevant", () => {
-  test("AC4 — searches again when no relevant chunk has been kept", () => {
-    const action = decide(state({ relevantCount: 0 }), DEFAULT_POLICY)
-    expect(action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-nothing-relevant",
+describe("AC2 — answer", () => {
+  test("AC2 — answers when a note is kept", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.9 })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — answers at exactly the answer threshold (≥ applies)", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.5, none: 0.5 })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — does not answer just under the answer threshold", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.4999, none: 0.5001 })]),
+      DEFAULT_POLICY
+    )
+    expect(action.rule).not.toBe("answer")
+    expect(action.type).not.toBe("answer")
+  })
+
+  test("AC2 — uses the answer threshold of the configuration", () => {
+    const s = state([note("a.md", { answer: 0.6 })])
+    expect(decide(s, withConfig({ answer: 0.8 })).type).not.toBe("answer")
+    expect(decide(s, withConfig({ answer: 0.3 }))).toEqual({
+      type: "answer",
+      rule: "answer",
     })
   })
 
-  test("AC4 — applies whatever the non-topic missing choice", () => {
-    for (const choice of MISSING.filter((m) => m !== "topic_not_found")) {
-      const action = decide(
-        state({ assessment: assessment({ choice }), relevantCount: 0 }),
-        DEFAULT_POLICY
-      )
-      expect(action).toMatchObject({
-        type: "rewrite",
-        rule: "rewrite-nothing-relevant",
-      })
-    }
+  test("AC2 — one kept note among others is enough", () => {
+    const action = decide(
+      state([
+        note("a.md", { answer: 0.1 }),
+        note("b.md", { answer: 0.7 }),
+        note("c.md", { answer: 0.2 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a kept note answers before explore", () => {
+    const action = decide(
+      state([
+        note("kept.md", { answer: 0.8 }, { expanded: true }),
+        note("maybe.md", { answer: 0.4, step: 0.1 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a kept note answers even with no openable note and no budget left", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.9 }, { hasUnjudgedLinks: false })], {
+        hops: MAX_HOPS,
+        rewrites: MAX_REWRITES,
+      }),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a kept note answers when the hops are used up, despite a step note", () => {
+    const action = decide(
+      state(
+        [note("kept.md", { answer: 0.9 }), note("step.md", { step: 0.9 })],
+        {
+          hops: MAX_HOPS,
+        }
+      ),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a kept note that is expanded still counts", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.9 }, { expanded: true })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+})
+
+describe("AC3 — explore", () => {
+  test("AC3 — opens the openable notes when no note is kept and no note is a step", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.3, none: 0.7 })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md"],
+    })
+  })
+
+  test("AC3 — ranks by decreasing answer + step", () => {
+    const action = decide(
+      state([
+        note("a.md", { answer: 0.1, step: 0.2 }),
+        note("b.md", { answer: 0.3, step: 0.1 }),
+        note("c.md", { answer: 0.2, step: 0.4 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["c.md", "b.md", "a.md"],
+    })
+  })
+
+  test("AC3 — the sum counts, not answer or step alone", () => {
+    const action = decide(
+      state([
+        note("answer-only.md", { answer: 0.45 }),
+        note("mixed.md", { answer: 0.3, step: 0.4 }),
+        note("step-only.md", { step: 0.4 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["mixed.md", "answer-only.md", "step-only.md"],
+    })
+  })
+
+  test("AC3 — ties on answer + step go by order of judgement", () => {
+    const action = decide(
+      state([
+        note("z.md", { answer: 0.25, step: 0.25 }),
+        note("a.md", { answer: 0.4, step: 0.05 }),
+        note("m.md", { answer: 0.1, step: 0.4 }),
+        note("top.md", { answer: 0.3, step: 0.3 }),
+      ]),
+      withConfig({}, { explore: 4 })
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["top.md", "z.md", "m.md", "a.md"],
+    })
+  })
+
+  test("AC3 — opens at most the explore budget, keeping the best", () => {
+    const notes = [
+      note("n1.md", { answer: 0.05 }),
+      note("n2.md", { answer: 0.4 }),
+      note("n3.md", { answer: 0.1 }),
+      note("n4.md", { answer: 0.3 }),
+      note("n5.md", { answer: 0.2 }),
+    ]
+    const action = decide(state(notes), DEFAULT_POLICY)
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["n2.md", "n4.md", "n5.md"],
+    })
+  })
+
+  test("AC3 — the explore budget comes from the configuration", () => {
+    const notes = [
+      note("a.md", { answer: 0.4 }),
+      note("b.md", { answer: 0.3 }),
+      note("c.md", { answer: 0.2 }),
+    ]
+    expect(decide(state(notes), withConfig({}, { explore: 1 }))).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md"],
+    })
+    expect(decide(state(notes), withConfig({}, { explore: 2 }))).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md", "b.md"],
+    })
+  })
+
+  test("AC3 — the explore budget cuts ties by order of judgement", () => {
+    const notes = [
+      note("a.md", { answer: 0.2 }),
+      note("b.md", { answer: 0.2 }),
+      note("c.md", { answer: 0.2 }),
+      note("d.md", { answer: 0.2 }),
+    ]
+    const action = decide(state(notes), withConfig({}, { explore: 2 }))
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md", "b.md"],
+    })
+  })
+
+  test("AC3 — opens fewer notes than the budget when fewer are openable", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.2 }), note("b.md", { answer: 0.1 })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md", "b.md"],
+    })
+  })
+
+  test("AC3 — opens a note whose verdict is all none (it is ranked, not filtered)", () => {
+    const action = decide(state([note("a.md")]), DEFAULT_POLICY)
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md"],
+    })
+  })
+
+  test("AC3 — skips expanded notes", () => {
+    const action = decide(
+      state([
+        note("done.md", { answer: 0.45 }, { expanded: true }),
+        note("open.md", { answer: 0.1 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["open.md"],
+    })
+  })
+
+  test("AC3 — skips notes with no unjudged link", () => {
+    const action = decide(
+      state([
+        note("closed.md", { answer: 0.45 }, { hasUnjudgedLinks: false }),
+        note("open.md", { answer: 0.1 }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["open.md"],
+    })
+  })
+
+  test("AC3 — skipped notes do not use up the explore budget", () => {
+    const action = decide(
+      state(
+        [
+          note("done1.md", { answer: 0.45 }, { expanded: true }),
+          note("closed.md", { answer: 0.44 }, { hasUnjudgedLinks: false }),
+          note("a.md", { answer: 0.2 }),
+          note("b.md", { answer: 0.1 }),
+        ],
+        {}
+      ),
+      withConfig({}, { explore: 2 })
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md", "b.md"],
+    })
+  })
+
+  test("AC3 — applies on the last hop available", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.2 })], { hops: MAX_HOPS - 1 }),
+      DEFAULT_POLICY
+    )
+    expect(action).toMatchObject({ type: "expand", rule: "explore" })
+  })
+
+  test("AC3 — does not apply once the hops are used up", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.3 })], { hops: MAX_HOPS }),
+      DEFAULT_POLICY
+    )
+    expect(action.type).not.toBe("expand")
+    expect(action.rule).not.toBe("explore")
+  })
+
+  test("AC3 — does not apply when no note is openable", () => {
+    const action = decide(
+      state([
+        note("done.md", { answer: 0.3 }, { expanded: true }),
+        note("closed.md", { answer: 0.3 }, { hasUnjudgedLinks: false }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action.type).not.toBe("expand")
+    expect(action.rule).not.toBe("explore")
+  })
+
+  test("AC3 — does not apply when there is no note at all", () => {
+    const action = decide(state([]), DEFAULT_POLICY)
+    expect(action.type).not.toBe("expand")
+  })
+
+  test("AC3 — explore wins over rewrite while hops remain and a note is openable", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.2 })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toMatchObject({ type: "expand", rule: "explore" })
+  })
+
+  test("AC3 — a zero explore budget opens nothing and falls through to rewrite", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.2 })]),
+      withConfig({}, { explore: 0 })
+    )
+    expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
+  })
+})
+
+describe("AC4 — rewrite", () => {
+  test("AC4 — searches again when there is no note at all", () => {
+    expect(decide(state([]), DEFAULT_POLICY)).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+  })
+
+  test("AC4 — searches again when no note is kept and none is openable", () => {
+    const action = decide(
+      state([
+        note("a.md", { answer: 0.2 }, { expanded: true }),
+        note("b.md", { answer: 0.2 }, { hasUnjudgedLinks: false }),
+      ]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
+  })
+
+  test("AC4 — searches again when the hops are used up and no note is kept", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.3, step: 0.9 })], { hops: MAX_HOPS }),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
   })
 
   test("AC4 — searches again on the last rewrite available", () => {
     const action = decide(
-      state({
-        relevantCount: 0,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites - 1,
-      }),
+      state([], { rewrites: MAX_REWRITES - 1 }),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-nothing-relevant",
-    })
+    expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
   })
 
-  test("AC4 — does not apply as soon as one relevant chunk was kept", () => {
-    const action = decide(state({ relevantCount: 1 }), DEFAULT_POLICY)
+  test("AC4 — does not search again once the rewrites are used up", () => {
+    const action = decide(state([], { rewrites: MAX_REWRITES }), DEFAULT_POLICY)
     expect(action.type).not.toBe("rewrite")
   })
 
-  test("AC4 — still searches when hops are used up and nothing relevant was kept", () => {
+  test("AC4 — the rewrite budget comes from the configuration", () => {
+    const s = state([], { rewrites: 1 })
+    expect(decide(s, withConfig({}, { maxRewrites: 2 }))).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+    expect(decide(s, withConfig({}, { maxRewrites: 1 })).type).not.toBe(
+      "rewrite"
+    )
+  })
+
+  test("AC4 — does not apply when a note is kept", () => {
     const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.99 } }),
-        links: [link("l1", "next.md")],
-        relevantCount: 0,
-        hops: DEFAULT_POLICY.budgets.maxHops,
-      }),
+      state([note("a.md", { answer: 0.9 })], { hops: MAX_HOPS }),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "rewrite",
-      rule: "rewrite-nothing-relevant",
-    })
+    expect(action.type).not.toBe("rewrite")
   })
 })
 
-describe("AC5 — abstain-nothing-relevant", () => {
-  test("AC5 — abstains when nothing is relevant and no rewrite remains", () => {
+describe("AC5 — abstain", () => {
+  test("AC5 — abstains when nothing is kept, nothing is openable and no rewrite is left", () => {
     const action = decide(
-      state({
-        relevantCount: 0,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
+      state([note("a.md", { answer: 0.2 }, { expanded: true })], {
+        rewrites: MAX_REWRITES,
       }),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
-    })
+    expect(action).toEqual({ type: "abstain", rule: "abstain" })
+  })
+
+  test("AC5 — abstains when there is no note and no rewrite is left", () => {
+    const action = decide(state([], { rewrites: MAX_REWRITES }), DEFAULT_POLICY)
+    expect(action).toEqual({ type: "abstain", rule: "abstain" })
+  })
+
+  test("AC5 — abstains when the hops are used up and no rewrite is left", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.4, step: 0.9 })], {
+        hops: MAX_HOPS,
+        rewrites: MAX_REWRITES,
+      }),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "abstain", rule: "abstain" })
   })
 
   test("AC5 — abstains with a zero rewrite budget", () => {
-    const noRewrites: PolicyConfig = {
-      ...DEFAULT_POLICY,
-      budgets: { ...DEFAULT_POLICY.budgets, maxRewrites: 0 },
-    }
-    const action = decide(state({ relevantCount: 0 }), noRewrites)
-    expect(action).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
-    })
+    const action = decide(state([]), withConfig({}, { maxRewrites: 0 }))
+    expect(action).toEqual({ type: "abstain", rule: "abstain" })
   })
 
-  test("AC5 — abstains with hops used up as well", () => {
+  test("AC5 — abstains with every budget at zero", () => {
     const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.99 } }),
-        links: [link("l1", "next.md")],
-        relevantCount: 0,
-        hops: DEFAULT_POLICY.budgets.maxHops,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
-      }),
-      DEFAULT_POLICY
+      state([note("a.md", { answer: 0.4, step: 0.9 })]),
+      withConfig({}, { maxHops: 0, maxRewrites: 0, explore: 0 })
     )
-    expect(action).toMatchObject({
-      type: "abstain",
-      rule: "abstain-nothing-relevant",
-    })
+    expect(action).toEqual({ type: "abstain", rule: "abstain" })
   })
 
-  test("AC5 — does not abstain when some chunk is relevant", () => {
+  test("AC5 — does not abstain when a note is kept, even with every budget used up", () => {
     const action = decide(
-      state({
-        relevantCount: 1,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
+      state([note("a.md", { answer: 0.9 })], {
+        hops: MAX_HOPS,
+        rewrites: MAX_REWRITES,
       }),
       DEFAULT_POLICY
     )
     expect(action.type).not.toBe("abstain")
   })
-})
 
-describe("AC6 — answer-best-effort", () => {
-  test("AC6 — answers with what was found when nothing else applies", () => {
-    const action = decide(state(), DEFAULT_POLICY)
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-  })
-
-  test("AC6 — answers when the only links are below the threshold", () => {
+  test("AC5 — does not abstain while a note can be opened", () => {
     const action = decide(
-      state({
-        assessment: assessment({ links: { l1: 0.3 } }),
-        links: [link("l1", "next.md")],
-      }),
+      state([note("a.md", { answer: 0.2 })], { rewrites: MAX_REWRITES }),
       DEFAULT_POLICY
     )
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-  })
-
-  test("AC6 — answers when everything is used up but some chunks are relevant", () => {
-    const action = decide(
-      state({
-        assessment: assessment({
-          choice: "topic_not_found",
-          links: { l1: 0.99 },
-        }),
-        links: [link("l1", "next.md")],
-        hops: DEFAULT_POLICY.budgets.maxHops,
-        rewrites: DEFAULT_POLICY.budgets.maxRewrites,
-      }),
-      DEFAULT_POLICY
-    )
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
-  })
-
-  test("AC6 — answers when there is no visible link at all", () => {
-    const action = decide(state({ links: [] }), DEFAULT_POLICY)
-    expect(action).toMatchObject({
-      type: "answer",
-      rule: "answer-best-effort",
-    })
+    expect(action.type).toBe("expand")
   })
 })
 
-describe("AC7 — configuration", () => {
-  test("AC7 — DEFAULT_POLICY holds the specified thresholds and budgets", () => {
+describe("AC6 — configuration", () => {
+  test("AC6 — DEFAULT_POLICY holds the specified thresholds and budgets", () => {
     expect(DEFAULT_POLICY).toEqual({
-      thresholds: { relevance: 0.5, sufficient: 0.7, link: 0.5 },
-      budgets: { maxHops: 3, maxRewrites: 1, maxChunks: 12 },
+      thresholds: { answer: 0.5, step: 0.5 },
+      budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 5 },
     })
   })
 
-  test("AC7 — RULES lists the six rule ids in priority order", () => {
+  test("AC6 — RULES lists the five rule ids in priority order", () => {
     expect([...RULES]).toEqual([
-      "sufficient",
-      "follow-link",
-      "rewrite-topic-not-found",
-      "rewrite-nothing-relevant",
-      "abstain-nothing-relevant",
-      "answer-best-effort",
+      "follow-steps",
+      "answer",
+      "explore",
+      "rewrite",
+      "abstain",
     ])
   })
 
-  test("AC7 — every action names a rule from RULES", () => {
-    const states = [
-      state({ assessment: assessment({ sufficient: 0.9 }) }),
-      state({
-        assessment: assessment({ links: { l1: 0.9 } }),
-        links: [link("l1", "next.md")],
-      }),
-      state({ assessment: assessment({ choice: "topic_not_found" }) }),
-      state({ relevantCount: 0 }),
-      state({ relevantCount: 0, rewrites: 1 }),
-      state(),
+  test("AC6 — every action names a rule from RULES, and each rule is reachable", () => {
+    const states: [LoopState, PolicyConfig][] = [
+      [state([note("a.md", { step: 0.9 })]), DEFAULT_POLICY],
+      [state([note("a.md", { answer: 0.9 })]), DEFAULT_POLICY],
+      [state([note("a.md", { answer: 0.2 })]), DEFAULT_POLICY],
+      [state([]), DEFAULT_POLICY],
+      [state([], { rewrites: MAX_REWRITES }), DEFAULT_POLICY],
     ]
-    const rules = states.map((s) => decide(s, DEFAULT_POLICY).rule)
+    const rules = states.map(([s, c]) => decide(s, c).rule)
     for (const rule of rules) expect(RULES).toContain(rule)
     expect(rules).toEqual([...RULES])
   })
 
-  test("AC7 — the relevance threshold and chunk budget do not change decide", () => {
-    const other: PolicyConfig = {
-      thresholds: { ...DEFAULT_POLICY.thresholds, relevance: 0.99 },
-      budgets: { ...DEFAULT_POLICY.budgets, maxChunks: 1 },
-    }
+  test("AC6 — the context budget does not change decide", () => {
     const states = [
-      state(),
-      state({ relevantCount: 0 }),
-      state({ assessment: assessment({ sufficient: 0.8 }) }),
-      state({
-        assessment: assessment({ links: { l1: 0.8 } }),
-        links: [link("l1", "next.md")],
-      }),
+      state([note("a.md", { step: 0.9 })]),
+      state([note("a.md", { answer: 0.9 })]),
+      state([note("a.md", { answer: 0.2 })]),
+      state([]),
+      state([], { rewrites: MAX_REWRITES }),
     ]
     for (const s of states) {
-      expect(decide(s, other)).toEqual(decide(s, DEFAULT_POLICY))
+      expect(decide(s, withConfig({}, { maxNotes: 1 }))).toEqual(
+        decide(s, DEFAULT_POLICY)
+      )
+      expect(decide(s, withConfig({}, { maxNotes: 50 }))).toEqual(
+        decide(s, DEFAULT_POLICY)
+      )
     }
   })
 })
 
-describe("AC8 — purity", () => {
+describe("AC7 — purity", () => {
   const busy = (): LoopState =>
-    state({
-      assessment: assessment({
-        sufficient: 0.4,
-        choice: "topic_not_found",
-        links: { "link-b": 0.8, "link-a": 0.8, "link-c": 0.2 },
-      }),
-      links: [
-        link("link-b", "b.md"),
-        link("link-a", "a.md"),
-        link("link-c", "c.md"),
+    state(
+      [
+        note("kept.md", { answer: 0.6, step: 0.2 }, { expanded: true }),
+        note("b.md", { step: 0.8 }),
+        note("a.md", { step: 0.8 }),
+        note("c.md", { step: 0.6 }),
+        note("d.md", { answer: 0.1 }, { hasUnjudgedLinks: false }),
       ],
-      contextNotes: ["start.md", "b.md"],
-    })
+      { hops: 1, rewrites: 0 }
+    )
 
-  test("AC8 — does not modify the state or the configuration", () => {
+  test("AC7 — does not modify the state or the configuration", () => {
     const s = busy()
     const config = structuredClone(DEFAULT_POLICY)
     const stateBefore = structuredClone(s)
@@ -739,17 +790,40 @@ describe("AC8 — purity", () => {
     expect(config).toEqual(configBefore)
   })
 
-  test("AC8 — works on deeply frozen inputs", () => {
+  test("AC7 — works on deeply frozen inputs", () => {
     const s = deepFreeze(busy())
     const config = deepFreeze(structuredClone(DEFAULT_POLICY))
     expect(() => decide(s, config)).not.toThrow()
-    expect(decide(s, config)).toMatchObject({
-      type: "follow",
-      rule: "follow-link",
+    expect(decide(s, config)).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["b.md", "a.md", "c.md"],
     })
   })
 
-  test("AC8 — returns the same action for the same inputs", () => {
+  test("AC7 — works on deeply frozen inputs when exploring", () => {
+    const s = deepFreeze(
+      state([note("x.md", { answer: 0.2 }), note("y.md", { answer: 0.3 })])
+    )
+    const config = deepFreeze(structuredClone(DEFAULT_POLICY))
+    expect(decide(s, config)).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["y.md", "x.md"],
+    })
+  })
+
+  test("AC7 — does not reorder state.notes", () => {
+    const s = state([
+      note("z.md", { answer: 0.1 }),
+      note("a.md", { answer: 0.4 }),
+      note("m.md", { answer: 0.2 }),
+    ])
+    decide(s, DEFAULT_POLICY)
+    expect(s.notes.map((n) => n.path)).toEqual(["z.md", "a.md", "m.md"])
+  })
+
+  test("AC7 — returns the same action for the same inputs", () => {
     const s = busy()
     expect(decide(s, DEFAULT_POLICY)).toEqual(decide(s, DEFAULT_POLICY))
     expect(decide(busy(), DEFAULT_POLICY)).toEqual(
@@ -757,19 +831,19 @@ describe("AC8 — purity", () => {
     )
   })
 
-  test("AC8 — does not depend on the order of the visible links", () => {
-    const s = busy()
-    const reversed: LoopState = { ...s, links: [...s.links].reverse() }
-    expect(decide(reversed, DEFAULT_POLICY)).toEqual(decide(s, DEFAULT_POLICY))
+  test("AC7 — does not keep state between calls", () => {
+    const first = decide(state([]), DEFAULT_POLICY)
+    decide(state([note("a.md", { answer: 0.9 })]), DEFAULT_POLICY)
+    decide(state([note("a.md", { step: 0.9 })]), DEFAULT_POLICY)
+    const again = decide(state([]), DEFAULT_POLICY)
+    expect(again).toEqual(first)
   })
 
-  test("AC8 — does not keep state between calls", () => {
-    const first = decide(state({ relevantCount: 0 }), DEFAULT_POLICY)
-    decide(
-      state({ assessment: assessment({ sufficient: 0.9 }) }),
-      DEFAULT_POLICY
-    )
-    const again = decide(state({ relevantCount: 0 }), DEFAULT_POLICY)
-    expect(again).toEqual(first)
+  test("AC7 — the returned paths are not shared with the state", () => {
+    const s = state([note("a.md", { step: 0.9 })])
+    const first = decide(s, DEFAULT_POLICY) as { paths: string[] }
+    first.paths.push("tampered.md")
+    const second = decide(s, DEFAULT_POLICY) as { paths: string[] }
+    expect(second.paths).toEqual(["a.md"])
   })
 })
