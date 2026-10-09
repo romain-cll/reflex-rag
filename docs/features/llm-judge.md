@@ -20,6 +20,12 @@ The first version made two calls per turn: a relevance score per chunk, then an 
 
 The Anthropic API exposes no token probabilities: config B's probabilities are stated by the model, a limit to report.
 
+## Revision 3 — notes already kept, as context
+
+A turn that opens links judges only the link targets; a note judged alone may look off topic although a note already kept explains why it matters (an account handoff naming the person whose page holds the answer). The judge now receives the kept notes as context. This revision extends AC1 and AC3.
+
+- **AC8 — context**: `judge(question, notes, context?)` takes optional `context` notes (`NoteForJudge[]`), shown to the model but not scored: the result holds verdicts for `notes` only. `LLMJudge` lists them in the user prompt before the notes to score, under a heading saying that they were already kept and must not be scored, each with its path, date, links and text and without an alias. With no note to score, no call is made, whatever the context.
+
 ## Technical plan
 
 Files:

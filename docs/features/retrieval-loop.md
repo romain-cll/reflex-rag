@@ -35,6 +35,10 @@ Config C's judge runs many system-one calls in parallel, then sometimes an LLM f
 - **AC13 — fallback trace**: each step records `fallback`, the paths the judge judged again this turn (empty when none), and `LoopResult` gains `fallback`, all of them in order.
 - **AC14 — errors carrying calls**: when the judge or the rewriter throws an error carrying a `calls` array, the `LoopError` keeps those calls too (AC9).
 
+## Revision 5 — the kept notes as context of the judge
+
+- **AC15 — context**: every `judge.judge` call of the loop receives as `context` the notes kept so far (in the sense of the policy, from earlier turns), as `NoteForJudge`; a search turn's first call has none.
+
 ## Technical plan
 
 Files:

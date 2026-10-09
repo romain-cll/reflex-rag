@@ -21,6 +21,12 @@ Phase 4. `reflex eval --config C` runs the questions through the retrieval loop 
 - **AC12 — the means in "By stage"**: the "By stage" table gives, for each stage, the median and the mean (a fallback that runs on fewer than half the questions has a median of 0; its mean is what shows its cost in time).
 - **AC13 — labels of repeated runs**: when two runs share config, split and commit, their column labels also include the run's time (`HH:MM` of the folder name), so that the repeated runs of the variance measurement stay apart.
 
+## Revision 3 — batched judge, thresholds and grey zone
+
+- **AC14 — thresholds of C**: `POLICIES.C` keeps the budgets of `DEFAULT_POLICY` with the thresholds answer 0.7 and step 0.7, chosen on the tuning split by replaying the first turn of every question with Jev's batched verdicts (context complete 37/48 and precision 0.51 without fallback, against 34/48 and 0.22 for the per-note run at 0.5).
+- **AC15 — grey zone**: `--fallback <low>` (default 0.6) is the lower bound of the grey zone; it must be below both thresholds of C, otherwise a one-line error. The settings record it as `fallbackLow`. The judge of C is `FallbackJudge(SystemOneJudge(systemOne), LLMJudge, { low, isKept: (verdict) => isKept(verdict, POLICIES.C) })`.
+- **AC16 — dry run**: the system-one part of the bound counts one call per possible turn, sized as one batch holding all the candidate notes.
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.
