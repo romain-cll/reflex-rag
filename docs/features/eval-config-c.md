@@ -14,6 +14,13 @@ Phase 4. `reflex eval --config C` runs the questions through the retrieval loop 
 - **AC8 — dry run**: `reflex eval --config C --dry-run` makes no system-one or Anthropic call (query embeddings only) and prints an upper bound: per possible turn, one system-one call per candidate note (input estimated from the state's size), plus the worst-case fallback (one LLM judge call per turn on all candidate notes), one rewriter call per possible rewrite, and the answerer call.
 - **AC9 — results page**: the main table of `docs/results/RESULTS.md` gains the fallback rates (empty for A and B); a new table "By stage" gives, per run, the median of each stage and the mean cost per role; when two runs share config and split, the column labels of the per-category and failure tables include their commit.
 
+## Revision 2 — after the phase-4 review
+
+- **AC10 — tested settings**: `loopSettings(config, settings, systemOneModel?)`, exported by `src/commands/eval.ts`, returns the `models` and `loop` parts of a B or C run's settings line (AC3); config A and B runs keep their current settings. Unit-tested for B and C.
+- **AC11 — tested roles**: `withRole(calls, role)` (sets the role of the calls that have none) and `roleTagged(role, fn)` (runs `fn`; tags the calls it returns, and the billed `call` of a thrown `LLMCallError` or the `calls` of a thrown error, then rethrows) are exported and unit-tested; every model call of A, B and C goes through them, the answerer's included.
+- **AC12 — the means in "By stage"**: the "By stage" table gives, for each stage, the median and the mean (a fallback that runs on fewer than half the questions has a median of 0; its mean is what shows its cost in time).
+- **AC13 — labels of repeated runs**: when two runs share config, split and commit, their column labels also include the run's time (`HH:MM` of the folder name), so that the repeated runs of the variance measurement stay apart.
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.

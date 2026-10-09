@@ -10,6 +10,11 @@ Phase 4. The client of the system-one decision API (`POST /v1/systemone`), share
 - **AC4 — factories**: `jevSystemOne()` reads `TYPESAFE_API_KEY` (missing or empty: an error naming it) and targets `https://api.typesafe.ai` with the model pinned to `jev-1.13.0`, so that runs are reproducible. `clefSystemOne()` targets `OLLAMA_HOST` (default `http://localhost:11434`) with the model `clef-flash` and no key.
 - **AC5 — no real calls in tests**: `fetch` is injectable; every test runs on a fake.
 
+## Revision 2 — after the phase-4 review
+
+- **AC6 — request timeout**: each attempt is aborted after a timeout (60 s by default, an option for tests) and the abort counts as a network error, so it is retried within the limit of AC3.
+- **AC7 — `OLLAMA_HOST` as Ollama reads it**: a value without a scheme gets `http://` (`127.0.0.1:11434` → `http://127.0.0.1:11434`); a value without a port gets `:11434`; an empty value means the default.
+
 ## Technical plan
 
 - `src/core/system-one.ts` (new): the types and the `SystemOne` interface.
