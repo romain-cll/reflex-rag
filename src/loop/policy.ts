@@ -23,12 +23,16 @@ export const DEFAULT_POLICY: PolicyConfig = {
 }
 
 /**
- * The policy of each config with a judged loop. Both start from the default
- * until config C's thresholds are chosen on the tuning split.
+ * The policy of each config with a judged loop. C's thresholds were chosen on
+ * the tuning split for the batched system-one verdicts, which are less
+ * clear-cut than B's.
  */
 export const POLICIES: Record<"B" | "C", PolicyConfig> = {
   B: DEFAULT_POLICY,
-  C: DEFAULT_POLICY,
+  C: {
+    ...DEFAULT_POLICY,
+    thresholds: { answer: 0.7, step: 0.7 },
+  },
 }
 
 /** A note the judge has classified. */

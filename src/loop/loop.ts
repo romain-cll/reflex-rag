@@ -216,15 +216,18 @@ class Loop {
     return this.search(query, "rewrite")
   }
 
-  /** Judges the notes in one call; none to judge, no call. */
+  /** Judges the notes in one call, with the notes kept so far as context. */
   private async judgeNotes(
     paths: string[],
     parents: Map<string, string>
   ): Promise<Pick<Turn, "judged" | "parents" | "kept" | "fallback">> {
     const notes = paths.map((path) => this.noteForJudge(path))
+    const context = [...this.judged.values()]
+      .filter(({ verdicts }) => isKept(verdicts, this.deps.policy))
+      .map(({ note }) => note)
     const startedAt = performance.now()
     const judgement = await this.model(() =>
-      this.deps.judge.judge(this.question, notes)
+      this.deps.judge.judge(this.question, notes, context)
     )
     const stages = judgement.stages ?? {
       judgeMs: performance.now() - startedAt,
