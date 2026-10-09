@@ -11,7 +11,7 @@ Commands:
   ask "<question>"           Ask a question about the vault
   eval --config <A|B|C>      Run the evals
     [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
-    [--rewrite llm|code] [--candidates <n>]    (config B)
+    [--candidates <n>] [--rewrite llm|code]    (--rewrite: config B)
 
 Options:
   -h, --help                 Show this help`

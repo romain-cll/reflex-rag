@@ -11,14 +11,14 @@ import {
   type ContextChunk,
 } from "../answer/answerer.ts"
 import type { Embedder } from "../core/embedder.ts"
-import type { Judge } from "../core/judge.ts"
+import type { Judge, NoteForJudge } from "../core/judge.ts"
 import type { LLM, LLMRequest } from "../core/llm.ts"
-import type { DatedChunk, ModelCall } from "../core/types.ts"
+import type { Chunk, ModelCall } from "../core/types.ts"
 import { openIndex, type Index } from "../index/read.ts"
 import { callCostUsd } from "../eval/prices.ts"
 import { runEval, type EvalOptions } from "../eval/run.ts"
 import { LLMJudge } from "../judge/llm-judge.ts"
-import { runLoop } from "../loop/loop.ts"
+import { noteText, runLoop } from "../loop/loop.ts"
 import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
 import { CodeRewriter, LLMRewriter } from "../loop/rewriter.ts"
 import { AnthropicLLM } from "../models/anthropic-llm.ts"
@@ -57,6 +57,8 @@ const QUESTIONS_PATH = "evals/dev/questions.json"
 const INDEX_PATH = ".reflex/index.db"
 const RUNS_DIR = "runs"
 const ANSWERER_MODEL = "claude-haiku-5-5"
+/** Notes in the context. */
+const DEFAULT_K = 5
 const DEFAULT_CANDIDATES = 50
 /** Rough size of a token, for the dry-run estimate. */
 const CHARS_PER_TOKEN = 4
@@ -92,7 +94,7 @@ function parseSettings(
       options.limit === undefined
         ? null
         : parseNumber("limit", options.limit, true),
-    k: options.k === undefined ? 8 : parseNumber("k", options.k, true),
+    k: options.k === undefined ? DEFAULT_K : parseNumber("k", options.k, true),
     maxCostUsd:
       options.maxCost === undefined
         ? 1
@@ -134,7 +136,10 @@ function parseNumber(name: string, text: string, integer: boolean): number {
 }
 
 /** What differs between the configs: how a question is retrieved and answered. */
-type Pipeline = Pick<EvalOptions, "retrieve" | "answer" | "k" | "loop"> & {
+type Pipeline = Pick<
+  EvalOptions,
+  "retrieve" | "answer" | "k" | "candidates" | "loop"
+> & {
   /** The models, but the embedder's. */
   models: Record<string, string>
 }
@@ -155,7 +160,11 @@ async function runConfig(
     const embedder = new MistralEmbedder({ apiKey: mistralKey })
     if (settings.dryRun) {
       return config === "A"
-        ? await dryRunA(questions, retrieverOf(index, embedder), settings)
+        ? await dryRunA(
+            questions,
+            retrieverOf(index, embedder, settings),
+            settings
+          )
         : await dryRunB(questions, index, embedder, settings)
     }
 
@@ -197,9 +206,10 @@ function pipelineA(
 ): Pipeline {
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
   return {
-    retrieve: retrieverOf(index, embedder),
+    retrieve: retrieverOf(index, embedder, settings),
     answer: (query, context) => answerQuestion(query, context, llm),
     k: settings.k,
+    candidates: settings.candidates,
     models: { answerer: llm.model },
   }
 }
@@ -207,7 +217,7 @@ function pipelineA(
 /**
  * Config B: the judged retrieval loop, then the answerer, unless the loop
  * abstained. The judge, the rewriter and the answerer share one Haiku client.
- * `--k` does not apply: the loop retrieves `--candidates` chunks per search.
+ * `--k` caps the notes of the context, `--candidates` the chunks per search.
  */
 function pipelineB(
   index: Index,
@@ -219,26 +229,41 @@ function pipelineB(
   const judge = new RoleTaggedJudge(new LLMJudge(llm))
   const rewriter =
     settings.rewrite === "llm" ? new LLMRewriter(llm) : new CodeRewriter()
+  const policy = loopPolicy(settings)
   return {
-    retrieve: async (query, candidates) => {
-      const result = await runLoop(query, {
+    retrieve: async (query) => {
+      const {
+        context,
+        calls,
+        outcome,
+        hops,
+        rewrites,
+        steps,
+        judged,
+        kept,
+        frontier,
+      } = await runLoop(query, {
         retrieve: (text, k) => retriever.retrieve(text, k),
         index,
         judge,
         rewriter,
-        policy: DEFAULT_POLICY,
-        candidates,
+        policy,
+        candidates: settings.candidates,
       })
-      const { context, calls, outcome, hops, rewrites, steps } = result
-      return { context, calls, loop: { outcome, hops, rewrites, steps } }
+      return {
+        context,
+        calls,
+        loop: { outcome, hops, rewrites, steps, judged, kept, frontier },
+      }
     },
     answer: async (query, context, loop) =>
       loop?.outcome.type === "abstain"
         ? { output: abstentionOutput(loop.outcome.rule), call: null }
         : answerQuestion(query, context, llm),
-    k: settings.candidates,
+    k: settings.k,
+    candidates: settings.candidates,
     loop: {
-      policy: DEFAULT_POLICY,
+      policy,
       rewriter: rewriter.kind,
       candidates: settings.candidates,
     },
@@ -247,6 +272,14 @@ function pipelineB(
       rewriter: rewriter.kind === "llm" ? llm.model : "none",
       answerer: llm.model,
     },
+  }
+}
+
+/** The default policy, with `--k` as the cap of the notes in the context. */
+function loopPolicy(settings: EvalSettings): PolicyConfig {
+  return {
+    ...DEFAULT_POLICY,
+    budgets: { ...DEFAULT_POLICY.budgets, maxNotes: settings.k },
   }
 }
 
@@ -262,15 +295,10 @@ export function abstentionOutput(rule: string): Answer {
 
 /** Marks the calls of a judge as such: they share their model with the rewriter and the answerer. */
 class RoleTaggedJudge implements Judge {
-  constructor(private readonly judge: Judge) {}
+  constructor(private readonly inner: Judge) {}
 
-  async relevance(...args: Parameters<Judge["relevance"]>) {
-    const result = await this.judge.relevance(...args)
-    return { ...result, calls: tagged(result.calls) }
-  }
-
-  async assess(...args: Parameters<Judge["assess"]>) {
-    const result = await this.judge.assess(...args)
+  async judge(...args: Parameters<Judge["judge"]>) {
+    const result = await this.inner.judge(...args)
     return { ...result, calls: tagged(result.calls) }
   }
 }
@@ -308,16 +336,31 @@ async function loadQuestions(settings: EvalSettings): Promise<Question[]> {
   return settings.limit === null ? inSplit : inSplit.slice(0, settings.limit)
 }
 
-/** Retrieval for config A: hybrid search, each chunk with the date of its note. */
-function retrieverOf(index: Index, embedder: Embedder) {
+/** The distinct note paths of the chunks, in order of first appearance, at most `k`. */
+export function topNotes(chunks: Chunk[], k: number): string[] {
+  return [...new Set(chunks.map((chunk) => chunk.notePath))].slice(0, k)
+}
+
+/**
+ * Retrieval for config A: hybrid search of `candidates` chunks, then the
+ * `k` best notes, each whole with its date.
+ */
+function retrieverOf(
+  index: Index,
+  embedder: Embedder,
+  { candidates }: EvalSettings
+) {
   const retriever = new HybridRetriever(index, embedder)
   return async (query: string, k: number) => {
-    const { chunks, calls } = await retriever.retrieve(query, k)
-    const context: ContextChunk[] = chunks.map(({ chunk }) => ({
-      notePath: chunk.notePath,
-      noteDate: index.getNote(chunk.notePath)?.date ?? null,
-      heading: chunk.heading,
-      text: chunk.text,
+    const { chunks, calls } = await retriever.retrieve(query, candidates)
+    const context: ContextChunk[] = topNotes(
+      chunks.map(({ chunk }) => chunk),
+      k
+    ).map((path) => ({
+      notePath: path,
+      noteDate: index.getNote(path)?.date ?? null,
+      heading: "",
+      text: noteText(index, path),
     }))
     return { context, calls }
   }
@@ -339,15 +382,7 @@ function recordingLLM(requests: LLMRequest[]): LLM {
     value: "",
     answer: "",
     citations: [],
-    chunks: [],
-    sufficient: 0,
-    missing: {
-      detail_in_linked_note: 0,
-      newer_version: 0,
-      topic_not_found: 0,
-      unidentified: 0,
-    },
-    links: [],
+    notes: [],
   }
   return {
     model: ANSWERER_MODEL,
@@ -421,7 +456,8 @@ async function dryRunB(
   settings: EvalSettings
 ): Promise<number> {
   const retriever = new HybridRetriever(index, embedder)
-  const { maxRewrites } = DEFAULT_POLICY.budgets
+  const policy = loopPolicy(settings)
+  const { maxRewrites } = policy.budgets
   let embeddings = 0
   let embeddingCostUsd = 0
   let anthropicCalls: ModelCall[] = []
@@ -433,15 +469,15 @@ async function dryRunB(
     embeddings += calls.length
     // Every rewrite embeds a new query, about as long as the question.
     embeddingCostUsd += sum(calls.map(callCostUsd)) * (1 + maxRewrites)
-    const candidates: DatedChunk[] = chunks.map(({ chunk }) => ({
-      ...chunk,
-      noteDate: index.getNote(chunk.notePath)?.date ?? null,
-    }))
+    const candidates = topNotes(
+      chunks.map(({ chunk }) => chunk),
+      Infinity
+    ).map((path) => noteForJudge(index, path))
     anthropicCalls = anthropicCalls.concat(
       await upperBoundCalls(
         question.question,
         candidates,
-        DEFAULT_POLICY,
+        policy,
         settings.rewrite
       )
     )
@@ -461,17 +497,17 @@ async function dryRunB(
 }
 
 /**
- * The Anthropic calls one question can make at most, sized from its retrieved
- * candidates: the loop assesses once and judges the candidates once at the
- * start, then once more per possible hop and rewrite, with one rewriter call
+ * The Anthropic calls one question can make at most, sized from its candidate
+ * notes: the loop judges the candidates at the start, then once more per
+ * possible hop and rewrite, each time on all of them, with one rewriter call
  * per possible rewrite, and the answerer ends it. The prompts are built by the
  * judge, the rewriter and the answerer themselves, against a recording LLM;
- * every call is priced with its full `maxTokens` of output. The assessments
- * and the answer see the longest candidates, within the chunk budget.
+ * every call is priced with its full `maxTokens` of output. The rewriter and
+ * the answerer see the longest candidates, within the note budget.
  */
 export async function upperBoundCalls(
   question: string,
-  candidates: DatedChunk[],
+  candidates: NoteForJudge[],
   policy: PolicyConfig,
   rewriter: RewriterKind
 ): Promise<ModelCall[]> {
@@ -480,20 +516,39 @@ export async function upperBoundCalls(
   const judge = new LLMJudge(recorder)
   const longest = [...candidates]
     .sort((a, b) => b.text.length - a.text.length)
-    .slice(0, policy.budgets.maxChunks)
+    .slice(0, policy.budgets.maxNotes)
+  const context: ContextChunk[] = longest.map((note) => ({
+    notePath: note.path,
+    noteDate: note.date,
+    heading: "",
+    text: note.text,
+  }))
 
   const { maxHops, maxRewrites } = policy.budgets
   for (let turn = 0; turn <= maxHops + maxRewrites; turn++) {
-    await judge.relevance(question, candidates)
-    await judge.assess(question, longest, [])
+    await judge.judge(question, candidates)
   }
   if (rewriter === "llm") {
     for (let rewrite = 0; rewrite < maxRewrites; rewrite++) {
-      await new LLMRewriter(recorder).rewrite(question, longest, "unidentified")
+      await new LLMRewriter(recorder).rewrite(
+        question,
+        longest.map(({ path, text }) => ({ path, text }))
+      )
     }
   }
-  await answerQuestion(question, longest, recorder)
+  await answerQuestion(question, context, recorder)
   return requests.map(estimatedCall)
+}
+
+/** A note as the judge reads it: its text and its distinct link targets. */
+function noteForJudge(index: Index, path: string): NoteForJudge {
+  const links = index.outgoingLinks(path)
+  return {
+    path,
+    date: index.getNote(path)?.date ?? null,
+    text: noteText(index, path),
+    links: [...new Set(links.map((link) => link.targetPath))],
+  }
 }
 
 const noCall: ModelCall = {
