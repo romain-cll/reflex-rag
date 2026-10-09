@@ -2494,7 +2494,7 @@ function roleCall(
   inputTokens: number,
   outputTokens: number
 ): ModelCall {
-  return { ...call(model, inputTokens, outputTokens, 10), role } as ModelCall
+  return { ...call(model, inputTokens, outputTokens, 10), role }
 }
 
 function stagesOf(record: unknown): Record<string, number> {
@@ -2761,7 +2761,7 @@ describe("AC7 (eval-config-c) — stage, role and fallback metrics", () => {
       searchMs: 40,
       judgeMs: 0,
       fallbackMs: 0,
-      rewriteMs: 3000,
+      rewriteMs: 0,
       answerMs: 1000,
     })
     expect(median(byCategory.simple)).toEqual({
