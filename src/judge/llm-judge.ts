@@ -1,154 +1,91 @@
 import { z } from "zod"
 import {
-  MISSING,
-  type Assessment,
+  VERDICTS,
   type Judge,
-  type Missing,
-  type Relevance,
+  type Judgement,
+  type NoteForJudge,
+  type Verdict,
 } from "../core/judge.ts"
 import type { LLM } from "../core/llm.ts"
-import type { DatedChunk, Link } from "../core/types.ts"
+import { JUDGE_QUESTION } from "./question.ts"
 
-/** Output tokens for one `{ id, probability }` entry, with room for long ids. */
-const TOKENS_PER_ITEM = 40
-/** Output tokens for the fixed part of each answer. */
-const RELEVANCE_BASE_TOKENS = 64
-const ASSESS_BASE_TOKENS = 160
+/** Output tokens for one `{ id, answer, step, none }` entry. */
+const TOKENS_PER_NOTE = 24
+/** Output tokens for the fixed part of the answer. */
+const BASE_TOKENS = 64
 
-const RelevanceSchema = z.object({
-  chunks: z.array(z.object({ id: z.string(), probability: z.number() })),
+// No bounds on the numbers: the judge clamps them rather than reject the answer.
+const OutputSchema = z.object({
+  notes: z.array(
+    z.object({
+      id: z.string(),
+      answer: z.number(),
+      step: z.number(),
+      none: z.number(),
+    })
+  ),
 })
 
-const AssessSchema = z.object({
-  sufficient: z.number(),
-  missing: z.object({
-    detail_in_linked_note: z.number(),
-    newer_version: z.number(),
-    topic_not_found: z.number(),
-    unidentified: z.number(),
-  }),
-  links: z.array(z.object({ id: z.string(), probability: z.number() })),
-})
+const SYSTEM_PROMPT = `You help a retrieval system that searches a company's internal note vault. ${JUDGE_QUESTION.instructions}
 
-const RELEVANCE_SYSTEM_PROMPT = `You help a retrieval system that searches a company's internal note vault. You receive a question and candidate chunks of notes, each with an id, its note path, the date of the note when it has one, and its heading.
+Each note gets the probability of three verdicts:
+${VERDICTS.map((verdict) => `- ${verdict}: ${JUDGE_QUESTION.criteria[verdict]}`).join("\n")}
 
-For each chunk id, give the probability that the chunk helps answer the question, from 0 (useless) to 1 (it holds the answer or a necessary part of it). Return one entry for every chunk id of the message, with exactly the id you were given.
+You receive a question and notes, each with an id, its path, its date when it has one, the paths of the notes it links to and its text. For every note, give the probability of each verdict, from 0 to 1, the three summing to 1. Return one entry for every note of the message, with exactly the id you were given.
 
-Give calibrated estimates rather than certainties: avoid extreme values such as 0 or 1 unless the text leaves no doubt. Judge using only the text of the chunks given in the message, not what you know from elsewhere.`
-
-const ASSESS_SYSTEM_PROMPT = `You help a retrieval system that searches a company's internal note vault. You receive a question, the chunks of notes kept so far (each with an id, its note path, the date of the note when it has one, and its heading) and the links that can be followed from them (each with an id, the title of the note it points to and its label, the sentence around the link).
-
-Give "sufficient", the probability that the chunks together are enough to answer the question, from 0 to 1.
-
-Then give the probability of each of the four ways in which the context may fall short of the answer. Each is a number from 0 to 1, and the four describe what is missing:
-- detail_in_linked_note: the chunks are on the right track but the answer is likely in a note one link away, a linked note that holds the detail.
-- newer_version: the context may be outdated, because a later note may change, update or replace what the chunks say, for example a decision, a date or an owner that was revised afterwards.
-- topic_not_found: nothing on the topic of the question was found, so the chunks are about something else.
-- unidentified: something is missing, but none of the three reasons above explains it, or you cannot tell why.
-
-For each link id, give the probability that its target note holds what is missing, judging from the label and the title of the link only, since you do not see the note itself. Return one entry for every link id of the message, with exactly the id you were given.
-
-Give calibrated estimates rather than certainties: avoid extreme values such as 0 or 1 unless the text leaves no doubt. Judge using only the text given in the message, not what you know from elsewhere.`
+Give calibrated estimates rather than certainties: avoid extreme values such as 0 or 1 unless the text leaves no doubt. Judge using only the text of the notes given in the message, not what you know from elsewhere.`
 
 export class LLMJudge implements Judge {
   constructor(private readonly llm: LLM) {}
 
-  async relevance(question: string, chunks: DatedChunk[]): Promise<Relevance> {
-    if (chunks.length === 0) return { chunks: {}, calls: [] }
+  async judge(question: string, notes: NoteForJudge[]): Promise<Judgement> {
+    if (notes.length === 0) return { notes: {}, calls: [] }
     const { value, call } = await this.llm.completeJson(
       {
-        system: RELEVANCE_SYSTEM_PROMPT,
-        prompt: `Question: ${question}\n\n${chunksSection(chunks)}`,
-        maxTokens: RELEVANCE_BASE_TOKENS + TOKENS_PER_ITEM * chunks.length,
+        system: SYSTEM_PROMPT,
+        prompt: `Question: ${question}\n\nNotes:\n\n${notes.map(noteSection).join("\n\n")}`,
+        maxTokens: BASE_TOKENS + TOKENS_PER_NOTE * notes.length,
       },
-      RelevanceSchema
+      OutputSchema
     )
+    const byAlias = new Map(value.notes.map((entry) => [entry.id, entry]))
     return {
-      chunks: probabilitiesById(
-        chunks.map((chunk) => chunk.id),
-        value.chunks
-      ),
-      calls: [call],
-    }
-  }
-
-  async assess(
-    question: string,
-    chunks: DatedChunk[],
-    links: Link[]
-  ): Promise<Assessment> {
-    const { value, call } = await this.llm.completeJson(
-      {
-        system: ASSESS_SYSTEM_PROMPT,
-        prompt: `Question: ${question}\n\n${chunksSection(chunks)}\n\n${linksSection(links)}`,
-        maxTokens: ASSESS_BASE_TOKENS + TOKENS_PER_ITEM * links.length,
-      },
-      AssessSchema
-    )
-    const probabilities = normalized(value.missing)
-    return {
-      sufficient: clamp(value.sufficient),
-      missing: { choice: mostProbable(probabilities), probabilities },
-      links: probabilitiesById(
-        links.map((link) => link.id),
-        value.links
+      notes: Object.fromEntries(
+        notes.map((note, index) => [
+          note.path,
+          verdictsOf(byAlias.get(alias(index))),
+        ])
       ),
       calls: [call],
     }
   }
 }
 
-function chunksSection(chunks: DatedChunk[]): string {
-  const entries = chunks.map(
-    (chunk) =>
-      `[${chunk.id}] ${chunk.notePath}${chunk.noteDate === null ? "" : ` (${chunk.noteDate})`}\n${chunk.heading}\n${chunk.text}`
+/** The short id of the nth note of a message: `n1`, `n2`… */
+function alias(index: number): string {
+  return `n${index + 1}`
+}
+
+function noteSection(note: NoteForJudge, index: number): string {
+  const date = note.date === null ? "" : ` (${note.date})`
+  const links =
+    note.links.length === 0 ? "" : `Links to: ${note.links.join(", ")}\n`
+  return `[${alias(index)}] ${note.path}${date}\n${links}${note.text}`
+}
+
+/** Clamps the values and scales them to sum to 1 (`none` when all are 0). */
+function verdictsOf(
+  entry: Record<Verdict, number> | undefined
+): Record<Verdict, number> {
+  const clamped = VERDICTS.map((verdict) =>
+    Math.min(1, Math.max(0, entry?.[verdict] ?? 0))
   )
-  return `Chunks:\n\n${entries.join("\n\n")}`
-}
-
-function linksSection(links: Link[]): string {
-  const entries = links.map(
-    (link) => `[${link.id}] ${titleOf(link.targetPath)}\n${link.label}`
-  )
-  return `Links:\n\n${entries.join("\n\n")}`
-}
-
-/** The title of a note is its file name, without folders and extension. */
-function titleOf(path: string): string {
-  const fileName = path.slice(path.lastIndexOf("/") + 1)
-  return fileName.replace(/\.md$/, "")
-}
-
-function clamp(value: number): number {
-  return Math.min(1, Math.max(0, value))
-}
-
-/** One clamped probability for each expected id: 0 if left out, extras dropped. */
-function probabilitiesById(
-  ids: string[],
-  entries: { id: string; probability: number }[]
-): Record<string, number> {
-  const scored = new Map(
-    entries.map((entry) => [entry.id, clamp(entry.probability)])
-  )
-  return Object.fromEntries(ids.map((id) => [id, scored.get(id) ?? 0]))
-}
-
-/** Clamps the values and scales them to sum to 1 (uniform when all are 0). */
-function normalized(raw: Record<Missing, number>): Record<Missing, number> {
-  const clamped = MISSING.map((key) => clamp(raw[key]))
   const total = clamped.reduce((sum, value) => sum + value, 0)
+  if (total === 0) return { answer: 0, step: 0, none: 1 }
   return Object.fromEntries(
-    MISSING.map((key, index) => [
-      key,
-      total === 0 ? 1 / MISSING.length : (clamped[index] as number) / total,
+    VERDICTS.map((verdict, index) => [
+      verdict,
+      (clamped[index] as number) / total,
     ])
-  ) as Record<Missing, number>
-}
-
-/** The most probable value; ties go to the first in `MISSING` order. */
-function mostProbable(probabilities: Record<Missing, number>): Missing {
-  return MISSING.reduce((best, key) =>
-    probabilities[key] > probabilities[best] ? key : best
-  )
+  ) as Record<Verdict, number>
 }

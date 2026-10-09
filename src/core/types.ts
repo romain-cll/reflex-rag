@@ -18,18 +18,13 @@ export interface Note {
   frontmatter: Record<string, unknown>
 }
 
-/** A section of a note: the unit the index retrieves and the judge scores. */
+/** A section of a note: the unit the index retrieves. */
 export interface Chunk {
   id: string
   notePath: string
   /** Path of headings leading to the section, joined with ` > `. */
   heading: string
   text: string
-}
-
-/** A chunk with the date of its note, as the judge reads it. */
-export interface DatedChunk extends Chunk {
-  noteDate: string | null
 }
 
 /** A wikilink visible from the current context. */

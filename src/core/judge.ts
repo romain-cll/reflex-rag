@@ -1,42 +1,31 @@
-import type { DatedChunk, Link, ModelCall } from "./types.ts"
+import type { ModelCall } from "./types.ts"
 
-export const MISSING = [
-  "detail_in_linked_note",
-  "newer_version",
-  "topic_not_found",
-  "unidentified",
-] as const
+/** What a note gives for answering a question. */
+export const VERDICTS = ["answer", "step", "none"] as const
 
-export type Missing = (typeof MISSING)[number]
+export type Verdict = (typeof VERDICTS)[number]
 
-export interface Relevance {
-  /** Probability that each chunk is relevant to the question, by chunk id. */
-  chunks: Record<string, number>
-  calls: ModelCall[]
+/** A whole note, as the judge reads it. */
+export interface NoteForJudge {
+  path: string
+  date: string | null
+  /** The whole note body. */
+  text: string
+  /** Paths of the notes it links to. */
+  links: string[]
 }
 
-export interface Assessment {
-  /** Probability that the chunks are enough to answer the question. */
-  sufficient: number
-  missing: {
-    choice: Missing
-    probabilities: Record<Missing, number>
-  }
-  /** Probability that each link leads to what is missing, by link id. */
-  links: Record<string, number>
+export interface Judgement {
+  /** A probability for each verdict, summing to 1, by note path. */
+  notes: Record<string, Record<Verdict, number>>
   calls: ModelCall[]
 }
 
 /**
- * Judges what the index found, in two steps per turn. A system-one model
- * answers at most 64 questions over one shared state, which cannot hold a
- * relevance question for each of 50 candidates plus the assessment.
+ * Judges whole notes with one closed question (`JUDGE_QUESTION`), shared by
+ * the LLM judge and the system-one judge so that they differ only by the
+ * model that answers it.
  */
 export interface Judge {
-  relevance(question: string, chunks: DatedChunk[]): Promise<Relevance>
-  assess(
-    question: string,
-    chunks: DatedChunk[],
-    links: Link[]
-  ): Promise<Assessment>
+  judge(question: string, notes: NoteForJudge[]): Promise<Judgement>
 }
