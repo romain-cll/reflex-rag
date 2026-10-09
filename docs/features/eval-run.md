@@ -31,6 +31,10 @@ The retrieval brick now returns notes, not chunks (docs/features/retrieval-loop.
 - **AC14 — loop errors**: when `retrieve` throws an error carrying `calls` and `steps` arrays (a `LoopError`), the record keeps the error message and the calls, has `output: null`, an empty context, `loop: { outcome: { type: "error", rule: "loop_error" }, hops: 0, rewrites: 0, steps, judged: {}, kept: [], frontier: [] }`, counts the cost of the calls, gets the failure `loop_error`, and the run goes on. Any other error thrown by `retrieve` stops the run as before.
 - **AC15 — regrading**: `scripts/regrade-run.ts` recomputes all of the above from the trace (the loop's `judged`, `kept` and `frontier` are recorded in it).
 
+## Revision 4 — progress
+
+- **AC16 — progress**: `runEval` takes an optional `onProgress(record, done, total)`, called after each question once its record is written, with the number of questions done and the number to do. `reflex eval` uses it to print one line per question on stderr: `[12/60] q-013 multi_hop correct 5.2 s 0.0021 USD` (`wrong (<failure>)` instead of `correct`), so that a long run shows where it is.
+
 ## Technical plan
 
 Files:
