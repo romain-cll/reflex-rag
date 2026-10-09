@@ -16,7 +16,7 @@ The first version made two calls per turn: a relevance score per chunk, then an 
   - `none`: "The note does not help answer the question."
 - **AC3 — one call per batch**: `LLMJudge.judge` makes one `completeJson` call for all the notes it receives. The system prompt holds the instructions and the three verdict descriptions of `JUDGE_QUESTION`, asks for the probability of each verdict for every note, calibrated rather than certain, judged only from the given text. The user prompt holds the question, then each note under a short alias `n1`, `n2`… in input order, with its path, its date when it has one, the paths it links to, and its text.
 - **AC4 — output mapping**: the model answers `{ notes: [{ id, answer, step, none }] }` with the aliases. The judge maps the aliases back to the note paths, ignores unknown aliases, clamps every value to [0, 1] and normalizes each note's three values to sum to 1; a note the model left out, or whose three values are all 0, gets `{ answer: 0, step: 0, none: 1 }`.
-- **AC5 — budget and errors**: `maxTokens` is a fixed base plus 24 tokens per note. With no note, the judge makes no call and returns empty results. The `LLM`'s errors pass through unchanged (they carry the billed call).
+- **AC5 — budget and errors**: `maxTokens` is a fixed base plus 48 tokens per note (Haiku's structured output measured 32–34 tokens per `{ id, probability }` entry in the first version; an entry now holds three values). With no note, the judge makes no call and returns empty results. The `LLM`'s errors pass through unchanged (they carry the billed call).
 
 The Anthropic API exposes no token probabilities: config B's probabilities are stated by the model, a limit to report.
 
