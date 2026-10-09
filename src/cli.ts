@@ -11,7 +11,8 @@ Commands:
   ask "<question>"           Ask a question about the vault
   eval --config <A|B|C>      Run the evals
     [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
-    [--candidates <n>] [--rewrite llm|code]    (--rewrite: config B)
+    [--candidates <n>] [--rewrite llm|code]    (--rewrite: configs B and C)
+    [--system-one jev|clef] [--fallback <0..1>]    (config C)
 
 Options:
   -h, --help                 Show this help`
@@ -43,6 +44,8 @@ function run(argv: string[]): number | Promise<number> {
         "dry-run": { type: "boolean" },
         rewrite: { type: "string" },
         candidates: { type: "string" },
+        "system-one": { type: "string" },
+        fallback: { type: "string" },
       },
       strict: true,
       allowPositionals: true,
@@ -82,6 +85,8 @@ function run(argv: string[]): number | Promise<number> {
         dryRun: values["dry-run"],
         rewrite: values.rewrite,
         candidates: values.candidates,
+        systemOne: values["system-one"],
+        fallback: values.fallback,
       })
     }
     default:

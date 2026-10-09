@@ -12,7 +12,7 @@ const ERROR_BODY_CHARS = 200
 
 const JEV_URL = "https://api.typesafe.ai"
 /** Pinned, so that the published runs can be reproduced. */
-const JEV_MODEL = "jev-1.13.0"
+export const JEV_MODEL = "jev-1.13.0"
 const DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 const CLEF_MODEL = "clef-flash"
 

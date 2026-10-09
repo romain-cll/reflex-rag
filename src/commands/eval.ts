@@ -13,19 +13,23 @@ import {
 import type { Embedder } from "../core/embedder.ts"
 import type { Judge, NoteForJudge } from "../core/judge.ts"
 import { LLMCallError, type LLM, type LLMRequest } from "../core/llm.ts"
-import type { Chunk, ModelCall } from "../core/types.ts"
+import type { SystemOne, SystemOneRequest } from "../core/system-one.ts"
+import type { Chunk, ModelCall, Role } from "../core/types.ts"
 import { openIndex, type Index } from "../index/read.ts"
 import { callCostUsd } from "../eval/prices.ts"
 import { runEval, type EvalOptions } from "../eval/run.ts"
+import { FallbackJudge } from "../judge/fallback-judge.ts"
 import { LLMJudge } from "../judge/llm-judge.ts"
+import { SystemOneJudge } from "../judge/system-one-judge.ts"
 import { noteText, runLoop } from "../loop/loop.ts"
-import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
-import { CodeRewriter, LLMRewriter } from "../loop/rewriter.ts"
+import { DEFAULT_POLICY, POLICIES, type PolicyConfig } from "../loop/policy.ts"
+import { CodeRewriter, LLMRewriter, type Rewriter } from "../loop/rewriter.ts"
 import {
   AnthropicLLM,
   THINKING_HEADROOM_TOKENS,
 } from "../models/anthropic-llm.ts"
 import { MistralEmbedder } from "../models/mistral-embedder.ts"
+import { clefSystemOne, JEV_MODEL, jevSystemOne } from "../models/system-one.ts"
 import { HybridRetriever } from "../retrieval/hybrid.ts"
 
 export type EvalConfig = "A" | "B" | "C"
@@ -37,14 +41,21 @@ export interface EvalCliOptions {
   k?: string
   maxCost?: string
   dryRun?: boolean
-  /** Config B only. */
+  /** Configs B and C. */
   rewrite?: string
   candidates?: string
+  /** Config C only. */
+  systemOne?: string
+  fallback?: string
 }
 
 const REWRITERS = ["llm", "code"] as const
 
 type RewriterKind = (typeof REWRITERS)[number]
+
+const SYSTEM_ONES = ["jev", "clef"] as const
+
+type SystemOneKind = (typeof SYSTEM_ONES)[number]
 
 interface EvalSettings {
   split: Split
@@ -54,6 +65,9 @@ interface EvalSettings {
   dryRun: boolean
   rewrite: RewriterKind
   candidates: number
+  systemOne: SystemOneKind
+  /** A note whose best verdict is below it is judged again by the LLM. */
+  fallback: number
 }
 
 const QUESTIONS_PATH = "evals/dev/questions.json"
@@ -63,6 +77,7 @@ const ANSWERER_MODEL = "claude-haiku-5-5"
 /** Notes in the context. */
 const DEFAULT_K = 5
 const DEFAULT_CANDIDATES = 50
+const DEFAULT_FALLBACK = 0.6
 /** Rough size of a token, for the dry-run estimate. */
 const CHARS_PER_TOKEN = 4
 
@@ -71,7 +86,6 @@ export async function evalCommand(
   options: EvalCliOptions
 ): Promise<number> {
   try {
-    if (config === "C") throw new Error("config C is not implemented")
     return await runConfig(config, parseSettings(config, options))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -81,11 +95,23 @@ export async function evalCommand(
 }
 
 function parseSettings(
-  config: "A" | "B",
+  config: EvalConfig,
   options: EvalCliOptions
 ): EvalSettings {
   if (config === "A" && options.rewrite !== undefined) {
-    throw new Error("--rewrite only applies to config B, not to config A")
+    throw new Error(
+      "--rewrite only applies to configs B and C, not to config A"
+    )
+  }
+  for (const [name, value] of [
+    ["system-one", options.systemOne],
+    ["fallback", options.fallback],
+  ]) {
+    if (config !== "C" && value !== undefined) {
+      throw new Error(
+        `--${name} only applies to config C, not to config ${config}`
+      )
+    }
   }
   const split = options.split ?? "test"
   if (!isSplit(split)) {
@@ -103,23 +129,41 @@ function parseSettings(
         ? 1
         : parseNumber("max-cost", options.maxCost, false),
     dryRun: options.dryRun ?? false,
-    rewrite: parseRewriter(options.rewrite),
+    rewrite: parseChoice("rewrite", options.rewrite, REWRITERS, "llm"),
     candidates:
       options.candidates === undefined
         ? DEFAULT_CANDIDATES
         : parseNumber("candidates", options.candidates, true),
+    systemOne: parseChoice("system-one", options.systemOne, SYSTEM_ONES, "jev"),
+    fallback:
+      options.fallback === undefined
+        ? DEFAULT_FALLBACK
+        : parseFallback(options.fallback),
   }
 }
 
-function parseRewriter(text: string | undefined): RewriterKind {
-  if (text === undefined) return "llm"
-  const kind = REWRITERS.find((candidate) => candidate === text)
-  if (kind === undefined) {
+function parseChoice<T extends string>(
+  name: string,
+  text: string | undefined,
+  choices: readonly T[],
+  byDefault: T
+): T {
+  if (text === undefined) return byDefault
+  const choice = choices.find((candidate) => candidate === text)
+  if (choice === undefined) {
     throw new Error(
-      `invalid --rewrite "${text}", expected ${REWRITERS.join(" or ")}`
+      `invalid --${name} "${text}", expected ${choices.join(" or ")}`
     )
   }
-  return kind
+  return choice
+}
+
+function parseFallback(text: string): number {
+  const value = text.trim() === "" ? NaN : Number(text)
+  if (!(value >= 0 && value <= 1)) {
+    throw new Error(`--fallback must be a number from 0 to 1, got "${text}"`)
+  }
+  return value
 }
 
 function isSplit(value: string): value is Split {
@@ -148,7 +192,7 @@ type Pipeline = Pick<
 }
 
 async function runConfig(
-  config: "A" | "B",
+  config: EvalConfig,
   settings: EvalSettings
 ): Promise<number> {
   for (const path of [QUESTIONS_PATH, INDEX_PATH]) {
@@ -156,6 +200,7 @@ async function runConfig(
   }
   const mistralKey = requireKey("MISTRAL_API_KEY")
   if (!settings.dryRun) requireKey("ANTHROPIC_API_KEY")
+  const systemOne = config === "C" ? systemOneOf(settings.systemOne) : undefined
   const questions = await loadQuestions(settings)
 
   const index = openIndex(INDEX_PATH)
@@ -168,13 +213,22 @@ async function runConfig(
             retrieverOf(index, embedder, settings),
             settings
           )
-        : await dryRunB(questions, index, embedder, settings)
+        : await dryRunLoop(
+            config,
+            questions,
+            index,
+            embedder,
+            settings,
+            systemOne
+          )
     }
 
     const pipeline =
       config === "A"
         ? pipelineA(index, embedder, settings)
-        : pipelineB(index, embedder, settings)
+        : config === "B"
+          ? pipelineB(index, embedder, settings)
+          : pipelineC(index, embedder, settings, systemOne!)
     const { vaultPath, notes, chunks, links } = index.meta()
     const result = await runEval({
       questions,
@@ -202,6 +256,11 @@ async function runConfig(
   }
 }
 
+/** Jev needs `TYPESAFE_API_KEY`: `jevSystemOne` rejects its absence. */
+function systemOneOf(kind: SystemOneKind): SystemOne {
+  return kind === "jev" ? jevSystemOne() : clefSystemOne()
+}
+
 function pipelineA(
   index: Index,
   embedder: Embedder,
@@ -210,7 +269,7 @@ function pipelineA(
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
   return {
     retrieve: retrieverOf(index, embedder, settings),
-    answer: (query, context) => answerQuestion(query, context, llm),
+    answer: (query, context) => answerTagged(query, context, llm),
     k: settings.k,
     candidates: settings.candidates,
     models: { answerer: llm.model },
@@ -227,12 +286,71 @@ function pipelineB(
   embedder: Embedder,
   settings: EvalSettings
 ): Pipeline {
-  const retriever = new HybridRetriever(index, embedder)
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
-  const judge = new RoleTaggedJudge(new LLMJudge(llm))
-  const rewriter =
+  return loopPipeline(index, embedder, settings, llm, {
+    judge: new RoleTaggedJudge(new LLMJudge(llm)),
+    policy: loopPolicy(settings.k, POLICIES.B),
+    judgeModel: llm.model,
+    fallbackTrace: false,
+    loopSettings: {},
+    models: {},
+  })
+}
+
+/**
+ * Config C: like B, but the system one judges the notes, and the LLM judges
+ * again those on which it hesitates (`--fallback`).
+ */
+function pipelineC(
+  index: Index,
+  embedder: Embedder,
+  settings: EvalSettings,
+  systemOne: SystemOne
+): Pipeline {
+  const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
+  return loopPipeline(index, embedder, settings, llm, {
+    judge: new FallbackJudge(
+      new SystemOneJudge(systemOne),
+      new RoleTaggedJudge(new LLMJudge(llm)),
+      { threshold: settings.fallback }
+    ),
+    policy: loopPolicy(settings.k, POLICIES.C),
+    judgeModel: systemOne.model,
+    fallbackTrace: true,
+    loopSettings: {
+      fallbackThreshold: settings.fallback,
+      systemOne: settings.systemOne,
+    },
+    models: { fallback: llm.model },
+  })
+}
+
+interface LoopVariant {
+  judge: Judge
+  policy: PolicyConfig
+  /** The model of the judge, as the settings name it. */
+  judgeModel: string
+  /** The loop trace holds the notes judged again. */
+  fallbackTrace: boolean
+  /** What the settings of the loop hold besides the policy, the rewriter and the candidates. */
+  loopSettings: Record<string, unknown>
+  /** The models other than the judge, the rewriter and the answerer. */
+  models: Record<string, string>
+}
+
+/** The retrieval loop and the answerer of the configs B and C, which differ by their judge. */
+function loopPipeline(
+  index: Index,
+  embedder: Embedder,
+  settings: EvalSettings,
+  llm: LLM,
+  variant: LoopVariant
+): Pipeline {
+  const retriever = new HybridRetriever(index, embedder)
+  const rewriter = roleTaggedRewriter(
     settings.rewrite === "llm" ? new LLMRewriter(llm) : new CodeRewriter()
-  const policy = loopPolicy(settings.k)
+  )
+  const { policy } = variant
   return {
     retrieve: async (query) => {
       const {
@@ -245,10 +363,15 @@ function pipelineB(
         judged,
         kept,
         frontier,
+        fallback,
+        stages,
       } = await runLoop(query, {
-        retrieve: (text, k) => retriever.retrieve(text, k),
+        retrieve: async (text, k) => {
+          const retrieval = await retriever.retrieve(text, k)
+          return { ...retrieval, calls: withRole(retrieval.calls, "embed") }
+        },
         index,
-        judge,
+        judge: variant.judge,
         rewriter,
         policy,
         candidates: settings.candidates,
@@ -256,34 +379,46 @@ function pipelineB(
       return {
         context,
         calls,
-        loop: { outcome, hops, rewrites, steps, judged, kept, frontier },
+        stages,
+        loop: {
+          outcome,
+          hops,
+          rewrites,
+          steps,
+          judged,
+          kept,
+          frontier,
+          ...(variant.fallbackTrace ? { fallback } : {}),
+        },
       }
     },
     answer: async (query, context, loop) =>
       loop?.outcome.type === "abstain"
         ? { output: abstentionOutput(loop.outcome.rule), call: null }
-        : answerQuestion(query, context, llm),
+        : answerTagged(query, context, llm),
     k: settings.k,
     candidates: settings.candidates,
     loop: {
       policy,
       rewriter: rewriter.kind,
       candidates: settings.candidates,
+      ...variant.loopSettings,
     },
     models: {
-      judge: llm.model,
+      judge: variant.judgeModel,
+      ...variant.models,
       rewriter: rewriter.kind === "llm" ? llm.model : "none",
       answerer: llm.model,
     },
   }
 }
 
-/** The default policy, with `k` as the cap of the notes in the context. */
-export function loopPolicy(k: number): PolicyConfig {
-  return {
-    ...DEFAULT_POLICY,
-    budgets: { ...DEFAULT_POLICY.budgets, maxNotes: k },
-  }
+/** `policy`, the default one unless given, with `k` as the cap of the notes in the context. */
+export function loopPolicy(
+  k: number,
+  policy: PolicyConfig = DEFAULT_POLICY
+): PolicyConfig {
+  return { ...policy, budgets: { ...policy.budgets, maxNotes: k } }
 }
 
 /** The output of a question the loop abstained on, which the answerer never sees. */
@@ -296,26 +431,48 @@ export function abstentionOutput(rule: string): Answer {
   }
 }
 
-/** Marks the calls of a judge as such: they share their model with the rewriter and the answerer. */
+/** Marks the calls of an LLM judge as judge calls: they share their model with the rewriter and the answerer. */
 class RoleTaggedJudge implements Judge {
   constructor(private readonly inner: Judge) {}
 
-  async judge(...args: Parameters<Judge["judge"]>) {
-    try {
-      const result = await this.inner.judge(...args)
-      return { ...result, calls: tagged(result.calls) }
-    } catch (error) {
-      // The billed call of a failed judge counts as a judge call too.
-      if (error instanceof LLMCallError) {
-        throw new LLMCallError(error.message, tagged([error.call])[0]!)
-      }
-      throw error
-    }
+  judge(...args: Parameters<Judge["judge"]>) {
+    return tagging("judge", () => this.inner.judge(...args))
   }
 }
 
-function tagged(calls: ModelCall[]): ModelCall[] {
-  return calls.map((call) => ({ ...call, role: "judge" }))
+function roleTaggedRewriter(inner: Rewriter): Rewriter {
+  return {
+    kind: inner.kind,
+    rewrite: (...args) => tagging("rewrite", () => inner.rewrite(...args)),
+  }
+}
+
+async function answerTagged(
+  ...args: [string, ContextChunk[], LLM]
+): Promise<{ output: Answer; call: ModelCall }> {
+  const { output, call } = await answerQuestion(...args)
+  return { output, call: { ...call, role: "answer" } }
+}
+
+/** The calls of a result, or of the failed call it throws, carry `role` unless they have one. */
+async function tagging<T extends { calls: ModelCall[] }>(
+  role: Role,
+  run: () => Promise<T>
+): Promise<T> {
+  try {
+    const result = await run()
+    return { ...result, calls: withRole(result.calls, role) }
+  } catch (error) {
+    // The billed call of a failed call counts for its role too.
+    if (error instanceof LLMCallError) {
+      throw new LLMCallError(error.message, withRole([error.call], role)[0]!)
+    }
+    throw error
+  }
+}
+
+function withRole(calls: ModelCall[], role: Role): ModelCall[] {
+  return calls.map((call) => ({ ...call, role: call.role ?? role }))
 }
 
 function requireKey(name: string): string {
@@ -384,7 +541,7 @@ function retrieverOf(
         k
       )
     )
-    return { context, calls }
+    return { context, calls: withRole(calls, "embed") }
   }
 }
 
@@ -471,50 +628,72 @@ async function dryRunA(
 }
 
 /**
- * Config B: retrieves the candidates of every question (Mistral embeddings
- * only) and prints an upper bound of the run, from `upperBoundCalls`.
+ * Configs B and C: retrieves the candidates of every question (Mistral
+ * embeddings only) and prints an upper bound of the run, from
+ * `upperBoundCalls` (B) or `upperBoundCallsC`.
  */
-async function dryRunB(
+async function dryRunLoop(
+  config: "B" | "C",
   questions: Question[],
   index: Index,
   embedder: Embedder,
-  settings: EvalSettings
+  settings: EvalSettings,
+  systemOne: SystemOne | undefined
 ): Promise<number> {
   const retriever = new HybridRetriever(index, embedder)
-  const policy = loopPolicy(settings.k)
+  const policy = loopPolicy(settings.k, POLICIES[config])
   const { maxRewrites } = policy.budgets
   let embeddings = 0
   let embeddingCostUsd = 0
-  let anthropicCalls: ModelCall[] = []
+  let calls: ModelCall[] = []
   for (const question of questions) {
-    const { chunks, calls } = await retriever.retrieve(
+    const retrieval = await retriever.retrieve(
       question.question,
       settings.candidates
     )
-    embeddings += calls.length
+    embeddings += retrieval.calls.length
     // Every rewrite embeds a new query, about as long as the question.
-    embeddingCostUsd += sum(calls.map(callCostUsd)) * (1 + maxRewrites)
+    embeddingCostUsd +=
+      sum(retrieval.calls.map(callCostUsd)) * (1 + maxRewrites)
     const candidates = topNotes(
-      chunks.map(({ chunk }) => chunk),
+      retrieval.chunks.map(({ chunk }) => chunk),
       Infinity
     ).map((path) => noteForJudge(index, path))
-    anthropicCalls = anthropicCalls.concat(
-      await upperBoundCalls(
-        question.question,
-        candidates,
-        policy,
-        settings.rewrite
-      )
+    calls = calls.concat(
+      systemOne
+        ? await upperBoundCallsC(
+            question.question,
+            candidates,
+            policy,
+            settings.rewrite,
+            systemOne.model
+          )
+        : await upperBoundCalls(
+            question.question,
+            candidates,
+            policy,
+            settings.rewrite
+          )
     )
   }
 
-  const costUsd = embeddingCostUsd + sum(anthropicCalls.map(callCostUsd))
+  const systemOneCalls = calls.filter((call) => call.model === systemOne?.model)
+  const anthropicCalls = calls.filter((call) => !systemOneCalls.includes(call))
+  const systemOneCostUsd = sum(systemOneCalls.map(callCostUsd))
+  const anthropicCostUsd = sum(anthropicCalls.map(callCostUsd))
+  const costUsd = embeddingCostUsd + systemOneCostUsd + anthropicCostUsd
   console.log(
     [
-      `Dry run, config B, ${settings.split} split (only the query embeddings were requested)`,
+      `Dry run, config ${config}, ${settings.split} split (only the query embeddings were requested)`,
       `  questions:        ${questions.length}`,
-      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter`,
-      `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), up to ${anthropicCalls.length} Anthropic (${ANSWERER_MODEL})`,
+      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, fallback below ${settings.fallback}` : ""}`,
+      `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), ${systemOne ? `up to ${systemOneCalls.length} system one (${systemOne.model}), ` : ""}up to ${anthropicCalls.length} Anthropic (${ANSWERER_MODEL})`,
+      ...(systemOne
+        ? [
+            `  system one:       ${systemOneCostUsd.toFixed(4)} USD`,
+            `  Anthropic:        ${anthropicCostUsd.toFixed(4)} USD`,
+          ]
+        : []),
       `  cost upper bound: ${costUsd.toFixed(4)} USD (cap ${settings.maxCostUsd} USD)`,
     ].join("\n")
   )
@@ -564,6 +743,52 @@ export async function upperBoundCalls(
   }
   await answerQuestion(question, context, recorder)
   return requests.map(estimatedCall)
+}
+
+/**
+ * The calls one question can make at most with config C: the system-one calls
+ * first, one per candidate note and per possible turn, sized from the request
+ * the system-one judge builds for the note; then the calls of
+ * `upperBoundCalls`, the worst case of the fallback, the rewriter and the
+ * answerer. A system-one call has no output, which is free.
+ */
+export async function upperBoundCallsC(
+  question: string,
+  candidates: NoteForJudge[],
+  policy: PolicyConfig,
+  rewriter: RewriterKind,
+  systemOneModel: string = JEV_MODEL
+): Promise<ModelCall[]> {
+  const requests: SystemOneRequest[] = []
+  const recorder: SystemOne = {
+    model: systemOneModel,
+    decide: (request) => {
+      requests.push(request)
+      return Promise.resolve({
+        answers: {
+          verdict: {
+            type: "choice",
+            choice: "none",
+            probabilities: { answer: 0, step: 0, none: 1 },
+            confidence: 1,
+          },
+        },
+        call: noCall,
+      })
+    },
+  }
+  await new SystemOneJudge(recorder).judge(question, candidates)
+  const turns = 1 + policy.budgets.maxHops + policy.budgets.maxRewrites
+  const turnCalls = requests.map((request): ModelCall => ({
+    model: systemOneModel,
+    inputTokens: Math.ceil(JSON.stringify(request).length / CHARS_PER_TOKEN),
+    outputTokens: 0,
+    latencyMs: 0,
+  }))
+  return [
+    ...Array.from({ length: turns }, () => turnCalls).flat(),
+    ...(await upperBoundCalls(question, candidates, policy, rewriter)),
+  ]
 }
 
 /** A note as the judge reads it: its text and its distinct link targets. */

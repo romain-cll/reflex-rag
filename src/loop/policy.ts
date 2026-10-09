@@ -22,6 +22,15 @@ export const DEFAULT_POLICY: PolicyConfig = {
   budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 5 },
 }
 
+/**
+ * The policy of each config with a judged loop. Both start from the default
+ * until config C's thresholds are chosen on the tuning split.
+ */
+export const POLICIES: Record<"B" | "C", PolicyConfig> = {
+  B: DEFAULT_POLICY,
+  C: DEFAULT_POLICY,
+}
+
 /** A note the judge has classified. */
 export interface JudgedNote {
   path: string
