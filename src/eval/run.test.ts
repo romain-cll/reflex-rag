@@ -6,6 +6,8 @@ import type { Question } from "../../evals/schema.ts"
 import type { ModelCall } from "../core/types.ts"
 import { callCostUsd, PRICES } from "./prices.ts"
 import { renderReport, runEval, summarize } from "./run.ts"
+// A namespace import: while `progressLine` is not exported, only its own tests fail.
+import * as runModule from "./run.ts"
 
 type RunRecord = Parameters<typeof summarize>[0][number]
 
@@ -221,6 +223,7 @@ interface RunOptions {
   /** Config B: the loop settings written to the settings line. */
   loop?: Record<string, unknown>
   candidates?: number
+  onProgress?: (record: RunRecord, done: number, total: number) => void
 }
 
 /** Always writes into a temporary runs folder, never into the repository. */
@@ -245,6 +248,7 @@ function runWith(questions: Question[], options: RunOptions = {}) {
     gitCommit: "abc1234",
     index: INDEX,
     ...(options.loop ? { loop: options.loop } : {}),
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
   }
   const result = runEval(evalOptions)
   return { fake, runsDir, result }
@@ -3039,5 +3043,189 @@ describe("AC7 (eval-config-c) — stage, role and fallback metrics", () => {
     const judgeCost = (written.overall.costByRole as Record<string, number>)
       .judge
     expect(judgeCost).toBeCloseTo(0.1, 9)
+  })
+})
+
+function progressLine(record: RunRecord, done: number, total: number): string {
+  const format = (runModule as unknown as Record<string, unknown>).progressLine
+  if (typeof format !== "function") {
+    throw new Error("progressLine is not exported by run.ts")
+  }
+  return (format as (r: RunRecord, d: number, t: number) => string)(
+    record,
+    done,
+    total
+  )
+}
+
+describe("AC16 (revision 4) — progress", () => {
+  test("AC16 — progressLine prints the position, the id, the category, the verdict, the latency in seconds and the cost", () => {
+    const record = makeRecord(13, {
+      category: "multi_hop",
+      latencyMs: 5200,
+      costUsd: 0.0021,
+    })
+    expect(progressLine(record, 12, 60)).toBe(
+      "[12/60] q-013 multi_hop correct 5.2 s 0.0021 USD"
+    )
+  })
+
+  test("AC16 — progressLine prints wrong (<failure>) instead of correct for a wrong answer", () => {
+    const record = makeRecord(4, {
+      category: "temporal",
+      grade: wrong("retrieval_miss"),
+      latencyMs: 800,
+      costUsd: 0.01,
+    })
+    expect(progressLine(record, 1, 5)).toBe(
+      "[1/5] q-004 temporal wrong (retrieval_miss) 0.8 s 0.0100 USD"
+    )
+  })
+
+  test("AC16 — progressLine rounds the latency to one decimal and the cost to four", () => {
+    const rounded = makeRecord(1, { latencyMs: 5240, costUsd: 0.00214 })
+    expect(progressLine(rounded, 1, 2)).toBe(
+      "[1/2] q-001 simple correct 5.2 s 0.0021 USD"
+    )
+    const up = makeRecord(2, { latencyMs: 5260, costUsd: 0.00216 })
+    expect(progressLine(up, 2, 2)).toBe(
+      "[2/2] q-002 simple correct 5.3 s 0.0022 USD"
+    )
+    const zero = makeRecord(3, { latencyMs: 0, costUsd: 0 })
+    expect(progressLine(zero, 3, 3)).toBe(
+      "[3/3] q-003 simple correct 0.0 s 0.0000 USD"
+    )
+    const big = makeRecord(4, { latencyMs: 12_000, costUsd: 12.5 })
+    expect(progressLine(big, 4, 4)).toBe(
+      "[4/4] q-004 simple correct 12.0 s 12.5000 USD"
+    )
+  })
+
+  test("AC16 — onProgress is called once per question, in order, with done from 1 to n and total n", async () => {
+    const questions = [1, 2, 3].map((n) => makeQuestion(n))
+    const seen: Array<{ id: string; done: number; total: number }> = []
+    const { result } = runWith(questions, {
+      onProgress: (record, done, total) => {
+        seen.push({ id: record.id, done, total })
+      },
+    })
+    const { records } = await result
+    expect(records).toHaveLength(3)
+    expect(seen).toEqual([
+      { id: "q-001", done: 1, total: 3 },
+      { id: "q-002", done: 2, total: 3 },
+      { id: "q-003", done: 3, total: 3 },
+    ])
+  })
+
+  test("AC16 — onProgress receives the record of the question, the one the run returns", async () => {
+    const questions = [1, 2].map((n) => makeQuestion(n))
+    const received: RunRecord[] = []
+    const { result } = runWith(questions, {
+      onProgress: (record) => {
+        received.push(record)
+      },
+    })
+    const { records } = await result
+    expect(received).toEqual(records)
+  })
+
+  test("AC16 — the trace line of the question is already on disk when onProgress runs", async () => {
+    const questions = [1, 2, 3].map((n) => makeQuestion(n))
+    const runsDir = join(makeTempDir(), "runs")
+    const onDisk: Array<{ done: number; lines: unknown[] }> = []
+    const received: RunRecord[] = []
+    const { result } = runWith(questions, {
+      runsDir,
+      onProgress: (record, done) => {
+        received.push(record)
+        const lines = readFileSync(
+          join(readRunDir(runsDir), "trace.jsonl"),
+          "utf8"
+        )
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as unknown)
+        onDisk.push({ done, lines })
+      },
+    })
+    await result
+    expect(onDisk.map((entry) => entry.done)).toEqual([1, 2, 3])
+    for (const [index, entry] of onDisk.entries()) {
+      // The settings line, then one line per question done so far.
+      expect(entry.lines).toHaveLength(entry.done + 1)
+      expect(plain(entry.lines.at(-1)).id).toBe(received[index]!.id)
+      expect(entry.lines.at(-1)).toEqual(
+        JSON.parse(JSON.stringify(received[index])) as unknown
+      )
+    }
+  })
+
+  test("AC16 — onProgress is also called for a question whose answer failed", async () => {
+    const questions = [1, 2].map((n) => makeQuestion(n))
+    const overrides = new Map<string, Step>([
+      [
+        "q-001",
+        {
+          notes: questions[0]!.sources,
+          output: answered("Denver"),
+          answerError: { message: "output truncated" },
+        },
+      ],
+    ])
+    const seen: Array<{ id: string; failure: string | null; done: number }> = []
+    const { result } = runWith(questions, {
+      overrides,
+      onProgress: (record, done) => {
+        seen.push({ id: record.id, failure: record.grade.failure, done })
+      },
+    })
+    await result
+    expect(seen).toEqual([
+      { id: "q-001", failure: "answer_error", done: 1 },
+      { id: "q-002", failure: null, done: 2 },
+    ])
+  })
+
+  test("AC16 — onProgress is not called for the questions the cost cap skips, and total stays the number of questions given", async () => {
+    const questions = [1, 2, 3, 4, 5].map((n) => makeQuestion(n))
+    // Each question costs exactly 2 USD (one million sonnet input tokens).
+    const overrides = new Map<string, Step>(
+      questions.map((q) => [
+        q.id,
+        {
+          notes: q.sources,
+          output: answered("Denver"),
+          answerCall: call("claude-sonnet-5-5", MILLION, 0, 100),
+        },
+      ])
+    )
+    const seen: Array<{ id: string; done: number; total: number }> = []
+    const { result } = runWith(questions, {
+      maxCostUsd: 3,
+      overrides,
+      onProgress: (record, done, total) => {
+        seen.push({ id: record.id, done, total })
+      },
+    })
+    const { skipped } = await result
+    expect(skipped).toBe(3)
+    expect(seen).toEqual([
+      { id: "q-001", done: 1, total: 5 },
+      { id: "q-002", done: 2, total: 5 },
+    ])
+  })
+
+  test("AC16 — onProgress is never called when the cap is reached before the first question", async () => {
+    const questions = [1, 2].map((n) => makeQuestion(n))
+    let calls = 0
+    const { result } = runWith(questions, {
+      maxCostUsd: 0,
+      onProgress: () => {
+        calls += 1
+      },
+    })
+    await result
+    expect(calls).toBe(0)
   })
 })
