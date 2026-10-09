@@ -1,21 +1,24 @@
 import {
-  VERDICTS,
   JudgeCallsError,
   billedCalls,
   type Judge,
   type Judgement,
   type NoteForJudge,
+  type Verdict,
 } from "../core/judge.ts"
 import type { ModelCall } from "../core/types.ts"
 
 export interface FallbackJudgeOptions {
-  /** A note whose highest verdict probability is below it is judged again. */
-  threshold: number
+  /** The lower bound of the grey zone: a note not kept whose `answer` or `step` reaches it is judged again. */
+  low: number
+  /** Whether a verdict keeps its note; the grey zone sits just below it. */
+  isKept: (verdict: Record<Verdict, number>) => boolean
 }
 
 /**
  * Judges with `primary`, then judges again with `fallback`, in one call, the
- * notes on which `primary` hesitates.
+ * notes that `primary` nearly kept. The fallback reads the notes `primary`
+ * kept as context.
  */
 export class FallbackJudge implements Judge {
   constructor(
@@ -24,17 +27,20 @@ export class FallbackJudge implements Judge {
     private readonly options: FallbackJudgeOptions
   ) {}
 
-  async judge(question: string, notes: NoteForJudge[]): Promise<Judgement> {
+  async judge(
+    question: string,
+    notes: NoteForJudge[],
+    context: NoteForJudge[] = []
+  ): Promise<Judgement> {
+    const { low, isKept } = this.options
     const primaryStart = performance.now()
-    const first = await this.primary.judge(question, notes)
+    const first = await this.primary.judge(question, notes, context)
     const judgeMs = performance.now() - primaryStart
 
-    const uncertain = notes.filter(
-      (note) =>
-        Math.max(
-          ...VERDICTS.map((verdict) => first.notes[note.path]![verdict])
-        ) < this.options.threshold
-    )
+    const uncertain = notes.filter((note) => {
+      const verdict = first.notes[note.path]!
+      return !isKept(verdict) && Math.max(verdict.answer, verdict.step) >= low
+    })
     if (uncertain.length === 0) {
       return {
         ...first,
@@ -46,7 +52,10 @@ export class FallbackJudge implements Judge {
     const fallbackStart = performance.now()
     let second: Judgement
     try {
-      second = await this.fallback.judge(question, uncertain)
+      second = await this.fallback.judge(question, uncertain, [
+        ...context,
+        ...notes.filter((note) => isKept(first.notes[note.path]!)),
+      ])
     } catch (error) {
       throw new JudgeCallsError(
         error instanceof Error ? error.message : String(error),
