@@ -21,7 +21,7 @@ import type { SystemOne, SystemOneRequest } from "../core/system-one.ts"
 import type { Chunk, ModelCall, Role } from "../core/types.ts"
 import { openIndex, type Index } from "../index/read.ts"
 import { callCostUsd } from "../eval/prices.ts"
-import { runEval, type EvalOptions } from "../eval/run.ts"
+import { progressLine, runEval, type EvalOptions } from "../eval/run.ts"
 import { FallbackJudge } from "../judge/fallback-judge.ts"
 import { LLMJudge } from "../judge/llm-judge.ts"
 import { SystemOneJudge } from "../judge/system-one-judge.ts"
@@ -239,6 +239,8 @@ async function runConfig(
       ...pipeline,
       maxCostUsd: settings.maxCostUsd,
       runsDir: RUNS_DIR,
+      onProgress: (record, done, total) =>
+        console.error(progressLine(record, done, total)),
       config,
       split: settings.split,
       models: { ...pipeline.models, embedder: embedder.model },

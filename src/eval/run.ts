@@ -155,6 +155,8 @@ export interface EvalOptions {
   /** The run stops before a question once its cumulative cost has reached this. */
   maxCostUsd: number
   runsDir: string
+  /** Called after each record is appended to the trace, with the count done. */
+  onProgress?: (record: RunRecord, done: number, total: number) => void
   config: string
   split: Split
   models: Record<string, string>
@@ -215,6 +217,7 @@ export async function runEval(options: EvalOptions): Promise<EvalResult> {
     records.push(record)
     totalCostUsd += record.costUsd
     await appendFile(tracePath, jsonLine(record))
+    options.onProgress?.(record, records.length, questions.length)
   }
 
   const summary = summarize(records)
@@ -231,6 +234,18 @@ export async function runEval(options: EvalOptions): Promise<EvalResult> {
     })
   )
   return { records, summary, skipped, runDir }
+}
+
+/** One line per question: `[12/60] q-013 multi_hop correct 5.2 s 0.0021 USD`. */
+export function progressLine(
+  record: RunRecord,
+  done: number,
+  total: number
+): string {
+  const verdict = record.grade.correct
+    ? "correct"
+    : `wrong (${record.grade.failure})`
+  return `[${done}/${total}] ${record.id} ${record.category} ${verdict} ${(record.latencyMs / 1000).toFixed(1)} s ${record.costUsd.toFixed(4)} USD`
 }
 
 async function evaluate(
