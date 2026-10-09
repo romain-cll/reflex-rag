@@ -1,3 +1,4 @@
+import { LLMCallError } from "./llm.ts"
 import type { ModelCall } from "./types.ts"
 
 /** What a note gives for answering a question. */
@@ -32,4 +33,31 @@ export interface Judgement {
  */
 export interface Judge {
   judge(question: string, notes: NoteForJudge[]): Promise<Judgement>
+}
+
+/**
+ * A judge failure: `calls` holds the calls that were billed before it, so
+ * that their cost is not lost.
+ */
+export class JudgeCallsError extends Error {
+  constructor(
+    message: string,
+    readonly calls: ModelCall[],
+    options?: ErrorOptions
+  ) {
+    super(message, options)
+  }
+}
+
+/** The calls an error carries: its `calls`, or the `call` of an `LLMCallError`. */
+export function billedCalls(error: unknown): ModelCall[] {
+  if (error instanceof LLMCallError) return [error.call]
+  if (
+    error instanceof Error &&
+    "calls" in error &&
+    Array.isArray(error.calls)
+  ) {
+    return error.calls as ModelCall[]
+  }
+  return []
 }
