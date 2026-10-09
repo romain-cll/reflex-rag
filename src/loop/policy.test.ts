@@ -1117,7 +1117,7 @@ describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
   })
 
   test("decision-policy AC8 — follow-steps still uses step ≥ thresholds.step, not the sum", () => {
-    // A step note under keep (0.8 + 0.1 < 0.9): opened, though not kept.
+    // A step note (step 0.8 ≥ the step threshold) is opened by follow-steps.
     const stepNote = decide(
       state([note("s.md", { answer: 0.1, step: 0.8 })]),
       withKeep()
@@ -1137,7 +1137,8 @@ describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
 
   test("decision-policy AC8 — a step note under keep, no longer openable, is not kept: rewrites", () => {
     const action = decide(
-      state([note("s.md", { answer: 0.1, step: 0.8 }, { expanded: true })]),
+      // 0.05 + 0.8 < 0.9 (0.1 + 0.8 is exactly 0.9 in floating point, which is kept).
+      state([note("s.md", { answer: 0.05, step: 0.8 }, { expanded: true })]),
       withKeep()
     )
     expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
