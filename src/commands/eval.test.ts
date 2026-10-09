@@ -468,9 +468,36 @@ describe("eval-config-c AC1 — POLICIES", () => {
     expect(Object.keys(policyModule.POLICIES).sort()).toEqual(["B", "C"])
   })
 
-  test("eval-config-c AC1 — both start from DEFAULT_POLICY, in value", () => {
+  test("eval-config-c AC1 — B is DEFAULT_POLICY, in value", () => {
     expect(policyModule.POLICIES.B).toEqual(DEFAULT_POLICY)
-    expect(policyModule.POLICIES.C).toEqual(DEFAULT_POLICY)
+  })
+
+  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY and the thresholds answer 0.7 and step 0.7", () => {
+    expect(policyModule.POLICIES.C).toEqual({
+      thresholds: { answer: 0.7, step: 0.7 },
+      budgets: DEFAULT_POLICY.budgets,
+    })
+    expect(policyModule.POLICIES.C.budgets).toEqual({
+      maxHops: 2,
+      maxRewrites: 1,
+      explore: 3,
+      maxNotes: 5,
+    })
+  })
+
+  test("eval-config-c AC14 — the policy of C is not the object of DEFAULT_POLICY, and DEFAULT_POLICY keeps its thresholds", () => {
+    expect(policyModule.POLICIES.C).not.toBe(DEFAULT_POLICY)
+    expect(policyModule.POLICIES.C.thresholds).not.toBe(
+      DEFAULT_POLICY.thresholds
+    )
+    expect(DEFAULT_POLICY.thresholds).toEqual({ answer: 0.5, step: 0.5 })
+  })
+
+  test("eval-config-c AC14 — loopPolicy(k, POLICIES.C) carries the thresholds of C", () => {
+    expect(evalCommand.loopPolicy(6, policyModule.POLICIES.C)).toEqual({
+      thresholds: { answer: 0.7, step: 0.7 },
+      budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 6 },
+    })
   })
 
   test("eval-config-c AC1 — DEFAULT_POLICY is left as it was", () => {
@@ -522,65 +549,76 @@ function systemOneCalls(calls: ModelCall[]): ModelCall[] {
   return calls.filter((call) => call.model === JEV)
 }
 
-describe("eval-config-c AC8 — upperBoundCallsC, number and order of the calls", () => {
-  test("eval-config-c AC8 — default policy, llm rewriter: one system-one call per note and per turn, then the fallback, the rewriter and the answerer", async () => {
-    // 4 turns (1 + maxHops 2 + maxRewrites 1) on 8 notes.
+describe("eval-config-c AC16 — upperBoundCallsC, number and order of the calls", () => {
+  test("eval-config-c AC16 — default policy, llm rewriter: one system-one call per turn (4), then the fallback, the rewriter and the answerer", async () => {
+    // 4 turns (1 + maxHops 2 + maxRewrites 1), each one batch of 8 notes.
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(8, 400),
       DEFAULT_POLICY,
       "llm"
     )
-    expect(calls).toHaveLength(4 * 8 + (4 + 1 + 1))
-    expect(systemOneCalls(calls)).toHaveLength(4 * 8)
+    expect(calls).toHaveLength(4 + (4 + 1 + 1))
+    expect(systemOneCalls(calls)).toHaveLength(4)
   })
 
-  test("eval-config-c AC8 — the code rewriter makes no rewriter call", async () => {
+  test("eval-config-c AC16 — the code rewriter makes no rewriter call", async () => {
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(8, 400),
       DEFAULT_POLICY,
       "code"
     )
-    expect(calls).toHaveLength(4 * 8 + (4 + 0 + 1))
+    expect(calls).toHaveLength(4 + (4 + 0 + 1))
   })
 
-  test("eval-config-c AC8 — the count follows the hop and rewrite budgets and the number of notes", async () => {
-    // 1 + 3 + 2 = 6 turns on 5 notes, then 6 + 2 + 1 calls.
+  test("eval-config-c AC16 — the count follows the hop and rewrite budgets, not the number of notes", async () => {
+    // 1 + 3 + 2 = 6 turns, then 6 + 2 + 1 calls.
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(5, 300),
       policy(3, 2, 5),
       "llm"
     )
-    expect(systemOneCalls(calls)).toHaveLength(6 * 5)
-    expect(calls).toHaveLength(6 * 5 + (6 + 2 + 1))
+    expect(systemOneCalls(calls)).toHaveLength(6)
+    expect(calls).toHaveLength(6 + (6 + 2 + 1))
   })
 
-  test("eval-config-c AC8 — no hop and no rewrite: one turn", async () => {
+  test("eval-config-c AC16 — the number of system-one calls does not depend on the number of notes", async () => {
+    for (const count of [1, 2, 12, 30]) {
+      const calls = await evalCommand.upperBoundCallsC(
+        QUESTION,
+        notes(count, 200),
+        DEFAULT_POLICY,
+        "code"
+      )
+      expect(systemOneCalls(calls)).toHaveLength(4)
+    }
+  })
+
+  test("eval-config-c AC16 — no hop and no rewrite: one turn, one call", async () => {
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(5, 300),
       policy(0, 0, 5),
       "llm"
     )
-    expect(systemOneCalls(calls)).toHaveLength(5)
-    expect(calls).toHaveLength(5 + 2)
+    expect(systemOneCalls(calls)).toHaveLength(1)
+    expect(calls).toHaveLength(1 + 2)
   })
 
-  test("eval-config-c AC8 — the system-one calls come first", async () => {
+  test("eval-config-c AC16 — the system-one calls come first", async () => {
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(6, 400),
       DEFAULT_POLICY,
       "llm"
     )
-    const first = calls.slice(0, 4 * 6)
-    for (const call of first) expect(call.model).toBe(JEV)
-    for (const call of calls.slice(4 * 6)) expect(call.model).toBe(HAIKU)
+    for (const call of calls.slice(0, 4)) expect(call.model).toBe(JEV)
+    for (const call of calls.slice(4)) expect(call.model).toBe(HAIKU)
   })
 
-  test("eval-config-c AC8 — after them, exactly the calls of the worst-case fallback, rewriter and answerer", async () => {
+  test("eval-config-c AC16 — after them, exactly the calls of the worst-case fallback, rewriter and answerer", async () => {
     for (const rewriter of ["llm", "code"] as const) {
       const candidates = notes(7, 600)
       const calls = await evalCommand.upperBoundCallsC(
@@ -595,11 +633,11 @@ describe("eval-config-c AC8 — upperBoundCallsC, number and order of the calls"
         DEFAULT_POLICY,
         rewriter
       )
-      expect(calls.slice(4 * 7)).toEqual(expected)
+      expect(calls.slice(4)).toEqual(expected)
     }
   })
 
-  test("eval-config-c AC8 — no candidate note: no system-one call, only the rest", async () => {
+  test("eval-config-c AC16 — no candidate note: no system-one call, only the rest", async () => {
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       [],
@@ -613,8 +651,8 @@ describe("eval-config-c AC8 — upperBoundCallsC, number and order of the calls"
   })
 })
 
-describe("eval-config-c AC8 — upperBoundCallsC, sizes", () => {
-  test("eval-config-c AC8 — a system-one call is a Jev call with no output and some input", async () => {
+describe("eval-config-c AC16 — upperBoundCallsC, sizes", () => {
+  test("eval-config-c AC16 — a system-one call is a Jev call with no output and some input", async () => {
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(6, 400),
@@ -622,7 +660,7 @@ describe("eval-config-c AC8 — upperBoundCallsC, sizes", () => {
       "llm"
     )
     const jev = systemOneCalls(calls)
-    expect(jev.length).toBeGreaterThan(0)
+    expect(jev).toHaveLength(4)
     for (const call of jev) {
       expect(call.model).toBe("jev-1.13.0")
       expect(call.outputTokens).toBe(0)
@@ -630,7 +668,7 @@ describe("eval-config-c AC8 — upperBoundCallsC, sizes", () => {
     }
   })
 
-  test("eval-config-c AC8 — a system-one call grows with the length of the note", async () => {
+  test("eval-config-c AC16 — a system-one call grows with the length of the notes", async () => {
     const short = await evalCommand.upperBoundCallsC(
       QUESTION,
       notes(6, 200),
@@ -645,27 +683,66 @@ describe("eval-config-c AC8 — upperBoundCallsC, sizes", () => {
     )
     const shortInputs = systemOneCalls(short).map((call) => call.inputTokens)
     const longInputs = systemOneCalls(long).map((call) => call.inputTokens)
-    expect(shortInputs).toHaveLength(4 * 6)
-    expect(longInputs).toHaveLength(4 * 6)
+    expect(shortInputs).toHaveLength(4)
+    expect(longInputs).toHaveLength(4)
     expect(Math.min(...longInputs)).toBeGreaterThan(Math.max(...shortInputs))
   })
 
-  test("eval-config-c AC8 — each call is sized from its own note: a mix of short and long notes gives calls of both sizes", async () => {
-    const mixed = [note(0, 100), note(1, 4000)]
+  test("eval-config-c AC16 — a system-one call grows with the number of notes: one batch holds them all", async () => {
+    const few = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(2, 400),
+      DEFAULT_POLICY,
+      "code"
+    )
+    const many = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(10, 400),
+      DEFAULT_POLICY,
+      "code"
+    )
+    const fewInputs = systemOneCalls(few).map((call) => call.inputTokens)
+    const manyInputs = systemOneCalls(many).map((call) => call.inputTokens)
+    expect(fewInputs).toHaveLength(4)
+    expect(manyInputs).toHaveLength(4)
+    expect(Math.min(...manyInputs)).toBeGreaterThan(Math.max(...fewInputs))
+  })
+
+  test("eval-config-c AC16 — a batch of ten notes weighs about five times a batch of two (it is not one call per note)", async () => {
+    const two = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(2, 4000),
+      policy(0, 0, 5),
+      "code"
+    )
+    const ten = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(10, 4000),
+      policy(0, 0, 5),
+      "code"
+    )
+    const [small] = systemOneCalls(two)
+    const [large] = systemOneCalls(ten)
+    expect(large!.inputTokens / small!.inputTokens).toBeGreaterThan(3.5)
+    expect(large!.inputTokens / small!.inputTokens).toBeLessThan(5.5)
+  })
+
+  test("eval-config-c AC16 — the turns are alike: every system-one call has the size of the batch", async () => {
     const calls = await evalCommand.upperBoundCallsC(
       QUESTION,
-      mixed,
-      policy(0, 0, 2),
+      [note(0, 100), note(1, 4000)],
+      DEFAULT_POLICY,
       "code"
     )
     const inputs = systemOneCalls(calls).map((call) => call.inputTokens)
-    expect(inputs).toHaveLength(2)
-    expect(Math.max(...inputs)).toBeGreaterThan(Math.min(...inputs))
+    expect(inputs).toHaveLength(4)
+    // The batch holds the long note: far above one short note alone.
+    expect(Math.min(...inputs)).toBeGreaterThan(1000)
   })
 })
 
-describe("eval-config-c AC8 — upperBoundCallsC makes no network call", () => {
-  test("eval-config-c AC8 — resolves without any API key", async () => {
+describe("eval-config-c AC16 — upperBoundCallsC makes no network call", () => {
+  test("eval-config-c AC16 — resolves without any API key", async () => {
     const keys = [
       "ANTHROPIC_API_KEY",
       "MISTRAL_API_KEY",
@@ -704,7 +781,7 @@ const SETTINGS = {
   rewrite: "llm",
   candidates: 30,
   systemOne: "clef",
-  fallback: 0.7,
+  fallback: 0.6,
 } as const
 
 describe("eval-config-c AC10 — loopSettings, config B", () => {
@@ -785,24 +862,26 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
     expect(models.fallback).toBe(HAIKU)
   })
 
-  test("eval-config-c AC10 — the loop of C: the policy of C with k, the rewriter, the candidates, the fallback threshold and the system one", () => {
+  test("eval-config-c AC15 — the loop of C: the policy of C with k, the rewriter, the candidates, the lower bound of the grey zone and the system one", () => {
     const { loop } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
-    expect(loop).toEqual({
+    expect(loop as unknown).toEqual({
       policy: evalCommand.loopPolicy(4, policyModule.POLICIES.C),
       rewriter: "llm",
       candidates: 30,
-      fallbackThreshold: 0.7,
+      fallbackLow: 0.6,
       systemOne: "clef",
     })
+    expect("fallbackThreshold" in loop).toBe(false)
+    expect(loop.policy.thresholds).toEqual({ answer: 0.7, step: 0.7 })
   })
 
-  test("eval-config-c AC10 — the fallback threshold and the system-one kind follow the settings", () => {
+  test("eval-config-c AC15 — the lower bound of the grey zone and the system-one kind follow the settings", () => {
     const { loop } = evalCommand.loopSettings(
       "C",
       { ...SETTINGS, fallback: 0.25, systemOne: "jev" },
       JEV
     )
-    expect(loop.fallbackThreshold).toBe(0.25)
+    expect((loop as unknown as { fallbackLow: number }).fallbackLow).toBe(0.25)
     expect(loop.systemOne).toBe("jev")
   })
 
