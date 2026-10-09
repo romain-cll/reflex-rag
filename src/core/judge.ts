@@ -32,7 +32,15 @@ export interface Judgement {
  * model that answers it.
  */
 export interface Judge {
-  judge(question: string, notes: NoteForJudge[]): Promise<Judgement>
+  /**
+   * `context` holds notes already kept: the judge reads them but does not
+   * score them, so that the result holds verdicts for `notes` only.
+   */
+  judge(
+    question: string,
+    notes: NoteForJudge[],
+    context?: NoteForJudge[]
+  ): Promise<Judgement>
 }
 
 /**

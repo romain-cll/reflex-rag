@@ -38,12 +38,16 @@ Give calibrated estimates rather than certainties: avoid extreme values such as 
 export class LLMJudge implements Judge {
   constructor(private readonly llm: LLM) {}
 
-  async judge(question: string, notes: NoteForJudge[]): Promise<Judgement> {
+  async judge(
+    question: string,
+    notes: NoteForJudge[],
+    context: NoteForJudge[] = []
+  ): Promise<Judgement> {
     if (notes.length === 0) return { notes: {}, calls: [] }
     const { value, call } = await this.llm.completeJson(
       {
         system: SYSTEM_PROMPT,
-        prompt: `Question: ${question}\n\nNotes:\n\n${notes.map(noteSection).join("\n\n")}`,
+        prompt: promptOf(question, notes, context),
         maxTokens: BASE_TOKENS + TOKENS_PER_NOTE * notes.length,
       },
       OutputSchema
@@ -66,11 +70,26 @@ function alias(index: number): string {
   return `n${index + 1}`
 }
 
-function noteSection(note: NoteForJudge, index: number): string {
+/** The question, the kept notes when there are any (no alias), then the notes to score. */
+function promptOf(
+  question: string,
+  notes: NoteForJudge[],
+  context: NoteForJudge[]
+): string {
+  const scored = notes
+    .map((note, index) => noteSection(note, `[${alias(index)}] `))
+    .join("\n\n")
+  if (context.length === 0)
+    return `Question: ${question}\n\nNotes:\n\n${scored}`
+  const kept = context.map((note) => noteSection(note, "")).join("\n\n")
+  return `Question: ${question}\n\nThese notes were already kept: do not score them, they only give context for the notes to score.\n\n${kept}\n\nNotes to score:\n\n${scored}`
+}
+
+function noteSection(note: NoteForJudge, label: string): string {
   const date = note.date === null ? "" : ` (${note.date})`
   const links =
     note.links.length === 0 ? "" : `Links to: ${note.links.join(", ")}\n`
-  return `[${alias(index)}] ${note.path}${date}\n${links}${note.text}`
+  return `${label}${note.path}${date}\n${links}${note.text}`
 }
 
 /** Clamps the values and scales them to sum to 1 (`none` when all are 0). */
