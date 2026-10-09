@@ -163,7 +163,9 @@ describe("AC1 — Judge interface", () => {
     const judge: Judge = new LLMJudge(fakeLLM().llm)
 
     expect(typeof judge.judge).toBe("function")
-    expect(judge.judge.length).toBe(2)
+    // question and notes, plus the optional context (AC8)
+    expect(judge.judge.length).toBeGreaterThanOrEqual(2)
+    expect(judge.judge.length).toBeLessThanOrEqual(3)
   })
 
   test("AC1 — returns, for every input note path, a probability for each verdict", async () => {
@@ -637,5 +639,193 @@ describe("AC5 — budget and errors", () => {
     )
 
     expect(caught).toBe(error)
+  })
+})
+
+const CONTEXT: NoteForJudge[] = [
+  {
+    path: "people/carol.md",
+    date: "2025-05-20",
+    text: "XRAY-TEXT Carol handed the account over to Alice.",
+    links: ["people/alice.md", "clients/zeta.md"],
+  },
+  {
+    path: "meetings/handoff.md",
+    date: null,
+    text: "YANKEE-TEXT The handoff was agreed in a call.",
+    links: ["people/carol.md"],
+  },
+]
+
+async function contextRequest(
+  context: NoteForJudge[] | undefined = CONTEXT,
+  notes = NOTES
+) {
+  const { llm, calls } = fakeLLM(judgeOutput({}))
+  await new LLMJudge(llm).judge(QUESTION, notes, context)
+  return (calls[0] as JsonCall).request
+}
+
+describe("AC8 — context", () => {
+  test("AC8 — every context note appears in the user prompt with its path, date, links and text", async () => {
+    const { prompt } = await contextRequest()
+
+    for (const note of CONTEXT) {
+      expect(prompt).toContain(note.path)
+      expect(prompt).toContain(note.text)
+      if (note.date !== null) expect(prompt).toContain(note.date)
+    }
+    for (const link of CONTEXT.flatMap((note) => note.links)) {
+      expect(prompt).toContain(link)
+    }
+  })
+
+  test("AC8 — a link of a context note belongs to that context note", async () => {
+    const { prompt } = await contextRequest()
+
+    const segments = segmentsOf(prompt, [
+      "people/carol.md",
+      "meetings/handoff.md",
+      "n1",
+    ])
+    expect(segments["people/carol.md"]).toContain("clients/zeta.md")
+    expect(segments["meetings/handoff.md"]).not.toContain("clients/zeta.md")
+    expect(segments["meetings/handoff.md"]).toContain("YANKEE-TEXT")
+  })
+
+  test("AC8 — a context note without a date is sent without a null date", async () => {
+    const { prompt } = await contextRequest()
+
+    expect(prompt).toContain("YANKEE-TEXT")
+    expect(prompt).not.toMatch(/null|undefined/)
+  })
+
+  test("AC8 — the context comes before the notes to score and after the question", async () => {
+    const { prompt } = await contextRequest()
+
+    const question = prompt.indexOf(QUESTION)
+    const lastContext = Math.max(
+      prompt.indexOf("XRAY-TEXT"),
+      prompt.indexOf("YANKEE-TEXT")
+    )
+    expect(question).toBeGreaterThanOrEqual(0)
+    expect(question).toBeLessThan(prompt.indexOf("people/carol.md"))
+    expect(lastContext).toBeGreaterThanOrEqual(0)
+    expect(lastContext).toBeLessThan(prompt.indexOf("ALPHA-TEXT"))
+  })
+
+  test("AC8 — a heading before the context says the notes were already kept and must not be scored", async () => {
+    const { prompt } = await contextRequest()
+
+    const firstContext = Math.min(
+      prompt.indexOf("people/carol.md"),
+      prompt.indexOf("meetings/handoff.md")
+    )
+    const sentence = sentencesOf(prompt.slice(0, firstContext)).find((part) =>
+      /already kept/i.test(part)
+    )
+    expect(sentence).toBeDefined()
+    expect(sentence).toMatch(/\b(not|never)\b/i)
+    expect(sentence).toMatch(/scor/i)
+  })
+
+  test("AC8 — the context notes carry no alias", async () => {
+    const { prompt } = await contextRequest()
+
+    const beforeScored = prompt.slice(0, prompt.indexOf("ALPHA-TEXT"))
+    expect(beforeScored).toContain("YANKEE-TEXT")
+    expect(beforeScored).not.toMatch(/\bn\d+\b/)
+  })
+
+  test("AC8 — the notes to score keep the aliases n1, n2, n3 in input order", async () => {
+    const { prompt } = await contextRequest()
+
+    expect(prompt.match(/\bn\d+\b/g)).toEqual(["n1", "n2", "n3"])
+    const segments = segmentsOf(prompt, ["n1", "n2", "n3"])
+    expect(segments["n1"]).toContain("ALPHA-TEXT")
+    expect(segments["n2"]).toContain("BRAVO-TEXT")
+    expect(segments["n3"]).toContain("CHARLIE-TEXT")
+  })
+
+  test("AC8 — the result holds verdicts for the notes to score only", async () => {
+    const { llm } = fakeLLM(
+      judgeOutput({
+        n1: { answer: 0.75, step: 0.25 },
+        n2: { step: 1 },
+        n3: { none: 1 },
+        n4: { answer: 1 },
+        "people/carol.md": { answer: 1 },
+        "meetings/handoff.md": { answer: 1 },
+      })
+    )
+
+    const result = await new LLMJudge(llm).judge(QUESTION, NOTES, CONTEXT)
+
+    expect(Object.keys(result.notes).sort()).toEqual(
+      NOTES.map((note) => note.path).sort()
+    )
+    expect(result.notes["people/carol.md"]).toBeUndefined()
+    expect(result.notes["people/alice.md"]).toEqual({
+      answer: 0.75,
+      step: 0.25,
+      none: 0,
+    })
+    expect(result.notes["projects/atlas.md"]).toEqual({
+      answer: 0,
+      step: 1,
+      none: 0,
+    })
+    expect(result.calls).toEqual([CALL])
+  })
+
+  test("AC8 — a context note the model answers about is not in the result even when it is the only answer", async () => {
+    const { llm } = fakeLLM(judgeOutput({ "people/carol.md": { answer: 1 } }))
+
+    const result = await new LLMJudge(llm).judge(QUESTION, NOTES, CONTEXT)
+
+    expect(Object.keys(result.notes)).not.toContain("people/carol.md")
+    for (const note of NOTES) {
+      expect(result.notes[note.path]).toEqual({ answer: 0, step: 0, none: 1 })
+    }
+  })
+
+  test("AC8 — maxTokens is the same with and without context", async () => {
+    const without = await budgetFor(4)
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+
+    await new LLMJudge(llm).judge(QUESTION, manyNotes(4), [
+      ...CONTEXT,
+      ...manyNotes(6).map((note) => ({ ...note, path: `kept/${note.path}` })),
+    ])
+
+    expect((calls[0] as JsonCall).request.maxTokens).toBe(without)
+  })
+
+  test("AC8 — with no note to score, makes no call whatever the context", async () => {
+    const { llm, calls } = fakeLLM()
+
+    const result = await new LLMJudge(llm).judge(QUESTION, [], CONTEXT)
+
+    expect(calls).toHaveLength(0)
+    expect(result).toEqual({ notes: {}, calls: [] })
+  })
+
+  test("AC8 — an empty or absent context leaves the request unchanged", async () => {
+    const plain = await promptFor()
+    const empty = await contextRequest([])
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+    await new LLMJudge(llm).judge(QUESTION, NOTES, undefined)
+
+    expect(empty).toEqual(plain)
+    expect((calls[0] as JsonCall).request).toEqual(plain)
+    expect(plain.prompt).not.toMatch(/already kept/i)
+  })
+
+  test("AC8 — the context changes only the user prompt, not the system prompt", async () => {
+    const plain = await promptFor()
+    const withContext = await contextRequest()
+
+    expect(withContext.system).toBe(plain.system)
+    expect(withContext.prompt).not.toBe(plain.prompt)
   })
 })
