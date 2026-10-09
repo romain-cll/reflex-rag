@@ -27,6 +27,14 @@ Kept notes now include step notes (docs/features/decision-policy.md, Revision 3)
 
 - **AC11 — context with steps**: on `answer`, the context starts with the notes whose `answer` probability is ≥ the answer threshold, by decreasing `answer` probability (ties by order of judgement); each is followed by its ancestors through the parent links, then by the kept step notes (`step` ≥ the step threshold) that link to it, in decreasing `step` probability, skipping notes already in the context; then come the remaining kept step notes, by decreasing `step` probability (ties by order of judgement); the list is cut to the note budget. `kept` (AC6) is that list before the cut; a step's `kept` (AC7) lists the notes judged that turn that are kept in the sense of the policy.
 
+## Revision 4 — time by stage and fallback
+
+Config C's judge runs many system-one calls in parallel, then sometimes an LLM fallback; the comparison of configs needs the wall-clock time of each stage, which a sum of call latencies would overstate. This revision extends AC6, AC7 and AC9.
+
+- **AC12 — stages**: `LoopResult` gains `stages: { searchMs, judgeMs, fallbackMs, rewriteMs }`, the wall-clock time spent over all turns in `retrieve`, in the judge's primary phase, in its fallback phase and in the rewriter. When a `Judgement` carries `stages` (docs/features/system-one-judge.md, AC6), the judge's time is split as it says; otherwise the whole `judge` call counts as `judgeMs`.
+- **AC13 — fallback trace**: each step records `fallback`, the paths the judge judged again this turn (empty when none), and `LoopResult` gains `fallback`, all of them in order.
+- **AC14 — errors carrying calls**: when the judge or the rewriter throws an error carrying a `calls` array, the `LoopError` keeps those calls too (AC9).
+
 ## Technical plan
 
 Files:
