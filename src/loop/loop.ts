@@ -1,6 +1,10 @@
 import type { ContextChunk } from "../answer/answerer.ts"
-import type { Judge, NoteForJudge, Verdict } from "../core/judge.ts"
-import { LLMCallError } from "../core/llm.ts"
+import {
+  billedCalls,
+  type Judge,
+  type NoteForJudge,
+  type Verdict,
+} from "../core/judge.ts"
 import type { ModelCall } from "../core/types.ts"
 import type { Index } from "../index/read.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
@@ -37,6 +41,8 @@ export interface LoopStep {
   parents: Record<string, string>
   /** The notes of `judged` the policy keeps. */
   kept: string[]
+  /** The notes the judge judged again with its fallback this turn. */
+  fallback: string[]
   action: Action
 }
 
@@ -56,6 +62,17 @@ export interface LoopResult {
   kept: string[]
   /** Link targets of judged notes that were never judged. */
   frontier: string[]
+  /** The notes judged again with the judge's fallback, in order. */
+  fallback: string[]
+  /** Wall-clock time over all turns, by stage. */
+  stages: Stages
+}
+
+export interface Stages {
+  searchMs: number
+  judgeMs: number
+  fallbackMs: number
+  rewriteMs: number
 }
 
 /** A failed run: the original message, with the cost and the trace so far. */
@@ -103,6 +120,12 @@ class Loop {
   private readonly judged = new Map<string, JudgedEntry>()
   private readonly steps: LoopStep[] = []
   private readonly calls: ModelCall[] = []
+  private readonly stages: Stages = {
+    searchMs: 0,
+    judgeMs: 0,
+    fallbackMs: 0,
+    rewriteMs: 0,
+  }
   private hops = 0
   private rewrites = 0
 
@@ -120,10 +143,9 @@ class Loop {
     try {
       return await call()
     } catch (error) {
-      const billed = error instanceof LLMCallError ? [error.call] : []
       throw new LoopError(
         error instanceof Error ? error.message : String(error),
-        [...this.calls, ...billed],
+        [...this.calls, ...billedCalls(error)],
         this.steps,
         { cause: error }
       )
@@ -146,7 +168,9 @@ class Loop {
     query: string,
     kind: "search" | "rewrite"
   ): Promise<Turn> {
+    const startedAt = performance.now()
     const retrieval = await this.deps.retrieve(query, this.candidates)
+    this.stages.searchMs += performance.now() - startedAt
     this.calls.push(...retrieval.calls)
     const paths = [
       ...new Set(retrieval.chunks.map(({ chunk }) => chunk.notePath)),
@@ -179,12 +203,14 @@ class Loop {
       [...this.judged.values()],
       ({ verdicts }) => verdicts.answer + verdicts.step
     ).slice(0, REWRITER_NOTES)
+    const startedAt = performance.now()
     const { query, calls } = await this.model(() =>
       this.deps.rewriter.rewrite(
         this.question,
         best.map(({ note }) => ({ path: note.path, text: note.text }))
       )
     )
+    this.stages.rewriteMs += performance.now() - startedAt
     this.calls.push(...calls)
     this.rewrites++
     return this.search(query, "rewrite")
@@ -194,11 +220,18 @@ class Loop {
   private async judgeNotes(
     paths: string[],
     parents: Map<string, string>
-  ): Promise<Pick<Turn, "judged" | "parents" | "kept">> {
+  ): Promise<Pick<Turn, "judged" | "parents" | "kept" | "fallback">> {
     const notes = paths.map((path) => this.noteForJudge(path))
+    const startedAt = performance.now()
     const judgement = await this.model(() =>
       this.deps.judge.judge(this.question, notes)
     )
+    const stages = judgement.stages ?? {
+      judgeMs: performance.now() - startedAt,
+      fallbackMs: 0,
+    }
+    this.stages.judgeMs += stages.judgeMs
+    this.stages.fallbackMs += stages.fallbackMs
     this.calls.push(...judgement.calls)
     const judged: Record<string, Verdicts> = {}
     for (const note of notes) {
@@ -221,6 +254,7 @@ class Loop {
       kept: Object.keys(judged).filter((path) =>
         isKept(judged[path]!, this.deps.policy)
       ),
+      fallback: judgement.fallback ?? [],
     }
   }
 
@@ -284,6 +318,8 @@ class Loop {
       ),
       kept,
       frontier: this.frontier(),
+      fallback: this.steps.flatMap((step) => step.fallback),
+      stages: this.stages,
     }
   }
 
