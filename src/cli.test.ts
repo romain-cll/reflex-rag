@@ -615,8 +615,8 @@ describe("eval-config-c AC2 — config C options", () => {
     })
   }
 
-  for (const threshold of ["0", "0.6", "0.65"]) {
-    test(`eval-config-c AC15 — --fallback ${threshold} is accepted: it goes on to the file checks`, () => {
+  for (const threshold of ["0", "0.6", "0.65", "0.8", "0.85"]) {
+    test(`eval-config-c AC17 — --fallback ${threshold} is accepted (below C's keep threshold 0.9): it goes on to the file checks`, () => {
       const cwd = makeTempDir("reflex-cli-eval-c-fallback-ok-")
       const { stdout, stderr, exitCode } = runEvalWithEnv(
         cwd,
@@ -655,8 +655,8 @@ describe("eval-config-c AC2 — config C options", () => {
     })
   }
 
-  for (const threshold of ["0.7", "0.8", "1"]) {
-    test(`eval-config-c AC15 — --fallback ${threshold} is not below the thresholds of C: a one-line error naming --fallback, before any file check`, () => {
+  for (const threshold of ["0.9", "1"]) {
+    test(`eval-config-c AC17 — --fallback ${threshold} is not below the keep threshold of C (0.9): a one-line error naming --fallback, before any file check`, () => {
       const cwd = makeTempDir("reflex-cli-eval-c-fallback-high-")
       const { stdout, stderr, exitCode } = runEvalWithEnv(
         cwd,
@@ -668,6 +668,51 @@ describe("eval-config-c AC2 — config C options", () => {
       )
       expect(nonEmptyLines(stderr)).toHaveLength(1)
       expect(stderr).toContain("--fallback")
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toMatch(/^\s+at /m)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const when of ["uncertain", "nothing-kept"]) {
+    test(`eval-config-c AC17 — --fallback-when ${when} is accepted: it goes on to the file checks`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-fallback-when-ok-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--fallback",
+        "0.8",
+        "--fallback-when",
+        when
+      )
+      expect(stderr).toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("--fallback")
+      expect(stderr).not.toContain("not implemented")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const when of ["foo", "NOTHING-KEPT", "nothing_kept", ""]) {
+    test(`eval-config-c AC17 — --fallback-when "${when}" prints a one-line error naming --fallback-when and the two values, before any file check`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-fallback-when-bad-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        `--fallback-when=${when}`
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("--fallback-when")
+      expect(stderr).toContain("uncertain")
+      expect(stderr).toContain("nothing-kept")
       expect(stderr).not.toMatch(/unknown option/i)
       expect(stderr).not.toContain("not implemented")
       expect(stderr).not.toMatch(/questions\.json|index\.db/)
@@ -711,6 +756,8 @@ describe("eval-config-c AC2 — the options of config C are rejected for A and B
       ["--system-one", "jev"],
       ["--system-one", "clef"],
       ["--fallback", "0.6"],
+      ["--fallback-when", "uncertain"],
+      ["--fallback-when", "nothing-kept"],
     ] as const) {
       test(`eval-config-c AC2 — ${option} ${value} with --config ${config} is rejected, naming the option and the config`, () => {
         const cwd = makeTempDir("reflex-cli-eval-c-only-")

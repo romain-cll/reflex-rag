@@ -472,9 +472,9 @@ describe("eval-config-c AC1 — POLICIES", () => {
     expect(policyModule.POLICIES.B).toEqual(DEFAULT_POLICY)
   })
 
-  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY and the thresholds answer 0.7 and step 0.7", () => {
+  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY and the thresholds answer 0.7, step 0.7 and keep 0.9", () => {
     expect(policyModule.POLICIES.C).toEqual({
-      thresholds: { answer: 0.7, step: 0.7 },
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
       budgets: DEFAULT_POLICY.budgets,
     })
     expect(policyModule.POLICIES.C.budgets).toEqual({
@@ -495,7 +495,7 @@ describe("eval-config-c AC1 — POLICIES", () => {
 
   test("eval-config-c AC14 — loopPolicy(k, POLICIES.C) carries the thresholds of C", () => {
     expect(evalCommand.loopPolicy(6, policyModule.POLICIES.C)).toEqual({
-      thresholds: { answer: 0.7, step: 0.7 },
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
       budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 6 },
     })
   })
@@ -782,6 +782,7 @@ const SETTINGS = {
   candidates: 30,
   systemOne: "clef",
   fallback: 0.6,
+  fallbackWhen: "uncertain",
 } as const
 
 describe("eval-config-c AC10 — loopSettings, config B", () => {
@@ -869,10 +870,38 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
       rewriter: "llm",
       candidates: 30,
       fallbackLow: 0.6,
+      fallbackWhen: "uncertain",
       systemOne: "clef",
     })
     expect("fallbackThreshold" in loop).toBe(false)
-    expect(loop.policy.thresholds).toEqual({ answer: 0.7, step: 0.7 })
+    expect(loop.policy.thresholds).toEqual({
+      answer: 0.7,
+      step: 0.7,
+      keep: 0.9,
+    })
+  })
+
+  test("eval-config-c AC17 — the fallback scope follows the settings: fallbackLow and fallbackWhen are recorded", () => {
+    const { loop } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, fallback: 0.8, fallbackWhen: "nothing-kept" },
+      JEV
+    )
+    const recorded = loop as unknown as {
+      fallbackLow: number
+      fallbackWhen: string
+    }
+    expect(recorded.fallbackLow).toBe(0.8)
+    expect(recorded.fallbackWhen).toBe("nothing-kept")
+  })
+
+  test("eval-config-c AC17 — B records no fallbackWhen, whatever the settings hold", () => {
+    const { loop } = evalCommand.loopSettings("B", {
+      ...SETTINGS,
+      fallbackWhen: "nothing-kept",
+    })
+    expect("fallbackWhen" in loop).toBe(false)
+    expect("fallbackLow" in loop).toBe(false)
   })
 
   test("eval-config-c AC15 — the lower bound of the grey zone and the system-one kind follow the settings", () => {

@@ -421,3 +421,243 @@ describe("FallbackJudge", () => {
     ])
   })
 })
+
+/** A stand-in for C's keep threshold: kept when answer + step reaches 0.875. */
+function keptBySum(verdict: Verdicts): boolean {
+  return verdict.answer + verdict.step >= 0.875
+}
+
+/** The notes of NOTES at these indexes. */
+function pick(...indexes: number[]): NoteForJudge[] {
+  return indexes.map((index) => NOTES[index] as NoteForJudge)
+}
+
+const sumScore = (verdict: Verdicts) => verdict.answer + verdict.step
+
+/** Judges `notes` (and `context`) with the given options; returns the fallback requests and the result. */
+async function run(
+  verdicts: Record<string, Verdicts>,
+  options: Omit<ConstructorParameters<typeof FallbackJudge>[2], "isKept"> & {
+    isKept?: (verdict: Verdicts) => boolean
+  },
+  context?: NoteForJudge[],
+  fallbackOptions: { delayMs?: number } = {}
+) {
+  const notes = NOTES.filter((note) => note.path in verdicts)
+  const primary = fakeJudge("primary", verdicts)
+  const fallback = fakeJudge("fallback", verdicts, fallbackOptions)
+  const judge = new FallbackJudge(primary.judge, fallback.judge, {
+    isKept,
+    ...options,
+  })
+  const result = await judge.judge(QUESTION, notes, context)
+  return { requests: fallback.requests, result }
+}
+
+describe("system-one-judge AC9 — grey zone on the keep score", () => {
+  // Sums: a0 0.75, a1 0.625, a2 1 (kept), a3 0.5. Max: 0.5, 0.375, 0.5, 0.25.
+  const verdicts: Record<string, Verdicts> = {
+    "notes/a0.md": { answer: 0.5, step: 0.25, none: 0.25 },
+    "notes/a1.md": { answer: 0.375, step: 0.25, none: 0.375 },
+    "notes/a2.md": { answer: 0.5, step: 0.5, none: 0 },
+    "notes/a3.md": { answer: 0.25, step: 0.25, none: 0.5 },
+  }
+
+  test("system-one-judge AC9 — a note is uncertain when it is not kept and score(verdict) ≥ low", async () => {
+    const { requests, result } = await run(verdicts, {
+      low: 0.625,
+      isKept: keptBySum,
+      score: sumScore,
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+  })
+
+  test("system-one-judge AC9 — the score replaces max(answer, step): the same low finds no note with the default score", async () => {
+    const { requests, result } = await run(verdicts, {
+      low: 0.625,
+      isKept: keptBySum,
+    })
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+  })
+
+  test("system-one-judge AC9 — a score equal to low is uncertain, just under is not", async () => {
+    const { result } = await run(verdicts, {
+      low: 0.75,
+      isKept: keptBySum,
+      score: sumScore,
+    })
+    expect(result.fallback).toEqual(["notes/a0.md"])
+  })
+
+  test("system-one-judge AC9 — a kept note is never uncertain, whatever its score", async () => {
+    const { requests } = await run(verdicts, {
+      low: 0,
+      isKept: keptBySum,
+      score: sumScore,
+    })
+    expect(requests[0]?.notes).toEqual(pick(0, 1, 3))
+    expect(requests[0]?.context).toEqual(pick(2))
+  })
+
+  test("system-one-judge AC9 — score is called with the verdict of the primary", async () => {
+    const seen: Verdicts[] = []
+    await run(verdicts, {
+      low: 0.5,
+      isKept: keptBySum,
+      score: (verdict: Verdicts) => {
+        seen.push(verdict)
+        return verdict.answer + verdict.step
+      },
+    })
+    expect(seen).toContainEqual(verdicts["notes/a0.md"] as Verdicts)
+    expect(seen).toContainEqual(verdicts["notes/a3.md"] as Verdicts)
+  })
+
+  test("system-one-judge AC9 — the default score is max(answer, step)", async () => {
+    const { result } = await run(verdicts, {
+      low: 0.5,
+      isKept: keptBySum,
+    })
+    // Max 0.5 for a0 (answer) and a3's 0.25 is under; a2 is kept.
+    expect(result.fallback).toEqual(["notes/a0.md"])
+  })
+})
+
+describe("system-one-judge AC10 — fallback scope", () => {
+  const grey: Record<string, Verdicts> = {
+    "notes/a0.md": GREY_ANSWER,
+    "notes/a1.md": GREY_STEP,
+    "notes/a2.md": NONE,
+  }
+  const withKept: Record<string, Verdicts> = {
+    "notes/a0.md": KEPT_ANSWER,
+    "notes/a1.md": GREY_ANSWER,
+    "notes/a2.md": NONE,
+  }
+
+  test("system-one-judge AC10 — when defaults to uncertain: the fallback runs although a note is kept", async () => {
+    const { requests, result } = await run(withKept, { low: LOW }, CONTEXT)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(1))
+    expect(result.fallback).toEqual(["notes/a1.md"])
+  })
+
+  test("system-one-judge AC10 — when: uncertain behaves as the default", async () => {
+    const { requests, result } = await run(
+      withKept,
+      { low: LOW, when: "uncertain" },
+      CONTEXT
+    )
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.context).toEqual([...CONTEXT, ...pick(0)])
+    expect(result.fallback).toEqual(["notes/a1.md"])
+  })
+
+  test("system-one-judge AC10 — nothing-kept: the fallback runs when the context is empty and the primary kept none", async () => {
+    const { requests, result } = await run(grey, {
+      low: LOW,
+      when: "nothing-kept",
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(requests[0]?.context ?? []).toEqual([])
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+  })
+
+  test("system-one-judge AC10 — nothing-kept, fallback run: the fallback verdicts replace the primary ones, calls and stages as in AC8", async () => {
+    const primary = fakeJudge("primary", {
+      "notes/a1.md": GREY_ANSWER,
+      "notes/a3.md": GREY_STEP,
+    })
+    const fallback = fakeJudge("fallback", FALLBACK_VERDICTS, { delayMs: 30 })
+    const judge = new FallbackJudge(primary.judge, fallback.judge, {
+      low: LOW,
+      isKept,
+      when: "nothing-kept",
+    })
+    const result = await judge.judge(QUESTION, [
+      NOTES[1] as NoteForJudge,
+      NOTES[3] as NoteForJudge,
+    ])
+    expect(result.notes).toEqual(FALLBACK_VERDICTS)
+    expect(result.calls.map((call) => call.role)).toEqual([
+      "judge",
+      "judge",
+      "fallback",
+      "fallback",
+    ])
+    expect(result.stages?.fallbackMs).toBeGreaterThanOrEqual(20)
+  })
+
+  test("system-one-judge AC10 — nothing-kept: no fallback call when the primary kept a note of the call", async () => {
+    const { requests, result } = await run(withKept, {
+      low: LOW,
+      when: "nothing-kept",
+    })
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+    expect(result.stages?.fallbackMs).toBe(0)
+    expect(result.notes).toEqual(withKept)
+    expect(result.calls.map((call) => call.role)).toEqual([
+      "judge",
+      "judge",
+      "judge",
+    ])
+  })
+
+  test("system-one-judge AC10 — nothing-kept: no fallback call when the context is not empty, though the primary kept none", async () => {
+    const { requests, result } = await run(
+      grey,
+      { low: LOW, when: "nothing-kept" },
+      CONTEXT
+    )
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+    expect(result.stages?.fallbackMs).toBe(0)
+    expect(result.notes).toEqual(grey)
+  })
+
+  test("system-one-judge AC10 — nothing-kept: no fallback call when no note is uncertain", async () => {
+    const { requests, result } = await run(
+      { "notes/a0.md": NONE, "notes/a1.md": NONE },
+      { low: LOW, when: "nothing-kept" }
+    )
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+  })
+
+  test("system-one-judge AC10 — nothing-kept uses the isKept of the options to decide what was kept", async () => {
+    // GREY_ANSWER is kept by this isKept: the primary kept a note, no fallback.
+    const kept = await run(
+      { "notes/a0.md": GREY_ANSWER, "notes/a1.md": GREY_STEP },
+      { low: LOW, when: "nothing-kept", isKept: (v) => v.answer >= 0.5 }
+    )
+    expect(kept.requests).toHaveLength(0)
+    // Nothing is kept by this isKept: the fallback runs.
+    const none = await run(
+      { "notes/a0.md": GREY_ANSWER, "notes/a1.md": GREY_STEP },
+      { low: LOW, when: "nothing-kept", isKept: () => false }
+    )
+    expect(none.requests).toHaveLength(1)
+    expect(none.requests[0]?.notes).toEqual(pick(0, 1))
+  })
+
+  test("system-one-judge AC10 — nothing-kept works with the keep score of AC9", async () => {
+    const verdicts: Record<string, Verdicts> = {
+      "notes/a0.md": { answer: 0.5, step: 0.25, none: 0.25 },
+      "notes/a1.md": { answer: 0.25, step: 0.25, none: 0.5 },
+    }
+    const { requests, result } = await run(verdicts, {
+      low: 0.5,
+      isKept: keptBySum,
+      score: sumScore,
+      when: "nothing-kept",
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+  })
+})

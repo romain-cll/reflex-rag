@@ -8,6 +8,19 @@ import {
   type LoopState,
   type PolicyConfig,
 } from "./policy.ts"
+// A namespace import: `keepScore` and `POLICIES.C.thresholds.keep` are not
+// implemented yet, which fails their own tests, not the whole file.
+import * as policyModule from "./policy.ts"
+
+/** `keepScore` read through the namespace, typed by the spec (not exported yet). */
+const keepScore = (
+  policyModule as unknown as {
+    keepScore: (
+      verdict: Record<Verdict, number>,
+      config: PolicyConfig
+    ) => number
+  }
+).keepScore
 
 /**
  * A judged note. By default it is a dead end for every rule: `none` verdict,
@@ -999,5 +1012,178 @@ describe("AC7 — purity", () => {
     first.paths.push("tampered.md")
     const second = decide(s, DEFAULT_POLICY) as { paths: string[] }
     expect(second.paths).toEqual(["a.md"])
+  })
+})
+
+describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
+  /** C's thresholds: neither 0.7 is reached by a split verdict, but the sum may reach 0.9. */
+  const KEEP = { answer: 0.7, step: 0.7, keep: 0.9 }
+  const withKeep = (budgets: Partial<PolicyConfig["budgets"]> = {}) =>
+    withConfig(KEEP, budgets)
+  const verdict = (answer: number, step: number) => ({
+    answer,
+    step,
+    none: 1 - answer - step,
+  })
+
+  test("decision-policy AC8 — isKept keeps a note whose answer + step reaches keep, though neither reaches its threshold (0.53 + 0.44)", () => {
+    expect(policyModule.isKept(verdict(0.53, 0.44), withKeep())).toBe(true)
+  })
+
+  test("decision-policy AC8 — isKept does not keep a note whose answer + step is under keep (0.5 + 0.39)", () => {
+    expect(policyModule.isKept(verdict(0.5, 0.39), withKeep())).toBe(false)
+  })
+
+  test("decision-policy AC8 — isKept keeps at exactly keep (≥ applies) and not just under it", () => {
+    const config = withConfig({ answer: 0.7, step: 0.7, keep: 0.875 })
+    expect(policyModule.isKept(verdict(0.5, 0.375), config)).toBe(true)
+    expect(policyModule.isKept(verdict(0.5, 0.3749), config)).toBe(false)
+  })
+
+  test("decision-policy AC8 — with keep set, answer + step replaces the answer-or-step definition: 0.75 + 0 is not kept at keep 0.9", () => {
+    expect(policyModule.isKept(verdict(0.75, 0), withKeep())).toBe(false)
+    expect(policyModule.isKept(verdict(0, 0.75), withKeep())).toBe(false)
+    expect(policyModule.isKept(verdict(0.95, 0), withKeep())).toBe(true)
+  })
+
+  test("decision-policy AC8 — without keep the definition of Revision 3 applies", () => {
+    const config = withConfig({ answer: 0.7, step: 0.7 })
+    expect(policyModule.isKept(verdict(0.7, 0), config)).toBe(true)
+    expect(policyModule.isKept(verdict(0, 0.7), config)).toBe(true)
+    expect(policyModule.isKept(verdict(0.53, 0.44), config)).toBe(false)
+  })
+
+  test("decision-policy AC8 — a split note answers: kept by the sum, not a step note, nothing to open", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.53, step: 0.44 })]),
+      withKeep()
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("decision-policy AC8 — the same split note does not answer without keep: it is explored", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.53, step: 0.44 })]),
+      withConfig({ answer: 0.7, step: 0.7 })
+    )
+    expect(action).toEqual({ type: "expand", rule: "explore", paths: ["a.md"] })
+  })
+
+  test("decision-policy AC8 — a sum under keep is not kept: explores, then rewrites, then abstains", () => {
+    const notes = [note("a.md", { answer: 0.5, step: 0.39 })]
+    expect(decide(state(notes), withKeep())).toEqual({
+      type: "expand",
+      rule: "explore",
+      paths: ["a.md"],
+    })
+    const closed = [
+      note("a.md", { answer: 0.5, step: 0.39 }, { expanded: true }),
+    ]
+    expect(decide(state(closed), withKeep())).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+    expect(
+      decide(state(closed, { rewrites: MAX_REWRITES }), withKeep())
+    ).toEqual({ type: "abstain", rule: "abstain" })
+  })
+
+  test("decision-policy AC8 — explore, rewrite and abstain apply only when nothing is kept by the sum", () => {
+    const kept = note("k.md", { answer: 0.53, step: 0.44 }, { expanded: true })
+    const dead = note("d.md", { answer: 0.3, step: 0.3 }, { expanded: true })
+    for (const overrides of [
+      {},
+      { hops: MAX_HOPS },
+      { hops: MAX_HOPS, rewrites: MAX_REWRITES },
+    ]) {
+      expect(decide(state([dead, kept], overrides), withKeep()).rule).toBe(
+        "answer"
+      )
+    }
+    const openable = note("o.md", { answer: 0.3, step: 0.3 })
+    expect(decide(state([openable]), withKeep()).rule).toBe("explore")
+    expect(decide(state([openable, kept]), withKeep()).rule).toBe("answer")
+  })
+
+  test("decision-policy AC8 — a kept note answers when no budget is left", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.53, step: 0.44 })], {
+        hops: MAX_HOPS,
+        rewrites: MAX_REWRITES,
+      }),
+      withKeep()
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("decision-policy AC8 — follow-steps still uses step ≥ thresholds.step, not the sum", () => {
+    // A step note under keep (0.8 + 0.1 < 0.9): opened, though not kept.
+    const stepNote = decide(
+      state([note("s.md", { answer: 0.1, step: 0.8 })]),
+      withKeep()
+    )
+    expect(stepNote).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["s.md"],
+    })
+    // A kept split note whose step is under the step threshold: not opened.
+    const split = decide(
+      state([note("a.md", { answer: 0.5, step: 0.45 })]),
+      withKeep()
+    )
+    expect(split).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("decision-policy AC8 — a step note under keep, no longer openable, is not kept: rewrites", () => {
+    const action = decide(
+      state([note("s.md", { answer: 0.1, step: 0.8 }, { expanded: true })]),
+      withKeep()
+    )
+    expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
+  })
+
+  test("decision-policy AC8 — the order of follow-steps stays by decreasing step", () => {
+    const action = decide(
+      state([
+        note("a.md", { answer: 0.1, step: 0.75 }),
+        note("b.md", { answer: 0.05, step: 0.85 }),
+        note("c.md", { answer: 0.5, step: 0.45 }),
+      ]),
+      withKeep()
+    )
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["b.md", "a.md"],
+    })
+  })
+
+  test("decision-policy AC8 — keepScore is answer + step when keep is set", () => {
+    expect(keepScore(verdict(0.53, 0.44), withKeep())).toBeCloseTo(0.97, 10)
+    expect(keepScore(verdict(0.5, 0.25), withKeep())).toBe(0.75)
+  })
+
+  test("decision-policy AC8 — keepScore is max(answer, step) when keep is unset", () => {
+    const config = withConfig({ answer: 0.7, step: 0.7 })
+    expect(keepScore(verdict(0.5, 0.25), config)).toBe(0.5)
+    expect(keepScore(verdict(0.25, 0.5), config)).toBe(0.5)
+    expect(keepScore(verdict(0.53, 0.44), DEFAULT_POLICY)).toBe(0.53)
+  })
+
+  test("decision-policy AC8 — POLICIES.C sets keep 0.9, B and DEFAULT_POLICY leave it unset", () => {
+    expect(policyModule.POLICIES.C).toEqual({
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+      budgets: DEFAULT_POLICY.budgets,
+    })
+    expect(policyModule.POLICIES.C.thresholds.keep).toBe(0.9)
+    expect("keep" in policyModule.POLICIES.B.thresholds).toBe(false)
+    expect("keep" in DEFAULT_POLICY.thresholds).toBe(false)
+  })
+
+  test("decision-policy AC8 — decide with keep does not modify frozen inputs", () => {
+    const s = deepFreeze(state([note("a.md", { answer: 0.53, step: 0.44 })]))
+    const config = deepFreeze(structuredClone(withKeep()))
+    expect(decide(s, config)).toEqual({ type: "answer", rule: "answer" })
   })
 })
