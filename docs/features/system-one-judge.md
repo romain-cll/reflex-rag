@@ -18,6 +18,13 @@ The first config C run on the tuning split (`runs/2026-10-09T16-35-14-158Z-C-tun
 - **AC7 — one call per batch**: `SystemOneJudge(systemOne, { maxNotesPerCall })` makes one `decide` call for the notes it receives, split into batches of at most `maxNotesPerCall` (default 40, to stay well under Jev's 64K-token request limit), the batches running in parallel. The state is `{ question, context: { k1: note, … }, notes: { n1: note, … } }` (each note `{ path, date, links, text }`; `context` omitted when empty), with one question per note to score: `nK: { type: "choice", instructions: "About note nK of the state only. " + JUDGE_QUESTION.instructions, criteria: JUDGE_QUESTION.criteria }`. Context notes (AC8 of docs/features/llm-judge.md) are in the state but get no question. The mapping of AC2 applies to each note's answer; `calls` lists one call per batch, in batch order, tagged `role: "judge"`. A failed batch makes the judge throw, after the other batches end, an error carrying the completed calls (AC4).
 - **AC8 — fallback on a grey zone**: `FallbackJudge(primary, fallback, { low, isKept })` judges the notes with `primary`; a note is **uncertain** when `isKept(verdict)` is false and `max(answer, step) ≥ low` — Jev nearly kept it. The uncertain notes are judged by `fallback` in one call, with as context the call's context plus the notes `primary` kept; their verdicts replace the primary ones. `fallback`, `stages`, call order and roles are as in AC6. Config C passes `isKept` from its policy (docs/features/decision-policy.md, Revision 3), so that the grey zone sits just below the keep thresholds.
 
+## Revision 3 — when the fallback runs
+
+In the same run, Haiku judged again 196 of the 1,816 notes Jev judged, in 50 of the 60 questions, and kept 19 of them, of which 3 were sources; in 42 of the 51 turns with a fallback, Jev had already kept a note with `answer` ≥ 0.7. The fallback cost about 30% of config C's cost and 1.8 s per question for those 3 notes.
+
+- **AC9 — grey zone on the keep score**: a note is uncertain when it is not kept and its keep score is ≥ `low`, the keep score being `answer + step` when the policy has a keep threshold, `max(answer, step)` otherwise; `FallbackJudge` takes it as an option `score(verdict)`.
+- **AC10 — fallback scope**: `FallbackJudge` takes `when: "uncertain" | "nothing-kept"` (default `"uncertain"`, AC8). With `"nothing-kept"`, the uncertain notes are judged again only when the call's context is empty and the primary kept none of the call's notes: the LLM is asked only when the system one has nothing sure yet.
+
 ## Technical plan
 
 - `src/core/judge.ts` (modified): optional `fallback` and `stages` on `Judgement`.

@@ -22,6 +22,12 @@ The policy of the first version read a per-turn assessment (sufficient, missing,
 
 The config B run on the tuning split at commit 341aac8 (`runs/2026-10-09T15-14-56-163Z-B-tuning`: multi-hop context complete 0/15, 12 `judge_rejected`) showed the judge marking the intermediate notes of multi-hop questions as `step` (0.7–0.8: account handoffs, pilot kickoffs, tooling sign-offs) and the loop dropping them whenever the answer note was found by the search rather than through their links. This revision supersedes the definition of a kept note: a note is **kept** when its `answer` probability is ≥ the answer threshold **or** its `step` probability is ≥ the step threshold. The rules and their order are unchanged; AC2 thus answers as soon as a step note is kept and no rule before it applies.
 
+## Revision 4 — a keep threshold on answer + step
+
+In config C's run at commit c97c6ad (`runs/2026-10-09T17-38-44-205Z-C-tuning`), 8 multi-hop questions lost their intermediate note although Jev found it useful: it split its probability between `answer` and `step` (q-013: 0.53 and 0.44; q-023: 0.48 and 0.47), so that neither reached 0.7 while their sum exceeded 0.95. A replay of that trace with "keep when answer + step ≥ 0.9" raised context completeness from 40/48 to 41/48 (multi-hop 7/15 to 8/15) and precision from 0.46 to 0.54. This revision extends AC6 and the definition of a kept note.
+
+- **AC8 — keep threshold**: `thresholds.keep` is optional. When it is set, a note is kept when `answer + step ≥ keep`, and the answer and step thresholds keep their other uses (`follow-steps` and the context order); when it is unset, the definition of Revision 3 applies. `isKept(verdict, config)` follows this. `POLICIES.C` sets `keep: 0.9`; `DEFAULT_POLICY` and `POLICIES.B` leave it unset.
+
 ## Technical plan
 
 Files:

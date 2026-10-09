@@ -27,6 +27,10 @@ Phase 4. `reflex eval --config C` runs the questions through the retrieval loop 
 - **AC15 — grey zone**: `--fallback <low>` (default 0.6) is the lower bound of the grey zone; it must be below both thresholds of C, otherwise a one-line error. The settings record it as `fallbackLow`. The judge of C is `FallbackJudge(SystemOneJudge(systemOne), LLMJudge, { low, isKept: (verdict) => isKept(verdict, POLICIES.C) })`.
 - **AC16 — dry run**: the system-one part of the bound counts one call per possible turn, sized as one batch holding all the candidate notes.
 
+## Revision 4 — fixes from the C run on the tuning split
+
+- **AC17 — options**: `--fallback <low>` (default 0.8) must be below C's keep threshold (0.9); `--fallback-when uncertain|nothing-kept` (default `uncertain`, config C only, rejected for A and B) sets the fallback scope (docs/features/system-one-judge.md, AC10). Both are recorded in the settings (`fallbackLow`, `fallbackWhen`). The C judge passes the keep score of `POLICIES.C` to `FallbackJudge`.
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.
