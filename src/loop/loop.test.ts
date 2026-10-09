@@ -193,11 +193,20 @@ function setup(scenario: Scenario) {
     return Promise.resolve(retrieval)
   }
 
-  const judgeCalls: Array<{ question: string; notes: NoteForJudge[] }> = []
+  const judgeCalls: Array<{
+    question: string
+    notes: NoteForJudge[]
+    /** The third argument as received: `undefined` when absent. */
+    context: NoteForJudge[] | undefined
+  }> = []
   const judge: Judge = {
-    async judge(q, notes) {
+    async judge(q: string, notes: NoteForJudge[], context?: NoteForJudge[]) {
       const n = judgeCalls.length
-      judgeCalls.push({ question: q, notes: structuredClone(notes) })
+      judgeCalls.push({
+        question: q,
+        notes: structuredClone(notes),
+        context: context === undefined ? undefined : structuredClone(context),
+      })
       await wait(scenario.delays?.judge)
       if (scenario.judgeFailure?.onCall === n) {
         throw scenario.judgeFailure.error
@@ -1824,5 +1833,158 @@ describe("AC14 — errors carrying calls", () => {
     expect(loopError.message).toBe("rewriter down")
     expect(models(loopError.calls)).toEqual(["embed", "judge", "r1", "r2"])
     expect(loopError.steps).toHaveLength(1)
+  })
+})
+
+describe("AC15 — context of the judge", () => {
+  /** The context of a judge call: no context is an empty one. */
+  function contextOf(call: { context: NoteForJudge[] | undefined }) {
+    return call.context ?? []
+  }
+
+  test("AC15 — the first judge call of a question has no kept note in its context", async () => {
+    const { judgeCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.9 } },
+    })
+    expect(judgeCalls).toHaveLength(1)
+    expect(contextOf(judgeCalls[0]!)).toEqual([])
+  })
+
+  test("AC15 — an expand turn receives the step note being expanded, as a NoteForJudge", async () => {
+    const { judgeCalls } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["a1"] },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    expect(judgeCalls).toHaveLength(2)
+    const [a] = contextOf(judgeCalls[1]!)
+    expect(contextOf(judgeCalls[1]!)).toHaveLength(1)
+    expect({ ...a!, links: sorted(a!.links) }).toEqual({
+      path: "a.md",
+      date: "2025-01-01",
+      text: "intro of a\n\n## Owner\nowner of a",
+      links: ["b.md", "c.md"],
+    })
+  })
+
+  test("AC15 — the context holds the kept notes of the search turn, answer and step, in the order they were judged", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]], { extra: ["e", "f"] }),
+      search: { [QUESTION]: hits("f", "a", "e") },
+      verdicts: { "a.md": { step: 0.9 }, "e.md": { answer: 0.9 } },
+    })
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["x.md"])
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md", "e.md"])
+  })
+
+  test("AC15 — a note judged but not kept is not in the context", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]], { extra: ["e", "f", "g"] }),
+      policy: policyWith({}, { answer: 0.5, step: 0.5 }),
+      search: { [QUESTION]: hits("f", "a", "e", "g") },
+      verdicts: {
+        "a.md": { step: 0.9 },
+        "e.md": { answer: 0.49, step: 0.49 },
+        "f.md": { answer: 0.2, step: 0.2 },
+      },
+    })
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["x.md"])
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md"])
+  })
+
+  test("AC15 — the thresholds of the policy decide what is kept", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]], { extra: ["e"] }),
+      policy: policyWith({}, { answer: 0.2, step: 0.8 }),
+      search: { [QUESTION]: hits("a", "e") },
+      verdicts: { "a.md": { step: 0.9 }, "e.md": { answer: 0.3 } },
+    })
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md", "e.md"])
+  })
+
+  test("AC15 — the scored notes are not repeated in the context", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]], { extra: ["e"] }),
+      search: { [QUESTION]: hits("a", "e") },
+      verdicts: {
+        "a.md": { step: 0.9 },
+        "e.md": { answer: 0.9 },
+        "x.md": { answer: 0.9 },
+      },
+    })
+    const scored = paths(judgeCalls[1]!.notes)
+    expect(scored).toEqual(["x.md"])
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md", "e.md"])
+    for (const note of contextOf(judgeCalls[1]!)) {
+      expect(scored).not.toContain(note.path)
+    }
+  })
+
+  test("AC15 — the context grows with the kept notes of every earlier turn", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["b", "c"],
+      ]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { step: 0.9 },
+        "b.md": { step: 0.9 },
+        "c.md": { answer: 0.9 },
+      },
+    })
+    expect(judgeCalls).toHaveLength(3)
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["b.md"])
+    expect(paths(judgeCalls[2]!.notes)).toEqual(["c.md"])
+    expect(contextOf(judgeCalls[0]!)).toEqual([])
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md"])
+    expect(paths(contextOf(judgeCalls[2]!))).toEqual(["a.md", "b.md"])
+  })
+
+  test("AC15 — an explore expand receives no context when nothing was kept", async () => {
+    const { judgeCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.4, step: 0.4 } },
+    })
+    expect(judgeCalls.length).toBeGreaterThanOrEqual(2)
+    expect(contextOf(judgeCalls[1]!)).toEqual([])
+  })
+
+  test("AC15 — a rewrite turn receives no note judged and dropped", async () => {
+    // The policy answers as soon as a note is kept, so a rewrite only follows
+    // turns without kept notes: the context of its call is empty. Nothing to
+    // assert about kept notes there, only that the dropped ones stay out.
+    const { judgeCalls, rewriterCalls } = await run({
+      world: worldOf([], { extra: ["n1", "n2", "n3"] }),
+      search: {
+        [QUESTION]: hits("n1", "n2"),
+        "better query": hits("n3"),
+      },
+      rewrites: ["better query"],
+      verdicts: {
+        "n1.md": { answer: 0.4, step: 0.4 },
+        "n2.md": { answer: 0.3 },
+        "n3.md": { answer: 0.9 },
+      },
+    })
+    expect(rewriterCalls).toHaveLength(1)
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["n3.md"])
+    expect(contextOf(judgeCalls[1]!)).toEqual([])
+  })
+
+  test("AC15 — a later explore turn still receives the expanded step note and none of the dropped targets", async () => {
+    // a is kept and expanded, its targets are judged and dropped, then no
+    // note is left to open: the answer comes, with no rewrite.
+    const { judgeCalls } = await run({
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 } },
+    })
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["b.md", "c.md"])
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md"])
+    for (const call of judgeCalls.slice(2)) {
+      expect(paths(contextOf(call))).toContain("a.md")
+      expect(paths(contextOf(call))).not.toContain("c.md")
+    }
   })
 })
