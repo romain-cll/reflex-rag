@@ -327,18 +327,23 @@ class Loop {
   }
 
   /**
-   * The context order: each answer note, most probable first, followed by its
-   * ancestors and the step notes that link to it; then the other step notes.
+   * The context order, among the kept notes: each answer note, most probable
+   * first, followed by its ancestors and the step notes that link to it; then
+   * the other kept notes, by decreasing step.
    */
   private keptWithAncestors(): string[] {
-    const { thresholds } = this.deps.policy
-    const entries = [...this.judged.values()]
+    const { policy } = this.deps
+    const entries = [...this.judged.values()].filter(({ verdicts }) =>
+      isKept(verdicts, policy)
+    )
     const answers = ranked(
-      entries.filter(({ verdicts }) => verdicts.answer >= thresholds.answer),
+      entries.filter(
+        ({ verdicts }) => verdicts.answer >= policy.thresholds.answer
+      ),
       ({ verdicts }) => verdicts.answer
     )
     const steps = ranked(
-      entries.filter(({ verdicts }) => verdicts.step >= thresholds.step),
+      entries.filter(({ verdicts }) => verdicts.step >= policy.thresholds.step),
       ({ verdicts }) => verdicts.step
     )
     const paths = new Set<string>()
@@ -352,7 +357,9 @@ class Loop {
         if (step.note.links.includes(note.path)) paths.add(step.note.path)
       }
     }
-    for (const { note } of steps) paths.add(note.path)
+    for (const { note } of ranked(entries, ({ verdicts }) => verdicts.step)) {
+      paths.add(note.path)
+    }
     return [...paths]
   }
 

@@ -12,7 +12,8 @@ Commands:
   eval --config <A|B|C>      Run the evals
     [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
     [--candidates <n>] [--rewrite llm|code]    (--rewrite: configs B and C)
-    [--system-one jev|clef] [--fallback <0..1>]    (config C)
+    [--system-one jev|clef] [--fallback <low>]    (config C)
+    [--fallback-when uncertain|nothing-kept]    (config C)
 
 Options:
   -h, --help                 Show this help`
@@ -46,6 +47,7 @@ function run(argv: string[]): number | Promise<number> {
         candidates: { type: "string" },
         "system-one": { type: "string" },
         fallback: { type: "string" },
+        "fallback-when": { type: "string" },
       },
       strict: true,
       allowPositionals: true,
@@ -87,6 +89,7 @@ function run(argv: string[]): number | Promise<number> {
         candidates: values.candidates,
         systemOne: values["system-one"],
         fallback: values.fallback,
+        fallbackWhen: values["fallback-when"],
       })
     }
     default:

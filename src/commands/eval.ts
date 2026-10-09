@@ -29,6 +29,7 @@ import { noteText, runLoop } from "../loop/loop.ts"
 import {
   DEFAULT_POLICY,
   isKept,
+  keepScore,
   POLICIES,
   type PolicyConfig,
 } from "../loop/policy.ts"
@@ -56,11 +57,16 @@ export interface EvalCliOptions {
   /** Config C only. */
   systemOne?: string
   fallback?: string
+  fallbackWhen?: string
 }
 
 const REWRITERS = ["llm", "code"] as const
 
 type RewriterKind = (typeof REWRITERS)[number]
+
+const FALLBACK_WHENS = ["uncertain", "nothing-kept"] as const
+
+type FallbackWhen = (typeof FALLBACK_WHENS)[number]
 
 const SYSTEM_ONES = ["jev", "clef"] as const
 
@@ -77,6 +83,8 @@ interface EvalSettings {
   systemOne: SystemOneKind
   /** The lower bound of the grey zone, whose notes the LLM judges again. */
   fallback: number
+  /** Whether the LLM judges the grey zone always or only when nothing is kept. */
+  fallbackWhen: FallbackWhen
 }
 
 const QUESTIONS_PATH = "evals/dev/questions.json"
@@ -86,7 +94,7 @@ const ANSWERER_MODEL = "claude-haiku-5-5"
 /** Notes in the context. */
 const DEFAULT_K = 5
 const DEFAULT_CANDIDATES = 50
-const DEFAULT_FALLBACK = 0.6
+const DEFAULT_FALLBACK = 0.8
 /** Rough size of a token, for the dry-run estimate. */
 const CHARS_PER_TOKEN = 4
 
@@ -115,6 +123,7 @@ function parseSettings(
   for (const [name, value] of [
     ["system-one", options.systemOne],
     ["fallback", options.fallback],
+    ["fallback-when", options.fallbackWhen],
   ]) {
     if (config !== "C" && value !== undefined) {
       throw new Error(
@@ -148,6 +157,12 @@ function parseSettings(
       options.fallback === undefined
         ? DEFAULT_FALLBACK
         : parseFallback(options.fallback),
+    fallbackWhen: parseChoice(
+      "fallback-when",
+      options.fallbackWhen,
+      FALLBACK_WHENS,
+      "uncertain"
+    ),
   }
 }
 
@@ -167,17 +182,16 @@ function parseChoice<T extends string>(
   return choice
 }
 
-/** A number below both thresholds of C: the grey zone sits under the keep thresholds. */
+/** A number below the keep threshold of C: the grey zone sits under it. */
 function parseFallback(text: string): number {
   const value = text.trim() === "" ? NaN : Number(text)
   if (!(value >= 0 && value <= 1)) {
     throw new Error(`--fallback must be a number from 0 to 1, got "${text}"`)
   }
-  const { answer, step } = POLICIES.C.thresholds
-  const ceiling = Math.min(answer, step)
-  if (value >= ceiling) {
+  const { keep } = POLICIES.C.thresholds
+  if (keep !== undefined && value >= keep) {
     throw new Error(
-      `--fallback must be below the thresholds of config C (${ceiling}), got "${text}"`
+      `--fallback must be below the keep threshold of config C (${keep}), got "${text}"`
     )
   }
   return value
@@ -320,7 +334,7 @@ function pipelineB(
 /**
  * Config C: like B, but the system one judges the notes, and the LLM judges
  * again those it nearly kept: the grey zone from `--fallback` to the keep
- * thresholds of C.
+ * threshold of C, always or only when nothing is kept (`--fallback-when`).
  */
 function pipelineC(
   index: Index,
@@ -341,6 +355,8 @@ function pipelineC(
       {
         low: settings.fallback,
         isKept: (verdict) => isKept(verdict, POLICIES.C),
+        score: (verdict) => keepScore(verdict, POLICIES.C),
+        when: settings.fallbackWhen,
       }
     ),
     systemOne.model
@@ -356,6 +372,7 @@ interface LoopSettings {
     candidates: number
     /** Config C only. */
     fallbackLow?: number
+    fallbackWhen?: FallbackWhen
     systemOne?: SystemOneKind
   }
 }
@@ -389,6 +406,7 @@ export function loopSettings(
     loop: {
       ...loop,
       fallbackLow: settings.fallback,
+      fallbackWhen: settings.fallbackWhen,
       systemOne: settings.systemOne,
     },
   }
@@ -743,7 +761,7 @@ async function dryRunLoop(
     [
       `Dry run, config ${config}, ${settings.split} split (only the query embeddings were requested)`,
       `  questions:        ${questions.length}`,
-      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, grey zone from ${settings.fallback}` : ""}`,
+      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, grey zone from ${settings.fallback} (${settings.fallbackWhen})` : ""}`,
       `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), ${systemOne ? `up to ${systemOneCalls.length} system one (${systemOne.model}), ` : ""}up to ${anthropicCalls.length} Anthropic (${ANSWERER_MODEL})`,
       ...(systemOne
         ? [

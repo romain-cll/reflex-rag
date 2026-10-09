@@ -6,6 +6,11 @@ export interface PolicyConfig {
     answer: number
     /** ...or its `step` probability reaches this one; it is also opened. */
     step: number
+    /**
+     * When set, a note is kept when `answer + step` reaches it, instead of
+     * by the two thresholds above, which keep their other uses.
+     */
+    keep?: number
   }
   budgets: {
     maxHops: number
@@ -31,7 +36,7 @@ export const POLICIES: Record<"B" | "C", PolicyConfig> = {
   B: DEFAULT_POLICY,
   C: {
     ...DEFAULT_POLICY,
-    thresholds: { answer: 0.7, step: 0.7 },
+    thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
   },
 }
 
@@ -72,13 +77,28 @@ type RuleFn = (state: LoopState, config: PolicyConfig) => Action | undefined
 const hopsLeft = (state: LoopState, config: PolicyConfig) =>
   state.hops < config.budgets.maxHops
 
-/** A note is kept when it is an answer note or a step note. */
+/**
+ * A note is kept when `answer + step` reaches `thresholds.keep` if it is set,
+ * else when it is an answer note or a step note.
+ */
 export const isKept = (
   verdict: Record<Verdict, number>,
   config: PolicyConfig
+) => {
+  const { answer, step, keep } = config.thresholds
+  return keep === undefined
+    ? verdict.answer >= answer || verdict.step >= step
+    : verdict.answer + verdict.step >= keep
+}
+
+/** The score `isKept` compares to its threshold: the grey zone sits just below it. */
+export const keepScore = (
+  verdict: Record<Verdict, number>,
+  config: PolicyConfig
 ) =>
-  verdict.answer >= config.thresholds.answer ||
-  verdict.step >= config.thresholds.step
+  config.thresholds.keep === undefined
+    ? Math.max(verdict.answer, verdict.step)
+    : verdict.answer + verdict.step
 
 const isOpenable = (note: JudgedNote) => !note.expanded && note.hasUnjudgedLinks
 

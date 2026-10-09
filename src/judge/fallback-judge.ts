@@ -9,10 +9,18 @@ import {
 import type { ModelCall } from "../core/types.ts"
 
 export interface FallbackJudgeOptions {
-  /** The lower bound of the grey zone: a note not kept whose `answer` or `step` reaches it is judged again. */
+  /** The lower bound of the grey zone: a note not kept whose `score` reaches it is judged again. */
   low: number
   /** Whether a verdict keeps its note; the grey zone sits just below it. */
   isKept: (verdict: Record<Verdict, number>) => boolean
+  /** The score of a verdict, compared to `low`; `max(answer, step)` by default. */
+  score?: (verdict: Record<Verdict, number>) => number
+  /**
+   * `uncertain` (default): the fallback judges every uncertain note.
+   * `nothing-kept`: only when the context is empty and the primary kept none
+   * of the notes of the call.
+   */
+  when?: "uncertain" | "nothing-kept"
 }
 
 /**
@@ -32,16 +40,24 @@ export class FallbackJudge implements Judge {
     notes: NoteForJudge[],
     context: NoteForJudge[] = []
   ): Promise<Judgement> {
-    const { low, isKept } = this.options
+    const {
+      low,
+      isKept,
+      score = (verdict) => Math.max(verdict.answer, verdict.step),
+      when = "uncertain",
+    } = this.options
     const primaryStart = performance.now()
     const first = await this.primary.judge(question, notes, context)
     const judgeMs = performance.now() - primaryStart
 
+    const keptNotes = notes.filter((note) => isKept(first.notes[note.path]!))
     const uncertain = notes.filter((note) => {
       const verdict = first.notes[note.path]!
-      return !isKept(verdict) && Math.max(verdict.answer, verdict.step) >= low
+      return !isKept(verdict) && score(verdict) >= low
     })
-    if (uncertain.length === 0) {
+    const asked =
+      when === "uncertain" || (context.length === 0 && keptNotes.length === 0)
+    if (!asked || uncertain.length === 0) {
       return {
         ...first,
         fallback: [],
@@ -54,7 +70,7 @@ export class FallbackJudge implements Judge {
     try {
       second = await this.fallback.judge(question, uncertain, [
         ...context,
-        ...notes.filter((note) => isKept(first.notes[note.path]!)),
+        ...keptNotes,
       ])
     } catch (error) {
       throw new JudgeCallsError(
