@@ -1,31 +1,35 @@
 # LLM judge
 
-Phase 3. The judge of config B: Claude Haiku 5.5 answers the closed questions of the loop with probabilities. Two calls per turn, as for the system-one judge of config C: one scores the relevance of the candidate chunks, one assesses the kept context (sufficient? what is missing? which link may hold it?). The Anthropic API exposes no token probabilities, so the probabilities are stated by the model; this is a limit of config B to report.
+Phase 3. The judge of config B: Claude Haiku 5.5 classifies whole notes for a question, with one closed question shared with the system-one judge of config C, so that the two configs differ only by the model that answers it.
+
+## Revision 2 — one question per note
+
+The first version made two calls per turn: a relevance score per chunk, then an assessment of the kept chunks (sufficient? what is missing? which link to follow?). A trial of Clef-flash on the dev vault (2026-10-09) showed that a judge recognises a note that holds the answer, but not a note that is a step toward it, and that a link probability judged from a title and a sentence is a bet on a note the judge cannot see. The unit is now the note (the vault's notes are short: 255 tokens on average, 570 at most), the judge answers one `choice` question per note, and following a link means judging the target note itself. This revision replaces every criterion of the first version.
 
 ## Acceptance criteria
 
-- **AC1 — interface**: `LLMJudge` implements `Judge` (`src/core/judge.ts`) on top of an `LLM` (`completeJson`). The chunks a judge receives carry their note date (`DatedChunk`: `Chunk` plus `noteDate: string | null`).
-- **AC2 — relevance**: `relevance(question, chunks)` makes one `completeJson` call whose prompt holds the question and every chunk with its id, note path, note date, heading and text, and asks, for each chunk id, the probability that the chunk helps answer the question. It returns `{ chunks, calls }`: a probability for every input chunk id (0 for an id the model left out; ids the model invented are ignored; values clamped to [0, 1]) and the call. With no chunk, it makes no call and returns empty results.
-- **AC3 — assess**: `assess(question, chunks, links)` makes one `completeJson` call whose prompt holds the question, the chunks (as in AC2) and every visible link with its id, the title of its target note and its label (the sentence around the link). It asks for the probability that the chunks are enough to answer, a probability for each of the four `missing` values, and, for each link, the probability that its target holds what is missing, judged from the label and the title only. It returns an `Assessment`: `sufficient` clamped to [0, 1]; `missing.probabilities` normalized to sum to 1 (uniform when all are 0) and `missing.choice` the most probable value, ties going to the first in `MISSING` order; a probability for every input link id (0 when left out); and the call.
-- **AC4 — prompts**: both prompts are fixed system prompts that define each probability, ask for calibrated estimates rather than certainties, and tell the model to use only the given text. The `missing` values are explained: `detail_in_linked_note` (the answer is likely in a note one link away), `newer_version` (the context may be outdated: a later note may change it), `topic_not_found` (nothing on the topic was found), `unidentified`.
-- **AC5 — budget**: each call sets `maxTokens` from the number of items it scores, and the judge passes the `LLM`'s errors through unchanged (they carry the billed call).
+- **AC1 — interface**: `Judge` (`src/core/judge.ts`) has one method, `judge(question, notes)`, where each note is a `NoteForJudge { path, date, text, links }`: `text` is the whole note body, `links` the paths of the notes it links to. It returns `{ notes, calls }`: for every input note path, a probability for each verdict of `VERDICTS = ["answer", "step", "none"]`, summing to 1.
+- **AC2 — the shared question**: `src/judge/question.ts` exports `JUDGE_QUESTION`, the instructions and the description of each verdict, used word for word by every judge:
+  - instructions: "A question is asked about a company's internal note vault, and answering it may need several notes read one after the other. What does this note give for answering the question?"
+  - `answer`: "The note states the answer to the question, or a part of it."
+  - `step`: "The note does not state the answer, but it leads to it: it names the person, supplier, customer, meeting or decision the question depends on, or it links to a note that likely holds the answer."
+  - `none`: "The note does not help answer the question."
+- **AC3 — one call per batch**: `LLMJudge.judge` makes one `completeJson` call for all the notes it receives. The system prompt holds the instructions and the three verdict descriptions of `JUDGE_QUESTION`, asks for the probability of each verdict for every note, calibrated rather than certain, judged only from the given text. The user prompt holds the question, then each note under a short alias `n1`, `n2`… in input order, with its path, its date when it has one, the paths it links to, and its text.
+- **AC4 — output mapping**: the model answers `{ notes: [{ id, answer, step, none }] }` with the aliases. The judge maps the aliases back to the note paths, ignores unknown aliases, clamps every value to [0, 1] and normalizes each note's three values to sum to 1; a note the model left out, or whose three values are all 0, gets `{ answer: 0, step: 0, none: 1 }`.
+- **AC5 — budget and errors**: `maxTokens` is a fixed base plus 24 tokens per note. With no note, the judge makes no call and returns empty results. The `LLM`'s errors pass through unchanged (they carry the billed call).
 
-## Revision 2 — short aliases
-
-The review of the first version measured 1,600 output tokens and 6 s per relevance call on 50 candidates, most of it spent copying long chunk ids; a system-one judge pays no such cost, so the B vs C comparison would be biased. This revision supersedes AC2, AC3 and AC5 where they differ.
-
-- **AC6 — aliases**: in the prompt, chunks are numbered `c1`, `c2`… and links `l1`, `l2`… in input order; the note path appears once per chunk, next to its alias. The model answers with the aliases; the judge maps them back to the real chunk and link ids (an unknown alias is ignored, a missing one gets 0).
-- **AC7 — budget**: `maxTokens` is a fixed base plus 16 tokens per scored item (an entry `{ "id": "c12", "probability": 0.85 }` takes about a dozen tokens).
+The Anthropic API exposes no token probabilities: config B's probabilities are stated by the model, a limit to report.
 
 ## Technical plan
 
 Files:
 
-- `src/core/types.ts` (modified): `DatedChunk`.
-- `src/core/judge.ts` (modified): `Judge` methods take `DatedChunk[]`.
-- `src/judge/llm-judge.ts` (new): `class LLMJudge implements Judge`, constructor `(llm: LLM)`, Zod schemas of the two outputs, the two system prompts as constants.
+- `src/core/judge.ts` (rewritten): `VERDICTS`, `Verdict`, `NoteForJudge`, `Judgement { notes: Record<string, Record<Verdict, number>>; calls }`, `Judge`. `Relevance`, `Assessment` and `MISSING` are removed.
+- `src/core/types.ts` (modified): `DatedChunk` is removed.
+- `src/judge/question.ts` (new): `JUDGE_QUESTION`.
+- `src/judge/llm-judge.ts` (rewritten): `class LLMJudge implements Judge`, constructor `(llm: LLM)`.
 - No new dependency.
 
 ## Test strategy
 
-Unit tests in `src/judge/llm-judge.test.ts` with a fake `LLM` that records the requests and returns scripted values: prompt contents, output mapping (missing and invented ids, clamping, normalization, argmax and ties), no call on empty input, budgets, error propagation. No network.
+Unit tests in `src/judge/llm-judge.test.ts` with a fake `LLM` that records the requests and returns scripted values: the system prompt holds `JUDGE_QUESTION` word for word; the user prompt holds the question and each note's alias, path, date, links and text; alias mapping, unknown and missing aliases, clamping, normalization, the all-zero case, no call on empty input, the token budget, error propagation. No network.

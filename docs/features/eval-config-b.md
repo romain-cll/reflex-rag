@@ -12,10 +12,13 @@ Phase 3. `reflex eval --config B` runs the questions through the retrieval loop 
 - **AC6 — comparison**: `bun scripts/compare-runs.ts <runDir>...` reads each run's settings and `summary.json` and prints one markdown table: a row per category and one overall, a group of columns per run (labelled with its config and split): accuracy as `correct/n`, recall, latency p50 and p95, cost per question, and mean hops for loop configs.
 - **AC7 — CLI**: `--rewrite` accepts `llm` or `code` and is rejected for config A; `--candidates` takes a positive integer. Config C still answers "not implemented". The existing config A behaviour is unchanged.
 
-## Revision 2 — after the phase-3 review
+## Revision 2 — after the phase-3 review, with notes as the unit
 
-- **AC8 — same context budget**: `--k` sets the context budget of both configs: the top `k` chunks for A, the policy's chunk budget for B (default 8 for both); `--candidates` sets the loop's candidate pool. The report header shows both values.
-- **AC9 — tested wiring**: `abstentionOutput(rule)` and the dry-run bound (`upperBoundCalls`) are exported pure functions with unit tests; the bound counts, per possible turn, a relevance call on the candidates, an assessment with the visible links of the turn sized from the index, a rewriter call per possible rewrite, and the answerer call.
+The loop now works on notes and the judge answers one question per note (docs/features/retrieval-loop.md, docs/features/llm-judge.md). This revision supersedes AC1's judge and policy details, AC3's judge-call count and AC5's bound where they differ.
+
+- **AC8 — same context budget**: `--k` sets the number of notes in the context for every config: the first `k` notes for A, the policy's note budget for B (default 5 for both); `--candidates` sets the chunks retrieved per search for both (default 50). The report header shows both values, and the settings line holds the policy with the note budget actually used.
+- **AC9 — loop records**: a B record's `loop` holds the final rule, the hops, the rewrites, the steps, and the loop's `judged`, `kept` and `frontier` (docs/features/eval-run.md, AC11). A judge or rewriter error is recorded as `loop_error` with its cost (docs/features/eval-run.md, AC14).
+- **AC10 — tested wiring**: `abstentionOutput(rule)` and the dry-run bound `upperBoundCalls(question, candidateNotes, policy, rewriter)` are exported pure functions with unit tests. The bound counts, per question, one judge call per possible turn (1 + hops budget + rewrites budget), each sized as a call on all the candidate notes, one rewriter call per possible rewrite, and one answerer call on the longest candidate notes within the note budget; every call is priced with its full `maxTokens` of output.
 
 ## Technical plan
 
@@ -29,4 +32,4 @@ Files:
 
 ## Test strategy
 
-Unit tests in `src/eval/run.test.ts` with fake `retrieve` / `answer` functions returning loop data and `call: null` (records, cost, metrics, rule counts, report columns). Tests of `scripts/compare-runs.ts` as a subprocess on two hand-written run folders. CLI tests in `src/cli.test.ts` only for argument validation (`--rewrite` values, `--rewrite` with config A, `--candidates`), from temporary working directories; no test starts a real run.
+Unit tests in `src/eval/run.test.ts` with fake `retrieve` / `answer` functions returning loop data and `call: null` (records, cost, metrics, rule counts, report columns). Tests of `scripts/compare-runs.ts` as a subprocess on two hand-written run folders. CLI tests in `src/cli.test.ts` only for argument validation (`--rewrite` values, `--rewrite` with config A, `--candidates`), from temporary working directories; no test starts a real run. Unit tests in `src/commands/eval.test.ts` for `abstentionOutput` and `upperBoundCalls` (Revision 2).
