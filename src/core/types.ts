@@ -1,11 +1,21 @@
+/** What a model call is for, so that cost and calls can be split by stage. */
+export const ROLES = [
+  "embed",
+  "judge",
+  "fallback",
+  "rewrite",
+  "answer",
+] as const
+
+export type Role = (typeof ROLES)[number]
+
 /** One call to a model, recorded in the run traces for cost and latency. */
 export interface ModelCall {
   model: string
   inputTokens: number
   outputTokens: number
   latencyMs: number
-  /** Set on the calls of the judge, which share their model with other roles. */
-  role?: "judge"
+  role?: Role
 }
 
 /** A markdown file of the vault. */

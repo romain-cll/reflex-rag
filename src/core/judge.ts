@@ -19,6 +19,10 @@ export interface Judgement {
   /** A probability for each verdict, summing to 1, by note path. */
   notes: Record<string, Record<Verdict, number>>
   calls: ModelCall[]
+  /** The paths judged again by a fallback judge, in input order. */
+  fallback?: string[]
+  /** Wall-clock time of a fallback judge's primary and fallback phases. */
+  stages?: { judgeMs: number; fallbackMs: number }
 }
 
 /**
