@@ -84,6 +84,7 @@ export class FallbackJudge implements Judge {
       notes: { ...first.notes, ...second.notes },
       calls: [...first.calls, ...second.calls.map(asFallback)],
       fallback: uncertain.map((note) => note.path),
+      ...(first.vetoed === undefined ? {} : { vetoed: first.vetoed }),
       stages: { judgeMs, fallbackMs },
     }
   }

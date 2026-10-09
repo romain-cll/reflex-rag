@@ -43,6 +43,8 @@ export interface LoopStep {
   kept: string[]
   /** The notes the judge judged again with its fallback this turn. */
   fallback: string[]
+  /** The notes the judge vetoed this turn. */
+  vetoed: string[]
   action: Action
 }
 
@@ -220,7 +222,9 @@ class Loop {
   private async judgeNotes(
     paths: string[],
     parents: Map<string, string>
-  ): Promise<Pick<Turn, "judged" | "parents" | "kept" | "fallback">> {
+  ): Promise<
+    Pick<Turn, "judged" | "parents" | "kept" | "fallback" | "vetoed">
+  > {
     const notes = paths.map((path) => this.noteForJudge(path))
     const context = [...this.judged.values()]
       .filter(({ verdicts }) => isKept(verdicts, this.deps.policy))
@@ -258,6 +262,7 @@ class Loop {
         isKept(judged[path]!, this.deps.policy)
       ),
       fallback: judgement.fallback ?? [],
+      vetoed: judgement.vetoed ?? [],
     }
   }
 
@@ -329,7 +334,8 @@ class Loop {
   /**
    * The context order, among the kept notes: each answer note, most probable
    * first, followed by its ancestors and the step notes that link to it; then
-   * the other kept notes, by decreasing step.
+   * the other kept notes, by decreasing step. With `contextSteps: "linked"`,
+   * the other kept notes are added only when there is no answer note.
    */
   private keptWithAncestors(): string[] {
     const { policy } = this.deps
@@ -356,6 +362,9 @@ class Loop {
       for (const step of steps) {
         if (step.note.links.includes(note.path)) paths.add(step.note.path)
       }
+    }
+    if (policy.strategy?.contextSteps === "linked" && answers.length > 0) {
+      return [...paths]
     }
     for (const { note } of ranked(entries, ({ verdicts }) => verdicts.step)) {
       paths.add(note.path)

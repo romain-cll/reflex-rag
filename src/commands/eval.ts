@@ -331,6 +331,9 @@ function pipelineB(
   )
 }
 
+/** The veto of C's system-one judge (docs/features/system-one-judge.md, AC13). */
+const C_VETO = { none: 0.7, best: 0.02 }
+
 /**
  * Config C: like B, but the system one judges the notes, and the LLM judges
  * again those it nearly kept: the grey zone from `--fallback` to the keep
@@ -350,7 +353,7 @@ function pipelineC(
     settings,
     llm,
     new FallbackJudge(
-      new SystemOneJudge(systemOne),
+      new SystemOneJudge(systemOne, { veto: C_VETO }),
       new RoleTaggedJudge(new LLMJudge(llm)),
       {
         low: settings.fallback,
@@ -371,6 +374,7 @@ interface LoopSettings {
     rewriter: RewriterKind
     candidates: number
     /** Config C only. */
+    veto?: typeof C_VETO
     fallbackLow?: number
     fallbackWhen?: FallbackWhen
     systemOne?: SystemOneKind
@@ -405,6 +409,7 @@ export function loopSettings(
     models: { judge: systemOneModel, fallback: ANSWERER_MODEL, ...models },
     loop: {
       ...loop,
+      veto: C_VETO,
       fallbackLow: settings.fallback,
       fallbackWhen: settings.fallbackWhen,
       systemOne: settings.systemOne,
@@ -842,10 +847,10 @@ export async function upperBoundCallsC(
       return Promise.resolve({ answers: {}, call: noCall })
     },
   }
-  await new SystemOneJudge(recorder, { maxNotesPerCall: Infinity }).judge(
-    question,
-    candidates
-  )
+  await new SystemOneJudge(recorder, {
+    maxNotesPerCall: Infinity,
+    veto: C_VETO,
+  }).judge(question, candidates)
   const turns = 1 + policy.budgets.maxHops + policy.budgets.maxRewrites
   const turnCalls = requests.map((request): ModelCall => ({
     model: systemOneModel,

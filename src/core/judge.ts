@@ -22,6 +22,8 @@ export interface Judgement {
   calls: ModelCall[]
   /** The paths judged again by a fallback judge, in input order. */
   fallback?: string[]
+  /** The paths whose verdict a veto set to `none`, in input order. */
+  vetoed?: string[]
   /** Wall-clock time of a fallback judge's primary and fallback phases. */
   stages?: { judgeMs: number; fallbackMs: number }
 }

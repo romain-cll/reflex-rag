@@ -20,7 +20,26 @@ export interface PolicyConfig {
     /** Used by the loop to cap the context, not by `decide`. */
     maxNotes: number
   }
+  /** How the loop spends its hops and builds its context; defaults keep the plain behaviour. */
+  strategy?: {
+    /**
+     * `always` (default): `follow-steps` opens every step note. With
+     * `above-best-answer`, only those whose step is above the highest answer
+     * probability of the judged notes.
+     */
+    openSteps?: "always" | "above-best-answer"
+    /**
+     * `all` (default): the context holds every kept step note. With `linked`,
+     * only those that link to an answer note, when there is one.
+     */
+    contextSteps?: "all" | "linked"
+  }
 }
+
+const STRATEGY = {
+  openSteps: "above-best-answer",
+  contextSteps: "linked",
+} as const
 
 export const DEFAULT_POLICY: PolicyConfig = {
   thresholds: { answer: 0.5, step: 0.5 },
@@ -33,10 +52,11 @@ export const DEFAULT_POLICY: PolicyConfig = {
  * clear-cut than B's.
  */
 export const POLICIES: Record<"B" | "C", PolicyConfig> = {
-  B: DEFAULT_POLICY,
+  B: { ...DEFAULT_POLICY, strategy: STRATEGY },
   C: {
     ...DEFAULT_POLICY,
     thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+    strategy: STRATEGY,
   },
 }
 
@@ -112,8 +132,15 @@ function ranked(
 
 const followSteps: RuleFn = (state, config) => {
   if (!hopsLeft(state, config)) return undefined
+  const bestAnswer =
+    config.strategy?.openSteps === "above-best-answer"
+      ? Math.max(...state.notes.map((note) => note.verdict.answer))
+      : -Infinity
   const steps = state.notes.filter(
-    (note) => isOpenable(note) && note.verdict.step >= config.thresholds.step
+    (note) =>
+      isOpenable(note) &&
+      note.verdict.step >= config.thresholds.step &&
+      note.verdict.step > bestAnswer
   )
   if (steps.length === 0) return undefined
   const paths = ranked(steps, (note) => note.verdict.step).map(
