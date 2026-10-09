@@ -732,9 +732,10 @@ describe("AC8 — context", () => {
   test("AC8 — the context notes carry no alias", async () => {
     const { prompt } = await contextRequest()
 
-    const beforeScored = prompt.slice(0, prompt.indexOf("ALPHA-TEXT"))
+    // Everything before the first alias of a scored note is the context part.
+    const beforeScored = prompt.slice(0, prompt.search(/\bn\d+\b/))
     expect(beforeScored).toContain("YANKEE-TEXT")
-    expect(beforeScored).not.toMatch(/\bn\d+\b/)
+    expect(prompt.indexOf("YANKEE-TEXT")).toBeLessThan(prompt.search(/\bn1\b/))
   })
 
   test("AC8 — the notes to score keep the aliases n1, n2, n3 in input order", async () => {

@@ -201,7 +201,7 @@ describe("SystemOneJudge", () => {
       manyNotes(2, "c")
     )
     const question = (key: string) => ({
-      type: "choice",
+      type: "choice" as const,
       instructions: `About note ${key} of the state only. ${JUDGE_QUESTION.instructions}`,
       criteria: JUDGE_QUESTION.criteria,
     })
