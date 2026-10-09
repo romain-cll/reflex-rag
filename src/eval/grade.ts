@@ -2,25 +2,79 @@ import type { Question } from "../../evals/schema.ts"
 import type { Answer } from "../answer/answerer.ts"
 
 /**
- * In the order they are tried: a wrong answer gets the first that applies.
- * `answer_error` is never graded: the run sets it when the answerer throws.
+ * In the order they are tried: the retrieval family first, then the answer
+ * family (docs/features/eval-run.md, AC11). `loop_error` and `answer_error` are
+ * never graded: the run sets them when the loop or the answerer throws.
  */
 export const FAILURES = [
+  "loop_error",
+  "context_budget",
+  "judge_rejected",
+  "not_followed",
   "retrieval_miss",
+  "answer_error",
   "false_abstention",
   "wrong_version",
   "missed_contradiction",
   "unsupported_claim",
   "wrong_answer",
-  "answer_error",
 ] as const
 
 export type Failure = (typeof FAILURES)[number]
+
+/** The layer a failure belongs to and the lever that would fix it. */
+export const FAILURE_INFO: Record<
+  Failure,
+  { family: "retrieval" | "answer"; lever: string }
+> = {
+  loop_error: {
+    family: "retrieval",
+    lever: "the loop's error handling",
+  },
+  context_budget: { family: "retrieval", lever: "the context budget" },
+  judge_rejected: {
+    family: "retrieval",
+    lever: "the answer threshold and the judge's question",
+  },
+  not_followed: {
+    family: "retrieval",
+    lever: "the step threshold and the explore and hop budgets",
+  },
+  retrieval_miss: {
+    family: "retrieval",
+    lever: "the index, the candidates and the rewrites",
+  },
+  answer_error: { family: "answer", lever: "the answerer's call" },
+  false_abstention: {
+    family: "answer",
+    lever: "the answerer's abstention rule",
+  },
+  wrong_version: {
+    family: "answer",
+    lever: "supersession in the answerer's prompt",
+  },
+  missed_contradiction: {
+    family: "answer",
+    lever: "contradictions in the answerer's prompt",
+  },
+  unsupported_claim: {
+    family: "answer",
+    lever: "the answerer's abstention rule",
+  },
+  wrong_answer: { family: "answer", lever: "the answerer's prompt" },
+}
 
 export interface Grade {
   correct: boolean
   /** `null` when the answer is correct. */
   failure: Failure | null
+}
+
+/** The note paths the retrieval loop judged, kept and left in its frontier. */
+export interface LoopNotes {
+  judged: string[]
+  kept: string[]
+  frontier: string[]
 }
 
 const UNDECIDED_PHRASES = [
@@ -39,10 +93,16 @@ const UNDECIDED_PHRASES = [
 export function grade(
   question: Question,
   output: Answer,
-  contextNotes: string[]
+  contextNotes: string[],
+  loop?: LoopNotes
 ): Grade {
   if (isCorrect(question, output)) return { correct: true, failure: null }
-  return { correct: false, failure: failureOf(question, output, contextNotes) }
+  return {
+    correct: false,
+    failure:
+      retrievalFailureOf(question, contextNotes, loop) ??
+      answerFailureOf(question, output),
+  }
 }
 
 function isCorrect({ expected, stale }: Question, output: Answer): boolean {
@@ -74,28 +134,72 @@ function isCorrect({ expected, stale }: Question, output: Answer): boolean {
   }
 }
 
-/**
- * The share of the source groups of a question with a note among the context
- * notes; `null` when the question has no source.
- */
-export function recallOf(
-  { sourceGroups }: Question,
-  contextNotes: string[]
-): number | null {
-  if (sourceGroups.length === 0) return null
-  const covered = sourceGroups.filter((group) =>
-    group.some((source) => contextNotes.includes(source))
-  )
-  return covered.length / sourceGroups.length
+/** What the context of a question holds, from its source groups. */
+export interface ContextMeasures {
+  /** Share of the source groups with a note in the context; `null` without source. */
+  recall: number | null
+  /** Every source group has a note in the context; `null` without source. */
+  contextComplete: boolean | null
+  /** Share of the distinct context notes in a source group; `null` for an empty context. */
+  precision: number | null
+  /** Number of distinct context notes. */
+  notesInContext: number
 }
 
-function failureOf(
-  question: Question,
-  output: Answer,
+export function contextMeasuresOf(
+  { sourceGroups }: Question,
   contextNotes: string[]
-): Failure {
-  const recall = recallOf(question, contextNotes)
-  if (recall !== null && recall < 1) return "retrieval_miss"
+): ContextMeasures {
+  const notes = new Set(contextNotes)
+  const covered = sourceGroups.filter((group) =>
+    group.some((source) => notes.has(source))
+  )
+  const sources = new Set(sourceGroups.flat())
+  const fromSources = [...notes].filter((note) => sources.has(note))
+  return {
+    recall:
+      sourceGroups.length === 0 ? null : covered.length / sourceGroups.length,
+    contextComplete:
+      sourceGroups.length === 0 ? null : covered.length === sourceGroups.length,
+    precision: notes.size === 0 ? null : fromSources.length / notes.size,
+    notesInContext: notes.size,
+  }
+}
+
+/**
+ * The notes of the source groups with no note in the context; empty when the
+ * context is complete or the question has no source.
+ */
+function missingNotes({ sourceGroups }: Question, contextNotes: string[]) {
+  return sourceGroups
+    .filter((group) => !group.some((source) => contextNotes.includes(source)))
+    .flat()
+}
+
+/**
+ * Why a note of a missing source group is not in the context: the first of
+ * `context_budget`, `judge_rejected` and `not_followed` that applies to any of
+ * them, else `retrieval_miss`. `null` when the context is complete.
+ */
+function retrievalFailureOf(
+  question: Question,
+  contextNotes: string[],
+  loop: LoopNotes | undefined
+): Failure | null {
+  const missing = missingNotes(question, contextNotes)
+  if (missing.length === 0) return null
+  const lists: Array<[Failure, string[] | undefined]> = [
+    ["context_budget", loop?.kept],
+    ["judge_rejected", loop?.judged],
+    ["not_followed", loop?.frontier],
+  ]
+  const found = lists.find(([, notes]) =>
+    missing.some((note) => notes?.includes(note))
+  )
+  return found ? found[0] : "retrieval_miss"
+}
+
+function answerFailureOf(question: Question, output: Answer): Failure {
   if (output.status === "abstained" && question.expected.kind !== "abstain") {
     return "false_abstention"
   }

@@ -9,7 +9,16 @@ import {
 import type { Answer, ContextChunk } from "../answer/answerer.ts"
 import type { ModelCall } from "../core/types.ts"
 import { RULES } from "../loop/policy.ts"
-import { FAILURES, grade, recallOf, type Failure, type Grade } from "./grade.ts"
+import {
+  contextMeasuresOf,
+  FAILURE_INFO,
+  FAILURES,
+  grade,
+  type ContextMeasures,
+  type Failure,
+  type Grade,
+  type LoopNotes,
+} from "./grade.ts"
 import { callCostUsd, PRICES } from "./prices.ts"
 
 /** What the retrieval loop of config B reports next to the context. */
@@ -19,19 +28,36 @@ export interface LoopTrace {
   hops: number
   rewrites: number
   steps: unknown[]
+  /** Note path -> scores of the judge's questions. */
+  judged: Record<string, unknown>
+  /** Paths of the notes the loop kept. */
+  kept: string[]
+  /** Paths of the notes one link away from a judged note, never judged. */
+  frontier: string[]
 }
 
-export interface RunRecord {
+/** The note paths of a loop, as the grader takes them. */
+export function loopNotesOf(
+  loop: LoopTrace | undefined
+): LoopNotes | undefined {
+  return (
+    loop && {
+      judged: Object.keys(loop.judged),
+      kept: loop.kept,
+      frontier: loop.frontier,
+    }
+  )
+}
+
+export interface RunRecord extends ContextMeasures {
   id: string
   split: Split
   category: Category
   /** Note paths of the retrieved context, in rank order. */
   contextNotes: string[]
-  /** Share of the question's source groups with a note in the context; `null` when it has none. */
-  recall: number | null
-  /** `null` when the answerer threw. */
+  /** `null` when the loop or the answerer threw. */
   output: Answer | null
-  /** The message of the error the answerer threw. */
+  /** The message of the error the loop or the answerer threw. */
   error?: string
   /** The retrieval loop of config B; absent for config A. */
   loop?: LoopTrace
@@ -46,12 +72,20 @@ export interface Metrics {
   n: number
   accuracy: number | null
   meanRecall: number | null
+  /** Over the questions with sources. */
+  contextCompleteRate: number | null
+  /** Over the records with a non-empty context. */
+  meanPrecision: number | null
+  meanNotesInContext: number | null
   latencyP50Ms: number | null
   latencyP95Ms: number | null
   meanCostUsd: number | null
   /** Input tokens of the answer call, i.e. the context size. */
   meanInputTokens: number | null
   failures: Record<Failure, number>
+  failuresByFamily: Record<"retrieval" | "answer", number>
+  /** Abstentions made by the loop (no answerer call) and by the answerer. */
+  abstentions: { loop: number; answerer: number }
   /** Means over the records with a loop; `null` when none has one. */
   meanHops: number | null
   meanRewrites: number | null
@@ -82,6 +116,8 @@ export interface EvalOptions {
     loop?: LoopTrace
   ) => Promise<{ output: Answer; call: ModelCall | null }>
   k: number
+  /** Chunks retrieved per search. */
+  candidates: number
   /** The run stops before a question once its cumulative cost has reached this. */
   maxCostUsd: number
   runsDir: string
@@ -108,6 +144,7 @@ export interface RunSettings {
   config: string
   split: Split
   k: number
+  candidates: number
   models: Record<string, string>
   loop?: Record<string, unknown>
   prices: typeof PRICES
@@ -167,11 +204,28 @@ async function evaluate(
   { retrieve, answer, k }: EvalOptions
 ): Promise<RunRecord> {
   const startedAt = performance.now()
-  const {
-    context,
-    calls: retrievalCalls,
-    loop,
-  } = await retrieve(question.question, k)
+  let retrieved
+  try {
+    retrieved = await retrieve(question.question, k)
+  } catch (error) {
+    if (!isLoopError(error)) throw error
+    return {
+      ...recordOf(question, [], error.calls, performance.now() - startedAt),
+      output: null,
+      error: error.message,
+      loop: {
+        outcome: { type: "error", rule: "loop_error" },
+        hops: 0,
+        rewrites: 0,
+        steps: error.steps,
+        judged: {},
+        kept: [],
+        frontier: [],
+      },
+      grade: { correct: false, failure: "loop_error" },
+    }
+  }
+  const { context, calls: retrievalCalls, loop } = retrieved
   const attempt = await attemptAnswer(answer, question.question, context, loop)
   const latencyMs = performance.now() - startedAt
 
@@ -180,15 +234,8 @@ async function evaluate(
     ? [...retrievalCalls, attempt.call]
     : retrievalCalls
   const record = {
-    id: question.id,
-    split: question.split,
-    category: question.category,
-    contextNotes,
-    recall: recallOf(question, contextNotes),
+    ...recordOf(question, contextNotes, calls, latencyMs),
     ...(loop ? { loop } : {}),
-    calls,
-    latencyMs,
-    costUsd: sum(calls.map(callCostUsd)),
   }
   if (attempt.output === null) {
     return {
@@ -201,8 +248,40 @@ async function evaluate(
   return {
     ...record,
     output: attempt.output,
-    grade: grade(question, attempt.output, contextNotes),
+    grade: grade(question, attempt.output, contextNotes, loopNotesOf(loop)),
   }
+}
+
+/** What a record holds whatever the outcome of the question. */
+function recordOf(
+  question: Question,
+  contextNotes: string[],
+  calls: ModelCall[],
+  latencyMs: number
+) {
+  return {
+    id: question.id,
+    split: question.split,
+    category: question.category,
+    contextNotes,
+    ...contextMeasuresOf(question, contextNotes),
+    calls,
+    latencyMs,
+    costUsd: sum(calls.map(callCostUsd)),
+  }
+}
+
+/** What a `LoopError` carries: the calls it paid for and its steps. */
+function isLoopError(
+  error: unknown
+): error is Error & { calls: ModelCall[]; steps: unknown[] } {
+  return (
+    error instanceof Error &&
+    "calls" in error &&
+    Array.isArray(error.calls) &&
+    "steps" in error &&
+    Array.isArray(error.steps)
+  )
 }
 
 type Attempt =
@@ -245,11 +324,12 @@ function metricsOf(records: RunRecord[]): Metrics {
   return {
     n: records.length,
     accuracy: mean(records.map((record) => (record.grade.correct ? 1 : 0))),
-    meanRecall: mean(
-      records.flatMap((record) =>
-        record.recall === null ? [] : [record.recall]
-      )
+    meanRecall: mean(nonNull(records.map((record) => record.recall))),
+    contextCompleteRate: mean(
+      nonNull(records.map((record) => record.contextComplete)).map(Number)
     ),
+    meanPrecision: mean(nonNull(records.map((record) => record.precision))),
+    meanNotesInContext: mean(records.map((record) => record.notesInContext)),
     latencyP50Ms: percentile(latencies, 0.5),
     latencyP95Ms: percentile(latencies, 0.95),
     meanCostUsd: mean(records.map((record) => record.costUsd)),
@@ -259,8 +339,37 @@ function metricsOf(records: RunRecord[]): Metrics {
       )
     ),
     failures,
+    failuresByFamily: {
+      retrieval: familyCount(failures, "retrieval"),
+      answer: familyCount(failures, "answer"),
+    },
+    abstentions: {
+      loop: records.filter(abstainedByLoop).length,
+      answerer: records.filter(
+        (record) =>
+          record.output?.status === "abstained" && !abstainedByLoop(record)
+      ).length,
+    },
     ...loopMetricsOf(records),
   }
+}
+
+function familyCount(
+  failures: Record<Failure, number>,
+  family: "retrieval" | "answer"
+): number {
+  return sum(
+    FAILURES.filter((failure) => FAILURE_INFO[failure].family === family).map(
+      (failure) => failures[failure]
+    )
+  )
+}
+
+function abstainedByLoop(record: RunRecord): boolean {
+  return (
+    record.output?.status === "abstained" &&
+    record.loop?.outcome.type === "abstain"
+  )
 }
 
 /** An abstaining loop gives its output without calling the answerer. */
@@ -297,6 +406,10 @@ function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0)
 }
 
+function nonNull<T>(values: Array<T | null>): T[] {
+  return values.filter((value): value is T => value !== null)
+}
+
 function mean(values: number[]): number | null {
   return values.length === 0 ? null : sum(values) / values.length
 }
@@ -314,6 +427,7 @@ function settingsOf(options: EvalOptions): RunSettings {
     config: options.config,
     split: options.split,
     k: options.k,
+    candidates: options.candidates,
     models: options.models,
     ...(options.loop ? { loop: options.loop } : {}),
     prices: PRICES,
@@ -338,6 +452,9 @@ const COLUMNS: Column[] = [
   ["n", (m) => String(m.n)],
   ["accuracy", (m) => percent(m.accuracy)],
   ["recall", (m) => percent(m.meanRecall)],
+  ["context complete", (m) => percent(m.contextCompleteRate)],
+  ["precision", (m) => percent(m.meanPrecision)],
+  ["notes in context", (m) => fixed(m.meanNotesInContext, 2)],
   ["p50 (ms)", (m) => fixed(m.latencyP50Ms, 0)],
   ["p95 (ms)", (m) => fixed(m.latencyP95Ms, 0)],
   ["cost/question (USD)", (m) => fixed(m.meanCostUsd, 5)],
@@ -355,10 +472,16 @@ function loopColumns(summary: Summary): Column[] {
     ["hops", (m) => fixed(m.meanHops, 2)],
     ["rewrites", (m) => fixed(m.meanRewrites, 2)],
     ["judge calls", (m) => fixed(m.meanJudgeCalls, 2)],
-    ...RULES.filter((rule) => rule in summary.overall.finalRules).map(
-      (rule): Column => [rule, (m) => String(m.finalRules[rule] ?? 0)]
-    ),
+    ...Object.keys(summary.overall.finalRules)
+      .sort((a, b) => ruleRank(a) - ruleRank(b))
+      .map((rule): Column => [rule, (m) => String(m.finalRules[rule] ?? 0)]),
   ]
+}
+
+/** The position of a rule in the policy; the rules it does not list come last. */
+function ruleRank(rule: string): number {
+  const rank = (RULES as readonly string[]).indexOf(rule)
+  return rank === -1 ? RULES.length : rank
 }
 
 function percent(value: number | null): string {
@@ -374,7 +497,8 @@ function fixed(value: number | null, digits: number): string {
  * run itself knows.
  */
 export function renderReport(
-  settings: Pick<RunSettings, "config" | "split" | "k" | "gitCommit">,
+  settings: Pick<RunSettings, "config" | "split" | "k" | "gitCommit"> &
+    Partial<Pick<RunSettings, "candidates">>,
   records: RunRecord[],
   summary: Summary,
   costCap?: { maxCostUsd: number; skipped: number }
@@ -385,7 +509,13 @@ export function renderReport(
   const lines = [
     `# Eval run: config ${settings.config}, ${settings.split} split`,
     "",
-    `k = ${settings.k}, commit ${settings.gitCommit}`,
+    [
+      `k = ${settings.k}`,
+      ...(settings.candidates === undefined
+        ? []
+        : [`candidates = ${settings.candidates}`]),
+      `commit ${settings.gitCommit}`,
+    ].join(", "),
   ]
   if (costCap && costCap.skipped > 0) {
     lines.push(

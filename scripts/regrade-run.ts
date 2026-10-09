@@ -4,9 +4,10 @@ import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { z } from "zod"
 import { QuestionSetSchema, SPLITS, type Question } from "../evals/schema.ts"
-import { grade, recallOf } from "../src/eval/grade.ts"
+import { contextMeasuresOf, grade } from "../src/eval/grade.ts"
 import {
   jsonLine,
+  loopNotesOf,
   renderReport,
   summarize,
   type RunRecord,
@@ -22,6 +23,8 @@ const SettingsSchema = z.looseObject({
   config: z.string(),
   split: z.enum(SPLITS),
   k: z.number(),
+  /** Absent from the traces written before `--candidates` was recorded. */
+  candidates: z.number().optional(),
   gitCommit: z.string(),
 })
 
@@ -43,13 +46,18 @@ function readJsonLines(path: string): unknown[] {
 function regrade(record: RunRecord, question: Question): RunRecord {
   const regraded = {
     ...record,
-    recall: recallOf(question, record.contextNotes),
+    ...contextMeasuresOf(question, record.contextNotes),
   }
-  // An answer that failed has no output to grade: it keeps its failure.
+  // A loop or an answer that failed has no output to grade: it keeps its failure.
   if (record.output === null) return regraded
   return {
     ...regraded,
-    grade: grade(question, record.output, record.contextNotes),
+    grade: grade(
+      question,
+      record.output,
+      record.contextNotes,
+      loopNotesOf(record.loop)
+    ),
   }
 }
 
