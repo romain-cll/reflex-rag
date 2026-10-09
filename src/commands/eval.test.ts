@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import type { NoteForJudge } from "../core/judge.ts"
-import type { Chunk, Note } from "../core/types.ts"
+import type { Chunk, ModelCall, Note } from "../core/types.ts"
 import { DEFAULT_POLICY, type PolicyConfig } from "../loop/policy.ts"
+// A namespace import, for the same reason: `POLICIES` is not exported yet.
+import * as policyModule from "../loop/policy.ts"
 // A namespace import: a symbol that is not exported yet fails its own tests,
 // not the whole file.
 import * as evalCommand from "./eval.ts"
@@ -455,5 +457,234 @@ describe("eval-config-b AC11 — notesContext", () => {
 
   test("AC11 — no path gives an empty context", () => {
     expect(evalCommand.notesContext(index, [])).toEqual([])
+  })
+})
+
+const JEV = "jev-1.13.0"
+
+describe("eval-config-c AC1 — POLICIES", () => {
+  test("eval-config-c AC1 — POLICIES holds the policies of B and C", () => {
+    expect(Object.keys(policyModule.POLICIES).sort()).toEqual(["B", "C"])
+  })
+
+  test("eval-config-c AC1 — both start from DEFAULT_POLICY, in value", () => {
+    expect(policyModule.POLICIES.B).toEqual(DEFAULT_POLICY)
+    expect(policyModule.POLICIES.C).toEqual(DEFAULT_POLICY)
+  })
+
+  test("eval-config-c AC1 — DEFAULT_POLICY is left as it was", () => {
+    expect(DEFAULT_POLICY).toEqual({
+      thresholds: { answer: 0.5, step: 0.5 },
+      budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 5 },
+    })
+  })
+})
+
+describe("eval-config-c AC1 — loopPolicy with a policy", () => {
+  const custom: PolicyConfig = {
+    thresholds: { answer: 0.7, step: 0.3 },
+    budgets: { maxHops: 4, maxRewrites: 3, explore: 6, maxNotes: 9 },
+  }
+
+  test("eval-config-c AC1 — the policy given, with the note budget set to k", () => {
+    expect(evalCommand.loopPolicy(4, custom)).toEqual({
+      thresholds: { answer: 0.7, step: 0.3 },
+      budgets: { maxHops: 4, maxRewrites: 3, explore: 6, maxNotes: 4 },
+    })
+  })
+
+  test("eval-config-c AC1 — the policy given is not mutated", () => {
+    const before = structuredClone(custom)
+    evalCommand.loopPolicy(2, custom)
+    expect(custom).toEqual(before)
+  })
+
+  test("eval-config-c AC1 — without a second argument, the default policy as before", () => {
+    expect(evalCommand.loopPolicy(7)).toEqual(
+      evalCommand.loopPolicy(7, DEFAULT_POLICY)
+    )
+    expect(evalCommand.loopPolicy(7).budgets.maxHops).toBe(
+      DEFAULT_POLICY.budgets.maxHops
+    )
+  })
+
+  test("eval-config-c AC1 — the policy of config C, with k", () => {
+    expect(evalCommand.loopPolicy(3, policyModule.POLICIES.C)).toEqual({
+      thresholds: policyModule.POLICIES.C.thresholds,
+      budgets: { ...policyModule.POLICIES.C.budgets, maxNotes: 3 },
+    })
+  })
+})
+
+/** The calls of one question that go to the system one: the ones of Jev. */
+function systemOneCalls(calls: ModelCall[]): ModelCall[] {
+  return calls.filter((call) => call.model === JEV)
+}
+
+describe("eval-config-c AC8 — upperBoundCallsC, number and order of the calls", () => {
+  test("eval-config-c AC8 — default policy, llm rewriter: one system-one call per note and per turn, then the fallback, the rewriter and the answerer", async () => {
+    // 4 turns (1 + maxHops 2 + maxRewrites 1) on 8 notes.
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "llm"
+    )
+    expect(calls).toHaveLength(4 * 8 + (4 + 1 + 1))
+    expect(systemOneCalls(calls)).toHaveLength(4 * 8)
+  })
+
+  test("eval-config-c AC8 — the code rewriter makes no rewriter call", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "code"
+    )
+    expect(calls).toHaveLength(4 * 8 + (4 + 0 + 1))
+  })
+
+  test("eval-config-c AC8 — the count follows the hop and rewrite budgets and the number of notes", async () => {
+    // 1 + 3 + 2 = 6 turns on 5 notes, then 6 + 2 + 1 calls.
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(5, 300),
+      policy(3, 2, 5),
+      "llm"
+    )
+    expect(systemOneCalls(calls)).toHaveLength(6 * 5)
+    expect(calls).toHaveLength(6 * 5 + (6 + 2 + 1))
+  })
+
+  test("eval-config-c AC8 — no hop and no rewrite: one turn", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(5, 300),
+      policy(0, 0, 5),
+      "llm"
+    )
+    expect(systemOneCalls(calls)).toHaveLength(5)
+    expect(calls).toHaveLength(5 + 2)
+  })
+
+  test("eval-config-c AC8 — the system-one calls come first", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(6, 400),
+      DEFAULT_POLICY,
+      "llm"
+    )
+    const first = calls.slice(0, 4 * 6)
+    for (const call of first) expect(call.model).toBe(JEV)
+    for (const call of calls.slice(4 * 6)) expect(call.model).toBe(HAIKU)
+  })
+
+  test("eval-config-c AC8 — after them, exactly the calls of the worst-case fallback, rewriter and answerer", async () => {
+    for (const rewriter of ["llm", "code"] as const) {
+      const candidates = notes(7, 600)
+      const calls = await evalCommand.upperBoundCallsC(
+        QUESTION,
+        candidates,
+        DEFAULT_POLICY,
+        rewriter
+      )
+      const expected = await evalCommand.upperBoundCalls(
+        QUESTION,
+        candidates,
+        DEFAULT_POLICY,
+        rewriter
+      )
+      expect(calls.slice(4 * 7)).toEqual(expected)
+    }
+  })
+
+  test("eval-config-c AC8 — no candidate note: no system-one call, only the rest", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      [],
+      DEFAULT_POLICY,
+      "llm"
+    )
+    expect(systemOneCalls(calls)).toHaveLength(0)
+    expect(calls).toEqual(
+      await evalCommand.upperBoundCalls(QUESTION, [], DEFAULT_POLICY, "llm")
+    )
+  })
+})
+
+describe("eval-config-c AC8 — upperBoundCallsC, sizes", () => {
+  test("eval-config-c AC8 — a system-one call is a Jev call with no output and some input", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(6, 400),
+      DEFAULT_POLICY,
+      "llm"
+    )
+    const jev = systemOneCalls(calls)
+    expect(jev.length).toBeGreaterThan(0)
+    for (const call of jev) {
+      expect(call.model).toBe("jev-1.13.0")
+      expect(call.outputTokens).toBe(0)
+      expect(call.inputTokens).toBeGreaterThan(0)
+    }
+  })
+
+  test("eval-config-c AC8 — a system-one call grows with the length of the note", async () => {
+    const short = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(6, 200),
+      DEFAULT_POLICY,
+      "code"
+    )
+    const long = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(6, 2000),
+      DEFAULT_POLICY,
+      "code"
+    )
+    const shortInputs = systemOneCalls(short).map((call) => call.inputTokens)
+    const longInputs = systemOneCalls(long).map((call) => call.inputTokens)
+    expect(shortInputs).toHaveLength(4 * 6)
+    expect(longInputs).toHaveLength(4 * 6)
+    expect(Math.min(...longInputs)).toBeGreaterThan(Math.max(...shortInputs))
+  })
+
+  test("eval-config-c AC8 — each call is sized from its own note: a mix of short and long notes gives calls of both sizes", async () => {
+    const mixed = [note(0, 100), note(1, 4000)]
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      mixed,
+      policy(0, 0, 2),
+      "code"
+    )
+    const inputs = systemOneCalls(calls).map((call) => call.inputTokens)
+    expect(inputs).toHaveLength(2)
+    expect(Math.max(...inputs)).toBeGreaterThan(Math.min(...inputs))
+  })
+})
+
+describe("eval-config-c AC8 — upperBoundCallsC makes no network call", () => {
+  test("eval-config-c AC8 — resolves without any API key", async () => {
+    const keys = [
+      "ANTHROPIC_API_KEY",
+      "MISTRAL_API_KEY",
+      "TYPESAFE_API_KEY",
+    ] as const
+    const saved = keys.map((key) => process.env[key])
+    for (const key of keys) delete process.env[key]
+    try {
+      const calls = await evalCommand.upperBoundCallsC(
+        QUESTION,
+        notes(3, 200),
+        DEFAULT_POLICY,
+        "llm"
+      )
+      expect(calls.length).toBeGreaterThan(0)
+    } finally {
+      keys.forEach((key, index) => {
+        const value = saved[index]
+        if (value !== undefined) process.env[key] = value
+      })
+    }
   })
 })

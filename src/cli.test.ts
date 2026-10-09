@@ -248,12 +248,25 @@ const repoQuestions = resolve(repoRoot, "evals", "dev", "questions.json")
  * once instead of reaching the network.
  */
 function runEvalFrom(cwd: string, ...args: string[]) {
+  return runEvalWithEnv(cwd, {}, ...args)
+}
+
+/**
+ * Like `runEvalFrom`, with `overrides` on top of the environment: a key set to
+ * `undefined` is removed from it.
+ */
+function runEvalWithEnv(
+  cwd: string,
+  overrides: Record<string, string | undefined>,
+  ...args: string[]
+) {
   const env: Record<string, string | undefined> = {
     ...process.env,
     ANTHROPIC_API_KEY: "dummy-key",
     MISTRAL_API_KEY: "dummy-key",
     HTTPS_PROXY: "http://127.0.0.1:9",
     HTTP_PROXY: "http://127.0.0.1:9",
+    ...overrides,
   }
   const result = Bun.spawnSync(["bun", cliPath, "eval", ...args], {
     cwd,
@@ -280,20 +293,12 @@ describe("AC7 — reflex eval arguments and files", () => {
     expect(exitCode).toBe(1)
   })
 
-  test("AC7 — --config C reports not implemented and exits 1, before any file is read", () => {
-    const cwd = makeTempDir("reflex-cli-eval-config-")
-    const { stdout, stderr, exitCode } = runEvalFrom(cwd, "--config", "C")
-    expect(stderr).toContain("not implemented")
-    expect(stdout).toBe("")
-    expect(exitCode).toBe(1)
-  })
-
   test("AC7 — --split, --limit, --k, --max-cost and --dry-run are accepted options", () => {
     const cwd = makeTempDir("reflex-cli-eval-options-")
     const { stdout, stderr, exitCode } = runEvalFrom(
       cwd,
       "--config",
-      "C",
+      "B",
       "--split",
       "tuning",
       "--limit",
@@ -304,7 +309,7 @@ describe("AC7 — reflex eval arguments and files", () => {
       "0.5",
       "--dry-run"
     )
-    expect(stderr).toContain("not implemented")
+    expect(stderr).toMatch(/questions\.json|index\.db/)
     expect(stderr).not.toMatch(/unknown option/i)
     expect(stdout).toBe("")
     expect(exitCode).toBe(1)
@@ -499,20 +504,281 @@ describe("AC7 — config B options", () => {
       expect(exitCode).toBe(1)
     })
   }
+})
 
-  test("AC7 — config C still reports not implemented, with the config B options", () => {
-    const cwd = makeTempDir("reflex-cli-eval-c-")
-    const { stdout, stderr, exitCode } = runEvalFrom(
+const DUMMY_TYPESAFE = { TYPESAFE_API_KEY: "dummy-key" }
+
+describe("eval-config-c AC2 — config C options", () => {
+  test("eval-config-c AC2 — --config C is no longer reported as not implemented: from an empty folder it fails on a missing file, in one line", () => {
+    const cwd = makeTempDir("reflex-cli-eval-c-empty-")
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
       cwd,
+      DUMMY_TYPESAFE,
+      "--config",
+      "C"
+    )
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(stderr).not.toContain("not implemented")
+    expect(stderr).not.toMatch(/^\s+at /m)
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("eval-config-c AC2 — a missing .reflex/index.db gives a one-line error naming the file, like A and B", () => {
+    const cwd = makeTempDir("reflex-cli-eval-c-noindex-")
+    mkdirSync(join(cwd, "evals", "dev"), { recursive: true })
+    copyFileSync(repoQuestions, join(cwd, "evals", "dev", "questions.json"))
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      cwd,
+      DUMMY_TYPESAFE,
+      "--config",
+      "C"
+    )
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toContain("index.db")
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("eval-config-c AC2 — the config B options, the common ones and the two new ones are accepted: it goes on to the file checks", () => {
+    const cwd = makeTempDir("reflex-cli-eval-c-options-")
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      cwd,
+      DUMMY_TYPESAFE,
       "--config",
       "C",
+      "--split",
+      "tuning",
+      "--limit",
+      "3",
+      "--k",
+      "5",
+      "--max-cost",
+      "0.5",
+      "--dry-run",
       "--rewrite",
       "code",
       "--candidates",
-      "20"
+      "20",
+      "--system-one",
+      "clef",
+      "--fallback",
+      "0.6"
     )
-    expect(stderr).toContain("not implemented")
+    expect(stderr).toMatch(/questions\.json|index\.db/)
     expect(stderr).not.toMatch(/unknown option/i)
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const kind of ["jev", "clef"]) {
+    test(`eval-config-c AC2 — --system-one ${kind} is accepted: it goes on to the file checks`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-system-one-ok-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--system-one",
+        kind
+      )
+      expect(stderr).toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("--system-one")
+      expect(stderr).not.toContain("not implemented")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const kind of ["foo", "JEV", ""]) {
+    test(`eval-config-c AC2 — --system-one "${kind}" prints an error naming --system-one and the two kinds, and exits 1`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-system-one-bad-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        `--system-one=${kind}`
+      )
+      expect(stderr).toContain("--system-one")
+      expect(stderr).toMatch(/jev/)
+      expect(stderr).toMatch(/clef/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const threshold of ["0", "0.6", "1"]) {
+    test(`eval-config-c AC2 — --fallback ${threshold} is accepted: it goes on to the file checks`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-fallback-ok-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--fallback",
+        threshold
+      )
+      expect(stderr).toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("--fallback")
+      expect(stderr).not.toContain("not implemented")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const threshold of ["-0.1", "1.5", "abc", ""]) {
+    test(`eval-config-c AC2 — --fallback "${threshold}" prints an error naming --fallback on stderr and exits 1`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-fallback-bad-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        // The `=` form lets a value start with a dash.
+        `--fallback=${threshold}`
+      )
+      expect(stderr).toContain("--fallback")
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("eval-config-c AC2 — --rewrite and --candidates are checked as for B", () => {
+    const rewrite = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-rewrite-"),
+      DUMMY_TYPESAFE,
+      "--config",
+      "C",
+      "--rewrite",
+      "foo"
+    )
+    expect(rewrite.stderr).toContain("--rewrite")
+    expect(rewrite.stderr).not.toContain("not implemented")
+    expect(rewrite.stdout).toBe("")
+    expect(rewrite.exitCode).toBe(1)
+
+    const candidates = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-candidates-"),
+      DUMMY_TYPESAFE,
+      "--config",
+      "C",
+      "--candidates=0"
+    )
+    expect(candidates.stderr).toContain("--candidates")
+    expect(candidates.stderr).toMatch(/positive integer/)
+    expect(candidates.stdout).toBe("")
+    expect(candidates.exitCode).toBe(1)
+  })
+})
+
+describe("eval-config-c AC2 — the options of config C are rejected for A and B", () => {
+  for (const config of ["A", "B"]) {
+    for (const [option, value] of [
+      ["--system-one", "jev"],
+      ["--system-one", "clef"],
+      ["--fallback", "0.6"],
+    ] as const) {
+      test(`eval-config-c AC2 — ${option} ${value} with --config ${config} is rejected, naming the option and the config`, () => {
+        const cwd = makeTempDir("reflex-cli-eval-c-only-")
+        const { stdout, stderr, exitCode } = runEvalFrom(
+          cwd,
+          "--config",
+          config,
+          option,
+          value
+        )
+        expect(nonEmptyLines(stderr)).toHaveLength(1)
+        expect(stderr).toContain(option)
+        expect(stderr).toMatch(/config/i)
+        expect(stderr).not.toMatch(/unknown option/i)
+        expect(stderr).not.toContain("not implemented")
+        expect(stderr).not.toMatch(/questions\.json|index\.db/)
+        expect(stdout).toBe("")
+        expect(exitCode).toBe(1)
+      })
+    }
+  }
+})
+
+describe("eval-config-c AC2 — TYPESAFE_API_KEY", () => {
+  /** A folder with the files of a run, so that only the key can be missing. */
+  function folderWithFiles(): string {
+    const cwd = makeTempDir("reflex-cli-eval-c-key-")
+    mkdirSync(join(cwd, "evals", "dev"), { recursive: true })
+    copyFileSync(repoQuestions, join(cwd, "evals", "dev", "questions.json"))
+    mkdirSync(join(cwd, ".reflex"))
+    writeFileSync(join(cwd, ".reflex", "index.db"), "")
+    return cwd
+  }
+
+  for (const args of [[], ["--system-one", "jev"]]) {
+    test(`eval-config-c AC2 — config C ${args.join(" ") || "(default system one)"} without TYPESAFE_API_KEY gives a one-line error naming it`, () => {
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        folderWithFiles(),
+        { TYPESAFE_API_KEY: undefined },
+        "--config",
+        "C",
+        ...args
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("TYPESAFE_API_KEY")
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/^\s+at /m)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("eval-config-c AC2 — an empty TYPESAFE_API_KEY is missing too", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      folderWithFiles(),
+      { TYPESAFE_API_KEY: "" },
+      "--config",
+      "C"
+    )
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toContain("TYPESAFE_API_KEY")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("eval-config-c AC2 — from an empty folder with no key, the one-line error names the missing file or the key", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-nothing-"),
+      { TYPESAFE_API_KEY: undefined },
+      "--config",
+      "C"
+    )
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toMatch(/questions\.json|index\.db|TYPESAFE_API_KEY/)
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("eval-config-c AC2 — --system-one clef needs no TYPESAFE_API_KEY", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-clef-"),
+      { TYPESAFE_API_KEY: undefined },
+      "--config",
+      "C",
+      "--system-one",
+      "clef"
+    )
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(stderr).not.toContain("TYPESAFE_API_KEY")
     expect(stdout).toBe("")
     expect(exitCode).toBe(1)
   })

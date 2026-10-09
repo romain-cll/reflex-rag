@@ -60,7 +60,7 @@ const CATEGORY_N: Record<Category, number> = {
 
 interface RunSpec {
   name: string
-  config: "A" | "B"
+  config: "A" | "B" | "C"
   split: "test" | "tuning"
   commit: string
   /** Correct answers by category. */
@@ -87,6 +87,31 @@ interface RunSpec {
   } | null
   /** Offset of the failure counts, so that every run has its own. */
   failureSeed: number
+  /** The share of judged notes, and of questions, judged again; `null` for a run without a fallback. */
+  fallback?: { noteRate: number; questionRate: number }
+  /** Median wall-clock time of each stage, and mean cost of each role. */
+  stage?: StageProfile
+  /** A summary from before the stage and fallback metrics: it has none of their fields. */
+  legacy?: boolean
+}
+
+const STAGES = ["searchMs", "judgeMs", "fallbackMs", "rewriteMs", "answerMs"]
+const ROLES = ["embed", "judge", "fallback", "rewrite", "answer"]
+
+interface StageProfile {
+  medianMs: Record<(typeof STAGES)[number], number>
+  costUsd: Record<(typeof ROLES)[number], number>
+}
+
+const NO_STAGE: StageProfile = {
+  medianMs: {
+    searchMs: 0,
+    judgeMs: 0,
+    fallbackMs: 0,
+    rewriteMs: 0,
+    answerMs: 0,
+  },
+  costUsd: { embed: 0, judge: 0, fallback: 0, rewrite: 0, answer: 0 },
 }
 
 function failuresOf(spec: RunSpec): Record<string, number> {
@@ -134,6 +159,14 @@ function metricsOf(
         : category === null
           ? spec.overallAbstentions
           : { loop: 17, answerer: 19 },
+    ...(spec.legacy
+      ? {}
+      : {
+          fallbackNoteRate: spec.fallback?.noteRate ?? null,
+          fallbackQuestionRate: spec.fallback?.questionRate ?? null,
+          stageMedianMs: (spec.stage ?? NO_STAGE).medianMs,
+          costByRole: (spec.stage ?? NO_STAGE).costUsd,
+        }),
   }
 }
 
@@ -213,6 +246,22 @@ const A_TEST: RunSpec = {
   overallAbstentions: { loop: 0, answerer: 13 },
   loop: null,
   failureSeed: 0,
+  stage: {
+    medianMs: {
+      searchMs: 85,
+      judgeMs: 0,
+      fallbackMs: 0,
+      rewriteMs: 0,
+      answerMs: 1900,
+    },
+    costUsd: {
+      embed: 0.0002,
+      judge: 0,
+      fallback: 0,
+      rewrite: 0,
+      answer: 0.0021,
+    },
+  },
 }
 
 /** An older run of the same config and split, which the default selection skips. */
@@ -248,6 +297,22 @@ const A_TUNING: RunSpec = {
   abstentions: { loop: 0, answerer: 7 },
   overallAbstentions: { loop: 0, answerer: 16 },
   failureSeed: 1,
+  stage: {
+    medianMs: {
+      searchMs: 92,
+      judgeMs: 0,
+      fallbackMs: 0,
+      rewriteMs: 0,
+      answerMs: 1650,
+    },
+    costUsd: {
+      embed: 0.0003,
+      judge: 0,
+      fallback: 0,
+      rewrite: 0,
+      answer: 0.0018,
+    },
+  },
 }
 
 const B_TEST: RunSpec = {
@@ -274,6 +339,22 @@ const B_TEST: RunSpec = {
   overallAbstentions: { loop: 11, answerer: 14 },
   loop: { hops: 1.5, rewrites: 0.5, judgeCalls: 4, rules: { sufficient: 40 } },
   failureSeed: 3,
+  stage: {
+    medianMs: {
+      searchMs: 310,
+      judgeMs: 2400,
+      fallbackMs: 0,
+      rewriteMs: 640,
+      answerMs: 1750,
+    },
+    costUsd: {
+      embed: 0.0004,
+      judge: 0.0016,
+      fallback: 0,
+      rewrite: 0.0007,
+      answer: 0.0027,
+    },
+  },
 }
 
 const B_TUNING: RunSpec = {
@@ -308,6 +389,48 @@ const B_NO_NO_ANSWER: RunSpec = {
   name: "2026-10-09T10-00-00-000Z-B-test",
   commit: "bbb5555",
   withoutNoAnswer: true,
+}
+
+/** Config C: the system-one judge with its fallback. */
+const C_TEST: RunSpec = {
+  ...B_TEST,
+  name: "2026-10-09T11-00-00-000Z-C-test",
+  config: "C",
+  commit: "ccc6666",
+  failureSeed: 2,
+  fallback: { noteRate: 0.35, questionRate: 0.6 },
+  stage: {
+    medianMs: {
+      searchMs: 290,
+      judgeMs: 520,
+      fallbackMs: 1480,
+      rewriteMs: 610,
+      answerMs: 1710,
+    },
+    costUsd: {
+      embed: 0.0005,
+      judge: 0.0008,
+      fallback: 0.0012,
+      rewrite: 0.0006,
+      answer: 0.0024,
+    },
+  },
+}
+
+/** A second run of config B on the test split, from another commit. */
+const B_TEST_OTHER_COMMIT: RunSpec = {
+  ...B_TEST,
+  name: "2026-10-09T12-00-00-000Z-B-test",
+  commit: "bbb7777",
+  failureSeed: 1,
+}
+
+/** A run whose summary predates the stage and fallback metrics. */
+const B_LEGACY: RunSpec = {
+  ...B_TEST,
+  name: "2026-10-07T08-00-00-000Z-B-test",
+  commit: "leg0001",
+  legacy: true,
 }
 
 /** The runs of the default selection: the latest of each config and split. */
@@ -404,10 +527,41 @@ function tablesOf(page: string): Table[] {
   return tables
 }
 
+/**
+ * The main, the per-category and the failure tables, found by their header:
+ * the page may hold other tables ("By stage") wherever it likes.
+ */
 function threeTables(page: string): [Table, Table, Table] {
   const tables = tablesOf(page)
-  expect(tables).toHaveLength(3)
-  return tables as [Table, Table, Table]
+  const find = (what: string, matches: (table: Table) => boolean): Table => {
+    const table = tables.find(matches)
+    expect({ what, found: table !== undefined }).toEqual({ what, found: true })
+    return table!
+  }
+  const has = (table: Table, pattern: RegExp) =>
+    table.header.some((cell) => pattern.test(cell))
+  return [
+    find(
+      "main",
+      (table) =>
+        /^config/i.test(table.header[0]!) &&
+        has(table, /accuracy/i) &&
+        has(table, /date/i)
+    ),
+    find("categories", (table) => /^category/i.test(table.header[0]!)),
+    find("failures", (table) => has(table, /family/i)),
+  ]
+}
+
+/** The "By stage" table: the one with a column for the search stage and one for the embed role. */
+function stageTable(page: string): Table {
+  const table = tablesOf(page).find(
+    (candidate) =>
+      candidate.header.some((cell) => /search/i.test(cell)) &&
+      candidate.header.some((cell) => /embed/i.test(cell))
+  )
+  expect({ found: table !== undefined }).toEqual({ found: true })
+  return table!
 }
 
 /** The index of the first header cell that matches. */
@@ -972,7 +1126,7 @@ describe("AC5 — provenance", () => {
     const page = generate(cwd)
     const lines = page.split("\n")
     const tables = tablesOf(page)
-    expect(tables).toHaveLength(3)
+    expect(tables.length).toBeGreaterThanOrEqual(3)
     tables.forEach((table, index) => {
       const next = tables[index + 1]?.start ?? lines.length
       const below = lines.slice(table.end + 1, next).join("\n")
@@ -1038,6 +1192,239 @@ describe("AC6 — no model call", () => {
     ).toEqual(before)
     for (const dir of runs) {
       expect(readdirSync(dir).sort()).toEqual(["summary.json", "trace.jsonl"])
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// eval-config-c AC9 — results page
+// ---------------------------------------------------------------------------
+
+const WITH_C = [...LATEST, C_TEST]
+
+/** A number shown in a cell, with or without thousands separators. */
+function numberIn(cell: string): number {
+  return Number(cell.replace(/[,\s]/g, ""))
+}
+
+/** A cell that shows `value`, to `digits` decimals at most; a zero may also be left empty or "-". */
+function expectShows(cell: string, value: number, digits: number) {
+  if (value === 0) {
+    expect(cell).toMatch(/^(0(\.0*)?|-)?$/)
+    return
+  }
+  expect(numberIn(cell)).toBeCloseTo(value, digits)
+}
+
+describe("eval-config-c AC9 — fallback rates in the main table", () => {
+  const main = () => threeTables(generate(workdir(WITH_C).cwd))[0]
+
+  test("eval-config-c AC9 — the main table gains a fallback note rate and a fallback question rate column, after the headline", () => {
+    const table = main()
+    const note = column(table, /^fallback note rate$/i)
+    const question = column(table, /^fallback question rate$/i)
+    expect(note).toBeGreaterThan(column(table, /accuracy/i))
+    expect(question).toBeGreaterThan(column(table, /accuracy/i))
+    expect(note).not.toBe(question)
+  })
+
+  test("eval-config-c AC9 — config C shows the share of notes and the share of questions judged again", () => {
+    const table = main()
+    const row = rowOf(table, C_TEST)
+    const note = row[column(table, /^fallback note rate$/i)]!
+    const question = row[column(table, /^fallback question rate$/i)]!
+    expect(showsRate(note, 0.35)).toBe(true)
+    expect(showsRate(question, 0.6)).toBe(true)
+    expect(showsRate(note, 0.6)).toBe(false)
+    expect(showsRate(question, 0.35)).toBe(false)
+  })
+
+  test("eval-config-c AC9 — the rates are empty for A and B", () => {
+    const table = main()
+    const columns = [
+      column(table, /^fallback note rate$/i),
+      column(table, /^fallback question rate$/i),
+    ]
+    for (const spec of LATEST) {
+      const row = rowOf(table, spec)
+      for (const index of columns) expect(row[index]!).toBe("")
+    }
+  })
+
+  test("eval-config-c AC9 — the other columns of the main table are still there", () => {
+    const table = main()
+    for (const pattern of [
+      /hops/i,
+      /rewrites/i,
+      /judge calls?/i,
+      /accuracy/i,
+      /p50/i,
+    ]) {
+      expect(column(table, pattern)).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  test("eval-config-c AC9 — a summary from before the fallback metrics gives empty or - cells and no crash", () => {
+    const { cwd } = workdir([B_LEGACY])
+    const table = threeTables(generate(cwd))[0]
+    const row = rowOf(table, B_LEGACY)
+    expect(row[column(table, /^fallback note rate$/i)]!).toMatch(/^-?$/)
+    expect(row[column(table, /^fallback question rate$/i)]!).toMatch(/^-?$/)
+  })
+})
+
+describe("eval-config-c AC9 — By stage", () => {
+  const page = () => generate(workdir(WITH_C).cwd)
+
+  test("eval-config-c AC9 — the page holds a fourth table, under a By stage heading", () => {
+    const text = page()
+    expect(tablesOf(text)).toHaveLength(4)
+    const table = stageTable(text)
+    const lines = text.split("\n")
+    const heading = lines.findIndex((l) => /^#{1,6}\s+by stage\b/i.test(l))
+    expect(heading).toBeGreaterThanOrEqual(0)
+    expect(heading).toBeLessThan(table.start)
+    // No other table between the heading and the table.
+    const between = lines.slice(heading, table.start)
+    expect(between.some((l) => l.trimStart().startsWith("|"))).toBe(false)
+  })
+
+  test("eval-config-c AC9 — one row per run, in the order of the main table", () => {
+    const text = page()
+    const [main] = threeTables(text)
+    const stage = stageTable(text)
+    expect(stage.rows).toHaveLength(WITH_C.length)
+    expect(orderOf(stage, WITH_C).map((spec) => spec.name)).toEqual(
+      orderOf(main, WITH_C).map((spec) => spec.name)
+    )
+  })
+
+  test("eval-config-c AC9 — the row starts with the config, the split and the commit of the run", () => {
+    const stage = stageTable(page())
+    expect(stage.header[0]!).toMatch(/^config/i)
+    expect(stage.header[1]!).toMatch(/^split/i)
+    expect(stage.header[2]!).toMatch(/^commit/i)
+    for (const spec of WITH_C) {
+      const row = rowOf(stage, spec)
+      expect(clean(row[2]!)).toBe(spec.commit)
+    }
+  })
+
+  test("eval-config-c AC9 — then the median of each stage in ms: search, judge, fallback, rewrite, answer", () => {
+    const stage = stageTable(page())
+    const names = [/search/i, /judge/i, /fallback/i, /rewrite/i, /answer/i]
+    names.forEach((pattern, offset) => {
+      expect(stage.header[3 + offset]!).toMatch(pattern)
+    })
+    for (const spec of WITH_C) {
+      const row = rowOf(stage, spec)
+      STAGES.forEach((name, offset) => {
+        expectShows(row[3 + offset]!, spec.stage!.medianMs[name]!, 0)
+      })
+    }
+  })
+
+  test("eval-config-c AC9 — then the mean cost of each role in USD: embed, judge, fallback, rewrite, answer", () => {
+    const stage = stageTable(page())
+    const names = [/embed/i, /judge/i, /fallback/i, /rewrite/i, /answer/i]
+    names.forEach((pattern, offset) => {
+      expect(stage.header[8 + offset]!).toMatch(pattern)
+      expect(stage.header[8 + offset]!).toMatch(/cost|usd/i)
+    })
+    for (const spec of WITH_C) {
+      const row = rowOf(stage, spec)
+      ROLES.forEach((name, offset) => {
+        expectShows(row[8 + offset]!, spec.stage!.costUsd[name]!, 4)
+      })
+    }
+  })
+
+  test("eval-config-c AC9 — the cells come from the run of their row", () => {
+    const stage = stageTable(page())
+    const b = rowOf(stage, B_TEST)
+    const c = rowOf(stage, C_TEST)
+    expect(numberIn(b[4]!)).toBe(2400)
+    expect(numberIn(c[4]!)).toBe(520)
+    expect(numberIn(c[5]!)).toBe(1480)
+    expect(numberIn(rowOf(stage, A_TEST)[3]!)).toBe(85)
+    expect(numberIn(rowOf(stage, A_TUNING)[3]!)).toBe(92)
+  })
+
+  test("eval-config-c AC9 — the run folders it was built from are listed under it", () => {
+    const text = page()
+    const lines = text.split("\n")
+    const tables = tablesOf(text)
+    const stage = stageTable(text)
+    const index = tables.findIndex((table) => table.start === stage.start)
+    const next = tables[index + 1]?.start ?? lines.length
+    const below = lines.slice(stage.end + 1, next).join("\n")
+    for (const spec of WITH_C) expect(below).toContain(spec.name)
+  })
+
+  test("eval-config-c AC9 — a summary from before the stage metrics gives empty or - cells and no crash", () => {
+    const { cwd } = workdir([B_LEGACY, C_TEST])
+    const text = generate(cwd)
+    const stage = stageTable(text)
+    expect(stage.rows).toHaveLength(2)
+    const row = rowOf(stage, B_LEGACY)
+    for (const cell of row.slice(3, 13)) expect(cell).toMatch(/^-?$/)
+    // The other run is not affected.
+    expect(numberIn(rowOf(stage, C_TEST)[4]!)).toBe(520)
+  })
+})
+
+describe("eval-config-c AC9 — labels with the commit when two runs share config and split", () => {
+  const runs = [A_TEST, B_TEST, B_TEST_OTHER_COMMIT]
+  const tables = () => {
+    const { cwd, runs: dirs } = workdir(runs)
+    return threeTables(generate(cwd, dirs))
+  }
+
+  test("eval-config-c AC9 — the column groups of the per-category table carry the commit of their run", () => {
+    const [, categories] = tables()
+    const header = categories.header.join(" | ")
+    // Three measures per run.
+    expect(header.match(/bbb3333/g)).toHaveLength(3)
+    expect(header.match(/bbb7777/g)).toHaveLength(3)
+    expect(new Set(categories.header.slice(1)).size).toBe(
+      categories.header.length - 1
+    )
+  })
+
+  test("eval-config-c AC9 — the count columns of the failure table carry the commit of their run", () => {
+    const [, , failures] = tables()
+    const labels = failures.header.slice(-runs.length)
+    expect(new Set(labels).size).toBe(runs.length)
+    const b3 = labels.filter((label) => label.includes("bbb3333"))
+    const b7 = labels.filter((label) => label.includes("bbb7777"))
+    expect(b3).toHaveLength(1)
+    expect(b7).toHaveLength(1)
+    for (const label of [...b3, ...b7]) {
+      expect(label).toMatch(/\bB\b[^|]*test/)
+    }
+  })
+
+  test("eval-config-c AC9 — the other runs are still labelled by their config and split", () => {
+    const [, categories, failures] = tables()
+    expect(categories.header.join(" | ")).toMatch(/\bA\b[^|]*test/)
+    expect(failures.header.slice(-runs.length).join(" | ")).toMatch(
+      /\bA\b[^|]*test/
+    )
+  })
+
+  test("eval-config-c AC9 — the counts of each run stay in their column", () => {
+    const [main, , failures] = tables()
+    const labels = failures.header.slice(-runs.length)
+    const commits = main.rows.map((row) => clean(row[column(main, /commit/i)]!))
+    expect(new Set(commits)).toEqual(new Set(["aaa1111", "bbb3333", "bbb7777"]))
+    for (const spec of [B_TEST, B_TEST_OTHER_COMMIT]) {
+      const index = labels.findIndex((label) => label.includes(spec.commit))
+      failures.rows.forEach((row, failure) => {
+        const id = FAILURE_IDS[failure]!
+        expect(row.slice(-runs.length)[index]!).toBe(
+          String(failuresOf(spec)[id])
+        )
+      })
     }
   })
 })

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Question } from "../../evals/schema.ts"
 import type { ModelCall } from "../core/types.ts"
+import { callCostUsd, PRICES } from "./prices.ts"
 import { renderReport, runEval, summarize } from "./run.ts"
 
 type RunRecord = Parameters<typeof summarize>[0][number]
@@ -32,6 +33,8 @@ interface LoopData {
   judged: Record<string, Record<string, number>>
   kept: string[]
   frontier: string[]
+  /** Config C: the notes judged again by the fallback; absent for config B. */
+  fallback?: string[]
 }
 
 /** What the fake retriever and answerer return for one question. */
@@ -49,6 +52,16 @@ interface Step {
   loopError?: { message: string; calls: ModelCall[]; steps: unknown[] }
   /** `retrieve` throws a plain error (no calls, no steps). */
   retrieveError?: string
+  /** Loop stages (B and C) returned by `retrieve`; absent for config A. */
+  stages?: Record<"searchMs" | "judgeMs" | "fallbackMs" | "rewriteMs", number>
+  /** Real wait of `retrieve` before it returns or throws. */
+  retrieveDelayMs?: number
+  /** Real wait of `answer` before it returns or throws. */
+  answerDelayMs?: number
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /** An error of the answerer; `call` is the call the API billed, if any. */
@@ -142,10 +155,11 @@ function fakes(steps: Map<string, Step>) {
     retrieved,
     answerCalls,
     contexts,
-    retrieve: (query: string, k: number) => {
+    retrieve: async (query: string, k: number) => {
       retrieved.push({ query, k })
       const step = steps.get(query)
       if (!step) throw new Error(`unscripted question: ${query}`)
+      if (step.retrieveDelayMs) await sleep(step.retrieveDelayMs)
       if (step.loopError) {
         const { message, calls, steps: loopSteps } = step.loopError
         return Promise.reject(new LoopError(message, calls, loopSteps))
@@ -159,12 +173,14 @@ function fakes(steps: Map<string, Step>) {
         context,
         calls: step.retrievalCalls ?? [],
         ...(step.loop ? { loop: step.loop } : {}),
+        ...(step.stages ? { stages: step.stages } : {}),
       })
     },
-    answer: (question: string, context: ContextChunk[]) => {
+    answer: async (question: string, context: ContextChunk[]) => {
       answerCalls.push({ question, context })
       const step = steps.get(question)
       if (!step) throw new Error(`unscripted question: ${question}`)
+      if (step.answerDelayMs) await sleep(step.answerDelayMs)
       if (step.answerError) {
         const { message, call } = step.answerError
         return Promise.reject(new AnswerError(message, call))
@@ -761,8 +777,14 @@ function makeRecord(
     calls: [call("claude-haiku-5-5", 1000, 100, 300)],
     latencyMs: 300,
     costUsd: 0.01,
+    // Spread, not a property: the record type does not know `stages` yet.
+    ...{ stages: zeroStages() },
     ...overrides,
   }
+}
+
+function zeroStages() {
+  return { searchMs: 0, judgeMs: 0, fallbackMs: 0, rewriteMs: 0, answerMs: 0 }
 }
 
 const wrong = (
@@ -2450,5 +2472,572 @@ describe("AC9 (eval-config-b) — loop records", () => {
       .trim()
       .split("\n")
     expect(plain(JSON.parse(lines[1]!)).loop).toEqual(loop)
+  })
+})
+
+type Role = "embed" | "judge" | "fallback" | "rewrite" | "answer"
+
+const ROLE_NAMES: Role[] = ["embed", "judge", "fallback", "rewrite", "answer"]
+
+const STAGE_NAMES = [
+  "searchMs",
+  "judgeMs",
+  "fallbackMs",
+  "rewriteMs",
+  "answerMs",
+] as const
+
+/** A call that carries its role. */
+function roleCall(
+  role: Role,
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): ModelCall {
+  return { ...call(model, inputTokens, outputTokens, 10), role } as ModelCall
+}
+
+function stagesOf(record: unknown): Record<string, number> {
+  return plain(record).stages as Record<string, number>
+}
+
+describe("AC4 (eval-config-c) — prices", () => {
+  test("AC4 — the price table holds jev-1.13.0 at 0.042 USD per million input tokens, output free", () => {
+    expect(PRICES["jev-1.13.0"]).toEqual({ input: 0.042, output: 0 })
+  })
+
+  test("AC4 — the price table holds clef-flash at zero", () => {
+    expect(PRICES["clef-flash"]).toEqual({ input: 0, output: 0 })
+  })
+
+  test("AC4 — callCostUsd prices a jev-1.13.0 call on its input tokens only", () => {
+    expect(callCostUsd(call("jev-1.13.0", MILLION, MILLION, 10))).toBeCloseTo(
+      0.042,
+      9
+    )
+    expect(callCostUsd(call("jev-1.13.0", 500_000, 0, 10))).toBeCloseTo(
+      0.021,
+      9
+    )
+  })
+
+  test("AC4 — callCostUsd prices a clef-flash call at zero", () => {
+    expect(callCostUsd(call("clef-flash", MILLION, MILLION, 10))).toBe(0)
+  })
+
+  test("AC4 — a record's costUsd includes the jev-1.13.0 calls of the loop", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          ...goodStep(question),
+          retrievalCalls: [roleCall("judge", "jev-1.13.0", MILLION, 0)],
+          loop: loopOf("sufficient", 0, 0),
+          // 0.10 USD.
+          answerCall: call(HAIKU, MILLION, 0, 100),
+        },
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "C",
+      overrides,
+    }).result
+    expect(records[0]!.costUsd).toBeCloseTo(0.142, 9)
+  })
+
+  test("AC4 — the settings line prices jev-1.13.0 and clef-flash", async () => {
+    const { result, runsDir } = runWith([makeQuestion(1)])
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const prices = plain(JSON.parse(lines[0]!)).prices as Record<
+      string,
+      unknown
+    >
+    expect(prices["jev-1.13.0"]).toEqual({ input: 0.042, output: 0 })
+    expect(prices["clef-flash"]).toEqual({ input: 0, output: 0 })
+  })
+})
+
+describe("AC6 (eval-config-c) — stages in the records", () => {
+  const LOOP_STAGES = {
+    searchMs: 11,
+    judgeMs: 22,
+    fallbackMs: 33,
+    rewriteMs: 44,
+  }
+
+  test("AC6 — config A: searchMs is the wall-clock time of retrieve, the other loop stages are 0", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [question.id, { ...goodStep(question), retrieveDelayMs: 40 }],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    const stages = stagesOf(records[0])
+    expect(stages.searchMs).toBeGreaterThanOrEqual(35)
+    expect(stages.searchMs).toBeLessThan(1000)
+    expect(stages.judgeMs).toBe(0)
+    expect(stages.fallbackMs).toBe(0)
+    expect(stages.rewriteMs).toBe(0)
+  })
+
+  test("AC6 — answerMs is the wall-clock time of the answer call", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [question.id, { ...goodStep(question), answerDelayMs: 40 }],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    const { answerMs } = stagesOf(records[0])
+    expect(answerMs).toBeGreaterThanOrEqual(35)
+    expect(answerMs).toBeLessThan(1000)
+  })
+
+  test("AC6 — a record has the five stages, as numbers", async () => {
+    const { records } = await runWith([makeQuestion(1), makeQuestion(2)]).result
+    for (const record of records) {
+      const stages = stagesOf(record)
+      expect(Object.keys(stages).sort()).toEqual([...STAGE_NAMES].sort())
+      for (const name of STAGE_NAMES) {
+        expect(Number.isFinite(stages[name])).toBe(true)
+        expect(stages[name]).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+
+  test("AC6 — the loop stages returned by retrieve are kept as they are, and answerMs is measured", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          ...goodStep(question),
+          loop: loopOf("sufficient", 1, 1),
+          stages: LOOP_STAGES,
+          // The measured time of retrieve must not replace the loop's searchMs.
+          retrieveDelayMs: 30,
+          answerDelayMs: 30,
+        },
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    const stages = stagesOf(records[0])
+    expect(stages.searchMs).toBe(11)
+    expect(stages.judgeMs).toBe(22)
+    expect(stages.fallbackMs).toBe(33)
+    expect(stages.rewriteMs).toBe(44)
+    expect(stages.answerMs).toBeGreaterThanOrEqual(25)
+    expect(stages.answerMs).toBeLessThan(1000)
+  })
+
+  test("AC6 — answerMs is 0 when the answer returns no call, even if the answerer took time", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          ...goodStep(question),
+          loop: loopOf("abstain-nothing-relevant", 0, 0, "abstain"),
+          stages: LOOP_STAGES,
+          answerCall: null,
+          answerDelayMs: 30,
+        },
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "C",
+      overrides,
+    }).result
+    expect(stagesOf(records[0])).toEqual({ ...LOOP_STAGES, answerMs: 0 })
+  })
+
+  test("AC6 — a loop error record has all-zero stages, whatever the time the loop took", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: [],
+          output: answered("unused"),
+          retrieveDelayMs: 30,
+          loopError: { message: "judge failed", calls: [], steps: [] },
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "C",
+      overrides,
+    }).result
+    expect(plain(records[0]).error).toBe("judge failed")
+    expect(stagesOf(records[0])).toEqual(zeroStages())
+  })
+
+  test("AC6 — the trace line of a record holds its stages", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          ...goodStep(question),
+          loop: loopOf("sufficient", 1, 0),
+          stages: LOOP_STAGES,
+        },
+      ],
+    ])
+    const { result, runsDir } = runWith([question], { config: "B", overrides })
+    const { records } = await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const traced = stagesOf(JSON.parse(lines[1]!))
+    expect(traced).toEqual(stagesOf(records[0]))
+    expect(traced.judgeMs).toBe(22)
+    expect(Object.keys(traced).sort()).toEqual([...STAGE_NAMES].sort())
+  })
+
+  test("AC6 — a record's loop keeps the fallback list returned by retrieve, and has none for B", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const withFallback = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "A.md": { relevance: 0.4 }, "B.md": { relevance: 0.9 } },
+    })
+    withFallback.fallback = ["A.md"]
+    const overrides = new Map([
+      ["q-001", { ...goodStep(questions[0]!), loop: withFallback }],
+      [
+        "q-002",
+        { ...goodStep(questions[1]!), loop: loopOf("sufficient", 0, 0) },
+      ],
+    ])
+    const { records } = await runWith(questions, {
+      config: "C",
+      overrides,
+    }).result
+    expect(plain(records[0]).loop).toEqual(withFallback)
+    expect(plain(plain(records[0]).loop).fallback).toEqual(["A.md"])
+    expect(plain(plain(records[1]).loop).fallback).toBeUndefined()
+  })
+})
+
+describe("AC7 (eval-config-c) — stage, role and fallback metrics", () => {
+  function withStages(
+    n: number,
+    category: RunRecord["category"],
+    stages: Partial<ReturnType<typeof zeroStages>>
+  ): RunRecord {
+    return makeRecord(n, { category, stages: { ...zeroStages(), ...stages } })
+  }
+
+  const records = [
+    withStages(1, "simple", { searchMs: 10, judgeMs: 100, answerMs: 1000 }),
+    withStages(2, "simple", { searchMs: 30, judgeMs: 300, answerMs: 3000 }),
+    withStages(3, "simple", { searchMs: 20, judgeMs: 200, answerMs: 2000 }),
+    withStages(4, "temporal", {
+      searchMs: 40,
+      fallbackMs: 400,
+      rewriteMs: 4000,
+    }),
+    withStages(5, "temporal", {
+      searchMs: 50,
+      fallbackMs: 500,
+      rewriteMs: 5000,
+    }),
+    withStages(6, "temporal", {
+      searchMs: 60,
+      fallbackMs: 900,
+      rewriteMs: 3000,
+    }),
+    withStages(7, "multi_hop", { searchMs: 70, answerMs: 7000 }),
+  ]
+
+  test("AC7 — the median of each stage, overall and per category", () => {
+    const { overall, byCategory } = summarize(records)
+    const median = (m: unknown) => plain(m).stageMedianMs
+    // Overall, sorted: searchMs 10..70 -> 40; judgeMs 0,0,0,0,100,200,300 -> 0.
+    expect(median(overall)).toEqual({
+      searchMs: 40,
+      judgeMs: 0,
+      fallbackMs: 0,
+      rewriteMs: 3000,
+      answerMs: 1000,
+    })
+    expect(median(byCategory.simple)).toEqual({
+      searchMs: 20,
+      judgeMs: 200,
+      fallbackMs: 0,
+      rewriteMs: 0,
+      answerMs: 2000,
+    })
+    expect(median(byCategory.temporal)).toEqual({
+      searchMs: 50,
+      judgeMs: 0,
+      fallbackMs: 500,
+      rewriteMs: 4000,
+      answerMs: 0,
+    })
+    expect(median(byCategory.multi_hop)).toEqual({
+      searchMs: 70,
+      judgeMs: 0,
+      fallbackMs: 0,
+      rewriteMs: 0,
+      answerMs: 7000,
+    })
+  })
+
+  test("AC7 — the mean of each stage, overall and per category", () => {
+    const { overall, byCategory } = summarize(records)
+    const mean = (m: unknown) => plain(m).stageMeanMs as Record<string, number>
+    expect(mean(overall).searchMs).toBeCloseTo(280 / 7, 9)
+    expect(mean(overall).judgeMs).toBeCloseTo(600 / 7, 9)
+    expect(mean(overall).fallbackMs).toBeCloseTo(1800 / 7, 9)
+    expect(mean(overall).rewriteMs).toBeCloseTo(12000 / 7, 9)
+    expect(mean(overall).answerMs).toBeCloseTo(13000 / 7, 9)
+    expect(mean(byCategory.simple).searchMs).toBeCloseTo(20, 9)
+    expect(mean(byCategory.simple).judgeMs).toBeCloseTo(200, 9)
+    expect(mean(byCategory.temporal).fallbackMs).toBeCloseTo(600, 9)
+    expect(mean(byCategory.temporal).rewriteMs).toBeCloseTo(4000, 9)
+    expect(mean(byCategory.multi_hop).answerMs).toBeCloseTo(7000, 9)
+  })
+
+  test("AC7 — the stage metrics are null for every stage when there is no record", () => {
+    const empty = {
+      searchMs: null,
+      judgeMs: null,
+      fallbackMs: null,
+      rewriteMs: null,
+      answerMs: null,
+    }
+    const { overall } = summarize([])
+    expect(plain(overall).stageMedianMs).toEqual(empty)
+    expect(plain(overall).stageMeanMs).toEqual(empty)
+  })
+
+  test("AC7 — runEval summarizes the stages of its records", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2), makeQuestion(3)]
+    const overrides = new Map(
+      questions.map((q, i) => [
+        q.id,
+        {
+          ...goodStep(q),
+          loop: loopOf("sufficient", 0, 0),
+          stages: {
+            searchMs: 10 * (i + 1),
+            judgeMs: 0,
+            fallbackMs: 5,
+            rewriteMs: 0,
+          },
+        },
+      ])
+    )
+    const { result, runsDir } = runWith(questions, { config: "C", overrides })
+    const { summary } = await result
+    expect(plain(summary.overall).stageMedianMs).toMatchObject({
+      searchMs: 20,
+      fallbackMs: 5,
+    })
+    expect(plain(summary.overall).stageMeanMs).toMatchObject({
+      searchMs: 20,
+      fallbackMs: 5,
+    })
+    const written = JSON.parse(
+      readFileSync(join(readRunDir(runsDir), "summary.json"), "utf8")
+    ) as { overall: Record<string, Record<string, number>> }
+    expect(written.overall.stageMedianMs!.searchMs).toBe(20)
+  })
+
+  test("AC7 — cost and calls per role: mean per question, over all the records, calls without a role not counted", () => {
+    const first = makeRecord(1, {
+      category: "simple",
+      calls: [
+        // 0.10 USD.
+        roleCall("embed", "mistral-embed", MILLION, 0),
+        // 0.10 USD each.
+        roleCall("judge", HAIKU, MILLION, 0),
+        roleCall("judge", HAIKU, MILLION, 0),
+        // 0.50 USD.
+        roleCall("fallback", HAIKU, 0, MILLION),
+        // 0.60 USD.
+        roleCall("answer", HAIKU, MILLION, MILLION),
+      ],
+    })
+    const second = makeRecord(2, {
+      category: "temporal",
+      calls: [
+        roleCall("embed", "mistral-embed", MILLION, 0),
+        // A call without role is counted in no role.
+        call(HAIKU, MILLION, 0, 10),
+        roleCall("answer", HAIKU, MILLION, MILLION),
+        // 2 USD, the rewriter.
+        roleCall("rewrite", "claude-sonnet-5-5", MILLION, 0),
+      ],
+    })
+    const { overall, byCategory } = summarize([first, second])
+    const cost = (m: unknown) => plain(m).costByRole as Record<string, number>
+    const calls = (m: unknown) => plain(m).callsByRole as Record<string, number>
+
+    expect(Object.keys(cost(overall)).sort()).toEqual([...ROLE_NAMES].sort())
+    expect(Object.keys(calls(overall)).sort()).toEqual([...ROLE_NAMES].sort())
+
+    expect(cost(overall).embed).toBeCloseTo(0.1, 9)
+    expect(cost(overall).judge).toBeCloseTo(0.1, 9)
+    expect(cost(overall).fallback).toBeCloseTo(0.25, 9)
+    expect(cost(overall).rewrite).toBeCloseTo(1, 9)
+    expect(cost(overall).answer).toBeCloseTo(0.6, 9)
+    expect(calls(overall)).toEqual({
+      embed: 1,
+      judge: 1,
+      fallback: 0.5,
+      rewrite: 0.5,
+      answer: 1,
+    })
+
+    expect(cost(byCategory.simple).judge).toBeCloseTo(0.2, 9)
+    expect(cost(byCategory.simple).rewrite).toBe(0)
+    expect(calls(byCategory.simple)).toEqual({
+      embed: 1,
+      judge: 2,
+      fallback: 1,
+      rewrite: 0,
+      answer: 1,
+    })
+    expect(cost(byCategory.temporal).rewrite).toBeCloseTo(2, 9)
+    expect(cost(byCategory.temporal).judge).toBe(0)
+    expect(calls(byCategory.temporal)).toEqual({
+      embed: 1,
+      judge: 0,
+      fallback: 0,
+      rewrite: 1,
+      answer: 1,
+    })
+  })
+
+  test("AC7 — a role with no call costs 0 and counts 0, not null", () => {
+    const { overall } = summarize([makeRecord(1)])
+    const cost = plain(overall).costByRole as Record<string, number>
+    const calls = plain(overall).callsByRole as Record<string, number>
+    for (const role of ROLE_NAMES) {
+      expect(cost[role]).toBe(0)
+      expect(calls[role]).toBe(0)
+    }
+  })
+
+  /** A loop record with `judged` notes and, for config C, a fallback list. */
+  function fallbackRecord(
+    n: number,
+    category: RunRecord["category"],
+    judged: number,
+    fallback: string[] | undefined
+  ): RunRecord {
+    const notes = Array.from(
+      { length: judged },
+      (_, i) => `Notes/n-${n}-${i}.md`
+    )
+    const loop = loopOf("sufficient", 0, 0, "answer", {
+      judged: Object.fromEntries(
+        notes.map((note) => [note, { relevance: 0.5 }])
+      ),
+    })
+    if (fallback) loop.fallback = fallback
+    return makeRecord(n, { category, loop })
+  }
+
+  test("AC7 — fallbackNoteRate and fallbackQuestionRate, overall and per category", () => {
+    const records = [
+      fallbackRecord(1, "simple", 4, ["Notes/n-1-0.md"]),
+      fallbackRecord(2, "temporal", 6, ["a.md", "b.md", "c.md"]),
+      fallbackRecord(3, "simple", 2, []),
+      // Config B record: no fallback list, not counted.
+      fallbackRecord(4, "multi_hop", 10, undefined),
+      // Config A record: no loop at all, not counted.
+      makeRecord(5, { category: "no_answer" }),
+    ]
+    const { overall, byCategory } = summarize(records)
+    // (1 + 3 + 0) / (4 + 6 + 2); 2 of the 3 records with a list.
+    expect(plain(overall).fallbackNoteRate as number).toBeCloseTo(4 / 12, 9)
+    expect(plain(overall).fallbackQuestionRate as number).toBeCloseTo(2 / 3, 9)
+    // simple: (1 + 0) / (4 + 2); 1 of 2.
+    expect(plain(byCategory.simple).fallbackNoteRate as number).toBeCloseTo(
+      1 / 6,
+      9
+    )
+    expect(plain(byCategory.simple).fallbackQuestionRate as number).toBeCloseTo(
+      1 / 2,
+      9
+    )
+    expect(plain(byCategory.temporal).fallbackNoteRate as number).toBeCloseTo(
+      0.5,
+      9
+    )
+    expect(plain(byCategory.temporal).fallbackQuestionRate).toBe(1)
+  })
+
+  test("AC7 — the fallback rates are null when no record has a fallback list", () => {
+    const { overall, byCategory } = summarize([
+      fallbackRecord(1, "simple", 4, undefined),
+      fallbackRecord(2, "multi_hop", 3, undefined),
+      makeRecord(3, { category: "temporal" }),
+    ])
+    for (const metrics of [
+      overall,
+      byCategory.simple!,
+      byCategory.multi_hop!,
+      byCategory.temporal!,
+    ]) {
+      expect(plain(metrics).fallbackNoteRate).toBeNull()
+      expect(plain(metrics).fallbackQuestionRate).toBeNull()
+    }
+  })
+
+  test("AC7 — a fallback rate of zero is 0, not null, when the lists are empty", () => {
+    const { overall } = summarize([
+      fallbackRecord(1, "simple", 4, []),
+      fallbackRecord(2, "simple", 2, []),
+    ])
+    expect(plain(overall).fallbackNoteRate).toBe(0)
+    expect(plain(overall).fallbackQuestionRate).toBe(0)
+  })
+
+  test("AC7 — runEval writes the fallback rates and the role metrics in summary.json", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const loopWith = (fallback: string[]) => {
+      const loop = loopOf("sufficient", 0, 0, "answer", {
+        judged: { "A.md": { relevance: 0.5 }, "B.md": { relevance: 0.5 } },
+      })
+      loop.fallback = fallback
+      return loop
+    }
+    const overrides = new Map([
+      [
+        "q-001",
+        {
+          ...goodStep(questions[0]!),
+          loop: loopWith(["A.md"]),
+          retrievalCalls: [roleCall("judge", HAIKU, MILLION, 0)],
+        },
+      ],
+      [
+        "q-002",
+        {
+          ...goodStep(questions[1]!),
+          loop: loopWith([]),
+          retrievalCalls: [roleCall("judge", HAIKU, MILLION, 0)],
+        },
+      ],
+    ])
+    const { result, runsDir } = runWith(questions, { config: "C", overrides })
+    await result
+    const written = JSON.parse(
+      readFileSync(join(readRunDir(runsDir), "summary.json"), "utf8")
+    ) as { overall: Record<string, unknown> }
+    expect(written.overall.fallbackNoteRate).toBeCloseTo(0.25, 9)
+    expect(written.overall.fallbackQuestionRate).toBeCloseTo(0.5, 9)
+    const judge = (written.overall.callsByRole as Record<string, number>).judge
+    expect(judge).toBe(1)
+    const judgeCost = (written.overall.costByRole as Record<string, number>)
+      .judge
+    expect(judgeCost).toBeCloseTo(0.1, 9)
   })
 })
