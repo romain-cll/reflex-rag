@@ -2,9 +2,9 @@ import type { Verdict } from "../core/judge.ts"
 
 export interface PolicyConfig {
   thresholds: {
-    /** A note is kept when its `answer` probability reaches it. */
+    /** A note is kept when its `answer` probability reaches it... */
     answer: number
-    /** A note is opened when its `step` probability reaches it. */
+    /** ...or its `step` probability reaches this one; it is also opened. */
     step: number
   }
   budgets: {
@@ -59,8 +59,13 @@ type RuleFn = (state: LoopState, config: PolicyConfig) => Action | undefined
 const hopsLeft = (state: LoopState, config: PolicyConfig) =>
   state.hops < config.budgets.maxHops
 
-const isKept = (note: JudgedNote, config: PolicyConfig) =>
-  note.verdict.answer >= config.thresholds.answer
+/** A note is kept when it is an answer note or a step note. */
+export const isKept = (
+  verdict: Record<Verdict, number>,
+  config: PolicyConfig
+) =>
+  verdict.answer >= config.thresholds.answer ||
+  verdict.step >= config.thresholds.step
 
 const isOpenable = (note: JudgedNote) => !note.expanded && note.hasUnjudgedLinks
 
@@ -85,7 +90,7 @@ const followSteps: RuleFn = (state, config) => {
 }
 
 const answer: RuleFn = (state, config) =>
-  state.notes.some((note) => isKept(note, config))
+  state.notes.some((note) => isKept(note.verdict, config))
     ? { type: "answer", rule: "answer" }
     : undefined
 

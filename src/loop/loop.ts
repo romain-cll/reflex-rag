@@ -4,7 +4,7 @@ import { LLMCallError } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
 import type { Index } from "../index/read.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
-import { decide, type Action, type PolicyConfig } from "./policy.ts"
+import { decide, isKept, type Action, type PolicyConfig } from "./policy.ts"
 import type { Rewriter } from "./rewriter.ts"
 
 const DEFAULT_CANDIDATES = 50
@@ -35,7 +35,7 @@ export interface LoopStep {
   judged: Record<string, Verdicts>
   /** The note each note reached by a link came from. */
   parents: Record<string, string>
-  /** The notes of `judged` at or above the answer threshold. */
+  /** The notes of `judged` the policy keeps. */
   kept: string[]
   action: Action
 }
@@ -218,7 +218,9 @@ class Loop {
     return {
       judged,
       parents: Object.fromEntries(parents),
-      kept: Object.keys(judged).filter((path) => this.isKept(judged[path]!)),
+      kept: Object.keys(judged).filter((path) =>
+        isKept(judged[path]!, this.deps.policy)
+      ),
     }
   }
 
@@ -258,7 +260,7 @@ class Loop {
     ) {
       return action
     }
-    const type = this.keptEntries().length > 0 ? "answer" : "abstain"
+    const type = this.keptPaths().length > 0 ? "answer" : "abstain"
     return { type, rule: type }
   }
 
@@ -285,25 +287,40 @@ class Loop {
     }
   }
 
-  /** The kept notes, each followed by its ancestors not listed yet. */
+  /**
+   * The context order: each answer note, most probable first, followed by its
+   * ancestors and the step notes that link to it; then the other step notes.
+   */
   private keptWithAncestors(): string[] {
+    const { thresholds } = this.deps.policy
+    const entries = [...this.judged.values()]
+    const answers = ranked(
+      entries.filter(({ verdicts }) => verdicts.answer >= thresholds.answer),
+      ({ verdicts }) => verdicts.answer
+    )
+    const steps = ranked(
+      entries.filter(({ verdicts }) => verdicts.step >= thresholds.step),
+      ({ verdicts }) => verdicts.step
+    )
     const paths = new Set<string>()
-    for (const { note } of this.keptEntries()) {
+    for (const { note } of answers) {
       let path: string | null = note.path
       while (path !== null && !paths.has(path)) {
         paths.add(path)
         path = this.judged.get(path)!.parent
       }
+      for (const step of steps) {
+        if (step.note.links.includes(note.path)) paths.add(step.note.path)
+      }
     }
+    for (const { note } of steps) paths.add(note.path)
     return [...paths]
   }
 
-  /** The kept notes, most probable answer first, ties by order of judgement. */
-  private keptEntries(): JudgedEntry[] {
-    return ranked(
-      [...this.judged.values()].filter(({ verdicts }) => this.isKept(verdicts)),
-      ({ verdicts }) => verdicts.answer
-    )
+  private keptPaths(): string[] {
+    return [...this.judged]
+      .filter(([, { verdicts }]) => isKept(verdicts, this.deps.policy))
+      .map(([path]) => path)
   }
 
   /** The targets of the links of judged notes that were never judged. */
@@ -325,10 +342,6 @@ class Loop {
       heading: "",
       text: note.text,
     }
-  }
-
-  private isKept(verdicts: Verdicts): boolean {
-    return verdicts.answer >= this.deps.policy.thresholds.answer
   }
 
   private get candidates(): number {
