@@ -1,0 +1,226 @@
+{
+  "overall": {
+    "n": 60,
+    "accuracy": 0.7166666666666667,
+    "meanRecall": 0.7395833333333334,
+    "contextCompleteRate": 0.6458333333333334,
+    "meanPrecision": 0.18333333333333343,
+    "meanNotesInContext": 5,
+    "latencyP50Ms": 2470.3872919999994,
+    "latencyP95Ms": 4469.750667,
+    "meanCostUsd": 0.000369105,
+    "meanInputTokens": 2752.7,
+    "failures": {
+      "loop_error": 0,
+      "context_budget": 0,
+      "judge_rejected": 0,
+      "not_followed": 0,
+      "retrieval_miss": 17,
+      "answer_error": 0,
+      "false_abstention": 0,
+      "wrong_version": 0,
+      "missed_contradiction": 0,
+      "unsupported_claim": 0,
+      "wrong_answer": 0
+    },
+    "failuresByFamily": {
+      "retrieval": 17,
+      "answer": 0
+    },
+    "abstentions": {
+      "loop": 0,
+      "answerer": 24
+    },
+    "meanHops": null,
+    "meanRewrites": null,
+    "meanJudgeCalls": null,
+    "finalRules": {}
+  },
+  "byCategory": {
+    "simple": {
+      "n": 12,
+      "accuracy": 1,
+      "meanRecall": 1,
+      "contextCompleteRate": 1,
+      "meanPrecision": 0.19999999999999998,
+      "meanNotesInContext": 5,
+      "latencyP50Ms": 2075.6896249999995,
+      "latencyP95Ms": 8641.629875000002,
+      "meanCostUsd": 0.00032524999999999996,
+      "meanInputTokens": 2763.1666666666665,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": null,
+      "meanRewrites": null,
+      "meanJudgeCalls": null,
+      "finalRules": {}
+    },
+    "multi_hop": {
+      "n": 15,
+      "accuracy": 0.06666666666666667,
+      "meanRecall": 0.36666666666666664,
+      "contextCompleteRate": 0.06666666666666667,
+      "meanPrecision": 0.14666666666666664,
+      "meanNotesInContext": 5,
+      "latencyP50Ms": 2869.1212920000107,
+      "latencyP95Ms": 11770.260040999994,
+      "meanCostUsd": 0.00038528666666666673,
+      "meanInputTokens": 2644.2,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 14,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 14,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 12
+      },
+      "meanHops": null,
+      "meanRewrites": null,
+      "meanJudgeCalls": null,
+      "finalRules": {}
+    },
+    "temporal": {
+      "n": 12,
+      "accuracy": 0.75,
+      "meanRecall": 0.75,
+      "contextCompleteRate": 0.75,
+      "meanPrecision": 0.21666666666666667,
+      "meanNotesInContext": 5,
+      "latencyP50Ms": 2237.347167,
+      "latencyP95Ms": 3669.181208000009,
+      "meanCostUsd": 0.00038204166666666665,
+      "meanInputTokens": 2729,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 3,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 3,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": null,
+      "meanRewrites": null,
+      "meanJudgeCalls": null,
+      "finalRules": {}
+    },
+    "contradiction": {
+      "n": 9,
+      "accuracy": 1,
+      "meanRecall": 1,
+      "contextCompleteRate": 1,
+      "meanPrecision": 0.42222222222222217,
+      "meanNotesInContext": 5,
+      "latencyP50Ms": 2821.1916660000134,
+      "latencyP95Ms": 5716.838959000001,
+      "meanCostUsd": 0.00045621111111111113,
+      "meanInputTokens": 3078.777777777778,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": null,
+      "meanRewrites": null,
+      "meanJudgeCalls": null,
+      "finalRules": {}
+    },
+    "no_answer": {
+      "n": 12,
+      "accuracy": 1,
+      "meanRecall": null,
+      "contextCompleteRate": null,
+      "meanPrecision": 0,
+      "meanNotesInContext": 5,
+      "latencyP50Ms": 2052.728000000003,
+      "latencyP95Ms": 4140.917165999999,
+      "meanCostUsd": 0.0003144666666666667,
+      "meanInputTokens": 2657,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 12
+      },
+      "meanHops": null,
+      "meanRewrites": null,
+      "meanJudgeCalls": null,
+      "finalRules": {}
+    }
+  }
+}

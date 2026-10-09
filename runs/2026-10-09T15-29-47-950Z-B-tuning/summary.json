@@ -1,0 +1,239 @@
+{
+  "overall": {
+    "n": 60,
+    "accuracy": 0.8666666666666667,
+    "meanRecall": 0.875,
+    "contextCompleteRate": 0.8333333333333334,
+    "meanPrecision": 0.65,
+    "meanNotesInContext": 2.066666666666667,
+    "latencyP50Ms": 8386.039499999999,
+    "latencyP95Ms": 12944.279958,
+    "meanCostUsd": 0.0022208099999999997,
+    "meanInputTokens": 1796.4166666666667,
+    "failures": {
+      "loop_error": 0,
+      "context_budget": 0,
+      "judge_rejected": 8,
+      "not_followed": 0,
+      "retrieval_miss": 0,
+      "answer_error": 0,
+      "false_abstention": 0,
+      "wrong_version": 0,
+      "missed_contradiction": 0,
+      "unsupported_claim": 0,
+      "wrong_answer": 0
+    },
+    "failuresByFamily": {
+      "retrieval": 8,
+      "answer": 0
+    },
+    "abstentions": {
+      "loop": 12,
+      "answerer": 2
+    },
+    "meanHops": 0.7166666666666667,
+    "meanRewrites": 0.2,
+    "meanJudgeCalls": 1.9166666666666667,
+    "finalRules": {
+      "answer": 48,
+      "abstain": 12
+    }
+  },
+  "byCategory": {
+    "simple": {
+      "n": 12,
+      "accuracy": 1,
+      "meanRecall": 1,
+      "contextCompleteRate": 1,
+      "meanPrecision": 0.7291666666666666,
+      "meanNotesInContext": 1.6666666666666667,
+      "latencyP50Ms": 5829.060875,
+      "latencyP95Ms": 7790.888417000009,
+      "meanCostUsd": 0.0018529000000000004,
+      "meanInputTokens": 1407.8333333333333,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.25,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.25,
+      "finalRules": {
+        "answer": 12
+      }
+    },
+    "multi_hop": {
+      "n": 15,
+      "accuracy": 0.7333333333333333,
+      "meanRecall": 0.8,
+      "contextCompleteRate": 0.7333333333333333,
+      "meanPrecision": 0.6311111111111111,
+      "meanNotesInContext": 3.066666666666667,
+      "latencyP50Ms": 8740.678875000012,
+      "latencyP95Ms": 12466.978499999997,
+      "meanCostUsd": 0.0021566000000000003,
+      "meanInputTokens": 1975.2,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 4,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 4,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 2
+      },
+      "meanHops": 0.6,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.6,
+      "finalRules": {
+        "answer": 15
+      }
+    },
+    "temporal": {
+      "n": 12,
+      "accuracy": 0.8333333333333334,
+      "meanRecall": 0.8333333333333334,
+      "contextCompleteRate": 0.8333333333333334,
+      "meanPrecision": 0.4083333333333334,
+      "meanNotesInContext": 3.0833333333333335,
+      "latencyP50Ms": 6630.2200840000005,
+      "latencyP95Ms": 12944.279958,
+      "meanCostUsd": 0.0020095916666666666,
+      "meanInputTokens": 2019.0833333333333,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 2,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 2,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.3333333333333333,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.3333333333333333,
+      "finalRules": {
+        "answer": 12
+      }
+    },
+    "contradiction": {
+      "n": 9,
+      "accuracy": 0.7777777777777778,
+      "meanRecall": 0.8888888888888888,
+      "contextCompleteRate": 0.7777777777777778,
+      "meanPrecision": 0.898148148148148,
+      "meanNotesInContext": 2.3333333333333335,
+      "latencyP50Ms": 9373.063083000015,
+      "latencyP95Ms": 13254.808499999985,
+      "meanCostUsd": 0.002220111111111111,
+      "meanInputTokens": 1719.6666666666667,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 2,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 2,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.3333333333333333,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.3333333333333333,
+      "finalRules": {
+        "answer": 9
+      }
+    },
+    "no_answer": {
+      "n": 12,
+      "accuracy": 1,
+      "meanRecall": null,
+      "contextCompleteRate": null,
+      "meanPrecision": null,
+      "meanNotesInContext": 0,
+      "latencyP50Ms": 11926.19308300002,
+      "latencyP95Ms": 14924.398792000022,
+      "meanCostUsd": 0.0028807249999999993,
+      "meanInputTokens": null,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 12,
+        "answerer": 0
+      },
+      "meanHops": 2,
+      "meanRewrites": 1,
+      "meanJudgeCalls": 4,
+      "finalRules": {
+        "abstain": 12
+      }
+    }
+  }
+}
