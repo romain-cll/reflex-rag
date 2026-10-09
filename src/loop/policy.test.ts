@@ -216,7 +216,7 @@ describe("AC1 — follow-steps", () => {
     })
   })
 
-  test("AC1 — does not apply when the only step notes are expanded or have no unjudged link", () => {
+  test("AC1 — does not apply when the only step notes are expanded or have no unjudged link (they are kept: the policy answers)", () => {
     const action = decide(
       state([
         note("done.md", { step: 0.95 }, { expanded: true }),
@@ -224,8 +224,7 @@ describe("AC1 — follow-steps", () => {
       ]),
       DEFAULT_POLICY
     )
-    expect(action.rule).not.toBe("follow-steps")
-    expect(action.type).not.toBe("expand")
+    expect(action).toEqual({ type: "answer", rule: "answer" })
   })
 
   test("AC1 — applies on the last hop available", () => {
@@ -236,13 +235,12 @@ describe("AC1 — follow-steps", () => {
     expect(action).toMatchObject({ type: "expand", rule: "follow-steps" })
   })
 
-  test("AC1 — does not apply once the hops are used up", () => {
+  test("AC1 — does not apply once the hops are used up (the step note is kept: the policy answers)", () => {
     const action = decide(
       state([note("a.md", { step: 0.99 })], { hops: MAX_HOPS }),
       DEFAULT_POLICY
     )
-    expect(action.rule).not.toBe("follow-steps")
-    expect(action.type).not.toBe("expand")
+    expect(action).toEqual({ type: "answer", rule: "answer" })
   })
 
   test("AC1 — the hop budget comes from the configuration", () => {
@@ -253,12 +251,12 @@ describe("AC1 — follow-steps", () => {
     expect(decide(s, withConfig({}, { maxHops: 2 })).rule).toBe("follow-steps")
   })
 
-  test("AC1 — a zero hop budget never opens anything", () => {
+  test("AC1 — a zero hop budget never opens anything (the step note is kept: the policy answers)", () => {
     const action = decide(
       state([note("a.md", { step: 0.99 })]),
       withConfig({}, { maxHops: 0 })
     )
-    expect(action.type).not.toBe("expand")
+    expect(action).toEqual({ type: "answer", rule: "answer" })
   })
 
   test("AC1 — the explore budget does not cap follow-steps", () => {
@@ -362,6 +360,161 @@ describe("AC2 — answer", () => {
       DEFAULT_POLICY
     )
     expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+})
+
+describe("AC2 — answer, step notes are kept (Revision 3)", () => {
+  test("AC2 — a step note that cannot be opened (no unjudged link) is kept: answers", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.8 }, { hasUnjudgedLinks: false })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a step note already expanded is kept: answers", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.8 }, { expanded: true })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a step note with the hops exhausted is kept: answers", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.8 })], { hops: MAX_HOPS }),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a step note answers even with no rewrite left and nothing else to open", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.8 }, { hasUnjudgedLinks: false })], {
+        hops: MAX_HOPS,
+        rewrites: MAX_REWRITES,
+      }),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — answers at exactly the step threshold (≥ applies) when the note cannot be opened", () => {
+    const action = decide(
+      state([note("a.md", { step: 0.5, none: 0.5 }, { expanded: true })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — an openable step note with hops left is still opened first (follow-steps)", () => {
+    const action = decide(state([note("a.md", { step: 0.8 })]), DEFAULT_POLICY)
+    expect(action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["a.md"],
+    })
+  })
+
+  test("AC2 — uses the step threshold of the configuration to keep a step note", () => {
+    const s = state([note("a.md", { step: 0.6 }, { hasUnjudgedLinks: false })])
+    expect(decide(s, withConfig({ step: 0.3 }))).toEqual({
+      type: "answer",
+      rule: "answer",
+    })
+    expect(decide(s, withConfig({ step: 0.8 })).type).not.toBe("answer")
+  })
+
+  test("AC2 — a kept step note answers before explore, even with an openable note left", () => {
+    const action = decide(
+      state(
+        [
+          note("step.md", { step: 0.9 }, { hasUnjudgedLinks: false }),
+          note("maybe.md", { answer: 0.4, step: 0.1 }),
+        ],
+        { hops: 1 }
+      ),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a kept step note answers before rewrite", () => {
+    const action = decide(
+      state([note("step.md", { step: 0.9 }, { expanded: true })], {
+        hops: MAX_HOPS,
+      }),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "answer", rule: "answer" })
+  })
+
+  test("AC2 — a step note just under the step threshold with an answer just under is not kept: explores", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.4999, step: 0.4999, none: 0.0002 })]),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual({ type: "expand", rule: "explore", paths: ["a.md"] })
+  })
+
+  test("AC2 — neither threshold reached and nothing openable: rewrites, then abstains", () => {
+    const notes = [
+      note("a.md", { answer: 0.4999, step: 0.4999 }, { expanded: true }),
+    ]
+    expect(decide(state(notes), DEFAULT_POLICY)).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+    expect(
+      decide(state(notes, { rewrites: MAX_REWRITES }), DEFAULT_POLICY)
+    ).toEqual({
+      type: "abstain",
+      rule: "abstain",
+    })
+  })
+
+  test("AC2 — neither threshold reached with the hops exhausted: rewrites, then abstains", () => {
+    const notes = [note("a.md", { answer: 0.4999, step: 0.4999 })]
+    expect(decide(state(notes, { hops: MAX_HOPS }), DEFAULT_POLICY)).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+    expect(
+      decide(
+        state(notes, { hops: MAX_HOPS, rewrites: MAX_REWRITES }),
+        DEFAULT_POLICY
+      )
+    ).toEqual({ type: "abstain", rule: "abstain" })
+  })
+
+  test("AC2 — explore, rewrite and abstain apply only when neither an answer note nor a step note is kept", () => {
+    const keptByAnswer = note("k.md", { answer: 0.5 }, { expanded: true })
+    const keptByStep = note("k.md", { step: 0.5 }, { expanded: true })
+    const dead = note("d.md", { answer: 0.3, step: 0.3 }, { expanded: true })
+    const budgets = [
+      state([dead]),
+      state([dead], { hops: MAX_HOPS }),
+      state([dead], { hops: MAX_HOPS, rewrites: MAX_REWRITES }),
+    ]
+    for (const withoutKept of budgets) {
+      const base = decide(withoutKept, DEFAULT_POLICY)
+      expect(["rewrite", "abstain"]).toContain(base.rule)
+      for (const kept of [keptByAnswer, keptByStep]) {
+        const action = decide(
+          { ...withoutKept, notes: [...withoutKept.notes, kept] },
+          DEFAULT_POLICY
+        )
+        expect(action).toEqual({ type: "answer", rule: "answer" })
+      }
+    }
+    const openable = state([note("o.md", { answer: 0.3, step: 0.3 })])
+    expect(decide(openable, DEFAULT_POLICY).rule).toBe("explore")
+    expect(
+      decide(
+        { ...openable, notes: [...openable.notes, keptByStep] },
+        DEFAULT_POLICY
+      )
+    ).toEqual({ type: "answer", rule: "answer" })
   })
 })
 
@@ -619,7 +772,7 @@ describe("AC4 — rewrite", () => {
 
   test("AC4 — searches again when the hops are used up and no note is kept", () => {
     const action = decide(
-      state([note("a.md", { answer: 0.3, step: 0.9 })], { hops: MAX_HOPS }),
+      state([note("a.md", { answer: 0.3, step: 0.49 })], { hops: MAX_HOPS }),
       DEFAULT_POLICY
     )
     expect(action).toEqual({ type: "rewrite", rule: "rewrite" })
@@ -676,7 +829,7 @@ describe("AC5 — abstain", () => {
 
   test("AC5 — abstains when the hops are used up and no rewrite is left", () => {
     const action = decide(
-      state([note("a.md", { answer: 0.4, step: 0.9 })], {
+      state([note("a.md", { answer: 0.4, step: 0.49 })], {
         hops: MAX_HOPS,
         rewrites: MAX_REWRITES,
       }),
@@ -692,7 +845,7 @@ describe("AC5 — abstain", () => {
 
   test("AC5 — abstains with every budget at zero", () => {
     const action = decide(
-      state([note("a.md", { answer: 0.4, step: 0.9 })]),
+      state([note("a.md", { answer: 0.4, step: 0.49 })]),
       withConfig({}, { maxHops: 0, maxRewrites: 0, explore: 0 })
     )
     expect(action).toEqual({ type: "abstain", rule: "abstain" })

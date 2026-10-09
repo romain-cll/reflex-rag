@@ -402,7 +402,7 @@ describe("AC2 — decide", () => {
     expect(result.hops).toBe(0)
   })
 
-  test("AC2 — a note whose link targets are all judged is not openable", async () => {
+  test("AC2 — a note whose link targets are all judged is not openable (a step note is then kept: answers)", async () => {
     const { result } = await run({
       world: worldOf([
         ["a", "b"],
@@ -411,20 +411,35 @@ describe("AC2 — decide", () => {
       search: { [QUESTION]: hits("a", "b", "c") },
       verdicts: { "a.md": { step: 0.9 } },
     })
+    expect(result.steps[0]!.action).toEqual({ type: "answer", rule: "answer" })
+    expect(result.hops).toBe(0)
+    expect(contextPaths(result)).toEqual(["a.md"])
+  })
+
+  test("AC2 — a note whose link targets are all judged is not openable (not kept: rewrites)", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["a", "c"],
+      ]),
+      search: { [QUESTION]: hits("a", "b", "c") },
+      verdicts: { "a.md": { step: 0.49 } },
+    })
     expect(result.steps[0]!.action.rule).toBe("rewrite")
     expect(result.hops).toBe(0)
   })
 
   test("AC2 — explore opens the notes with unjudged links, not those already opened or without links", async () => {
     // a opened first; then b (links to d) is the only openable note, c has no
-    // link and a has all its targets judged.
+    // link and a has all its targets judged. a stays under both thresholds:
+    // a step note would be kept and the policy would answer.
     const { result } = await run({
       search: { [QUESTION]: hits("a") },
-      verdicts: { "a.md": { step: 1 } },
+      verdicts: { "a.md": { answer: 0.3, step: 0.4 } },
     })
     expect(result.steps[0]!.action).toEqual({
       type: "expand",
-      rule: "follow-steps",
+      rule: "explore",
       paths: ["a.md"],
     })
     expect(result.steps[1]!.action).toEqual({
@@ -438,10 +453,23 @@ describe("AC2 — decide", () => {
     const { result } = await run({
       policy: policyWith({ maxHops: 1 }),
       search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.3, step: 0.4 } },
+    })
+    expect(result.steps[0]!.action.rule).toBe("explore")
+    expect(result.steps[1]!.action.rule).toBe("rewrite")
+  })
+
+  test("AC2 — a step note opened with the last hop is kept: answers with it", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 1 }),
+      search: { [QUESTION]: hits("a") },
       verdicts: { "a.md": { step: 1 } },
     })
     expect(result.steps[0]!.action.rule).toBe("follow-steps")
-    expect(result.steps[1]!.action.rule).toBe("rewrite")
+    expect(result.steps[1]!.action).toEqual({ type: "answer", rule: "answer" })
+    expect(result.hops).toBe(1)
+    expect(result.rewrites).toBe(0)
+    expect(contextPaths(result)).toEqual(["a.md"])
   })
 
   test("AC2 — passes the rewrites used: none left after the budget", async () => {
@@ -1066,6 +1094,302 @@ describe("AC7 — trace", () => {
   })
 })
 
+describe("AC11 — context with steps", () => {
+  test("AC11 — the answer note and the step note that links to it, both found by the search: answer first, then step", async () => {
+    const { result } = await run({
+      world: worldOf([["s", "a"]]),
+      // s is judged before a: the order of judgement is not the context order.
+      search: { [QUESTION]: hits("s", "a") },
+      verdicts: { "s.md": { step: 0.8 }, "a.md": { answer: 0.9 } },
+    })
+    expect(result.steps).toHaveLength(1)
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["a.md", "s.md"])
+    expect(result.kept).toEqual(["a.md", "s.md"])
+  })
+
+  test("AC11 — a context item of a step note is built like any other (path, date, empty heading, note text)", async () => {
+    const { result } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["b2", "d1"] },
+      verdicts: { "d.md": { answer: 0.9 }, "b.md": { step: 0.8 } },
+    })
+    expect(result.context).toEqual([
+      {
+        notePath: "d.md",
+        noteDate: "2025-04-04",
+        heading: "",
+        text: "## Plan > D\ntext of d",
+      },
+      {
+        notePath: "b.md",
+        noteDate: "2025-02-02",
+        heading: "",
+        text: "## B one\nfirst of b\n\n## B two\nsecond of b",
+      },
+    ])
+  })
+
+  test("AC11 — a step note that links to no kept note goes after the step notes that do", async () => {
+    // t (step 0.6) links to the answer note a; s (step 0.9) links to n, which
+    // is not kept. s has the higher step probability but comes last.
+    const { result } = await run({
+      world: worldOf([
+        ["s", "n"],
+        ["t", "a"],
+      ]),
+      search: { [QUESTION]: hits("s", "t", "a", "n") },
+      verdicts: {
+        "s.md": { step: 0.9 },
+        "t.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "t.md", "s.md"])
+    expect(result.kept).toEqual(["a.md", "t.md", "s.md"])
+  })
+
+  test("AC11 — the step notes that link to an answer note go by decreasing step probability, ties by order of judgement", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["s1", "a"],
+        ["s2", "a"],
+        ["s3", "a"],
+      ]),
+      search: { [QUESTION]: hits("s1", "s2", "s3", "a") },
+      verdicts: {
+        "s1.md": { step: 0.6 },
+        "s2.md": { step: 0.9 },
+        "s3.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "s2.md", "s1.md", "s3.md"])
+  })
+
+  test("AC11 — each answer note brings its own step notes, answer notes by decreasing answer then judgement order", async () => {
+    // a2 and a1 tie on answer: a2 was judged first. Their step notes follow
+    // them, whatever their step probability relative to each other.
+    const { result } = await run({
+      world: worldOf([
+        ["t1", "a1"],
+        ["t2", "a2"],
+      ]),
+      search: { [QUESTION]: hits("a2", "t1", "a1", "t2") },
+      verdicts: {
+        "a1.md": { answer: 0.9 },
+        "a2.md": { answer: 0.9 },
+        "t1.md": { step: 0.8 },
+        "t2.md": { step: 0.6 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a2.md", "t2.md", "a1.md", "t1.md"])
+  })
+
+  test("AC11 — an ancestor comes before the step notes of the answer note; a step note that is an ancestor appears once", async () => {
+    // p (step 0.9) and t (step 0.6) are found by the search and both link to
+    // q. The follow-steps action lists p first, so p is q's parent.
+    const { result } = await run({
+      world: worldOf([
+        ["p", "q"],
+        ["t", "q"],
+      ]),
+      search: { [QUESTION]: hits("p", "t") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "t.md": { step: 0.6 },
+        "q.md": { answer: 0.9 },
+      },
+    })
+    expect(result.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "follow-steps",
+      paths: ["p.md", "t.md"],
+    })
+    expect(result.steps[1]!.parents).toEqual({ "q.md": "p.md" })
+    expect(contextPaths(result)).toEqual(["q.md", "p.md", "t.md"])
+    expect(result.kept).toEqual(["q.md", "p.md", "t.md"])
+  })
+
+  test("AC11 — a note both an answer note and a step note appears once, with the answer notes", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["r", "n", "m"] }),
+      search: { [QUESTION]: hits("r", "n", "m") },
+      verdicts: {
+        "r.md": { step: 0.6 },
+        "n.md": { answer: 0.6, step: 0.9 },
+        "m.md": { answer: 0.55 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["n.md", "m.md", "r.md"])
+    expect(result.kept).toEqual(["n.md", "m.md", "r.md"])
+  })
+
+  // Isolated notes and linked pairs, judged in a scrambled order. Answer notes:
+  // a1 (0.9), a2 (0.7). Step notes linked to them: u (0.5) to a1, t (0.55) to
+  // a2. Free step notes: r1 (0.6), r2 (0.8), r3 (0.6). Under the thresholds:
+  // v (step 0.49), w (answer 0.49).
+  const full: Scenario = {
+    world: worldOf(
+      [
+        ["u", "a1"],
+        ["t", "a2"],
+      ],
+      { extra: ["r1", "r2", "r3", "v", "w"] }
+    ),
+    search: {
+      [QUESTION]: hits("r1", "u", "v", "r2", "a2", "t", "w", "r3", "a1"),
+    },
+    verdicts: {
+      "a1.md": { answer: 0.9 },
+      "a2.md": { answer: 0.7 },
+      "u.md": { step: 0.5 },
+      "t.md": { step: 0.55 },
+      "r1.md": { step: 0.6 },
+      "r2.md": { step: 0.8 },
+      "r3.md": { step: 0.6 },
+      "v.md": { step: 0.49 },
+      "w.md": { answer: 0.49 },
+    },
+  }
+  const fullOrder = [
+    "a1.md",
+    "u.md",
+    "a2.md",
+    "t.md",
+    "r2.md",
+    "r1.md",
+    "r3.md",
+  ]
+
+  test("AC11 — full order: answer notes each with their step notes, then the remaining step notes; notes under both thresholds left out", async () => {
+    const { result } = await run({
+      ...full,
+      policy: policyWith({ maxNotes: 10 }),
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(fullOrder)
+    expect(result.kept).toEqual(fullOrder)
+  })
+
+  test("AC11 — the cut applies after all of this, and kept is not cut", async () => {
+    const { result } = await run({
+      ...full,
+      policy: policyWith({ maxNotes: 3 }),
+    })
+    expect(contextPaths(result)).toEqual(["a1.md", "u.md", "a2.md"])
+    expect(result.kept).toEqual(fullOrder)
+  })
+
+  test("AC11 — the cut can fall among the remaining step notes", async () => {
+    const { result } = await run({
+      ...full,
+      policy: policyWith({ maxNotes: 5 }),
+    })
+    expect(contextPaths(result)).toEqual(fullOrder.slice(0, 5))
+  })
+
+  test("AC11 — the default budget keeps 5 notes of that order", async () => {
+    const { result } = await run(full)
+    expect(contextPaths(result)).toEqual(fullOrder.slice(0, 5))
+    expect(result.kept).toEqual(fullOrder)
+  })
+
+  test("AC11 — a loop that answers with step notes only returns them by decreasing step probability, ties by order of judgement", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["r1", "r2", "r3"] }),
+      search: { [QUESTION]: hits("r1", "r2", "r3") },
+      verdicts: {
+        "r1.md": { step: 0.6 },
+        "r2.md": { step: 0.8 },
+        "r3.md": { step: 0.6 },
+      },
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["r2.md", "r1.md", "r3.md"])
+    expect(result.kept).toEqual(["r2.md", "r1.md", "r3.md"])
+  })
+
+  test("AC11 — step notes reached by a hop are ordered by step probability like the others", async () => {
+    const { result } = await run({
+      world: worldOf([["p", "q"]]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: { "p.md": { step: 0.9 }, "q.md": { step: 0.7 } },
+    })
+    expect(contextPaths(result)).toEqual(["p.md", "q.md"])
+  })
+
+  test("AC11 — uses the step threshold of the policy", async () => {
+    const { result } = await run({
+      policy: policyWith({}, { step: 0.8 }),
+      world: worldOf([], { extra: ["x", "y"] }),
+      search: { [QUESTION]: hits("x", "y") },
+      verdicts: { "x.md": { step: 0.79 }, "y.md": { step: 0.8 } },
+    })
+    expect(contextPaths(result)).toEqual(["y.md"])
+    expect(result.steps[0]!.kept).toEqual(["y.md"])
+  })
+
+  test("AC11 — a step note just under the step threshold is not kept: the loop abstains", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.49, step: 0.49 } },
+    })
+    expect(result.outcome).toEqual({ type: "abstain", rule: "abstain" })
+    expect(result.context).toEqual([])
+    expect(result.kept).toEqual([])
+    expect(result.steps[0]!.kept).toEqual([])
+  })
+
+  test("AC11 — a step's kept lists the answer notes and the step notes judged that turn, in order of judgement", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["n1", "s", "a", "m"] }),
+      search: { [QUESTION]: hits("n1", "s", "a", "m") },
+      verdicts: {
+        "s.md": { step: 0.6 },
+        "a.md": { answer: 0.9 },
+        "m.md": { answer: 0.3, step: 0.4 },
+      },
+    })
+    expect(result.steps[0]!.kept).toEqual(["s.md", "a.md"])
+  })
+
+  test("AC11 — a step's kept holds only the notes judged that turn", async () => {
+    const { result } = await run({
+      world: worldOf([
+        ["p", "q"],
+        ["p", "z"],
+      ]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { step: 0.9 },
+        "q.md": { step: 0.6 },
+        "z.md": { answer: 0.2 },
+      },
+    })
+    expect(result.steps[0]!.kept).toEqual(["p.md"])
+    expect(result.steps[1]!.kept).toEqual(["q.md"])
+    expect(result.steps[1]!.judged).toEqual({
+      "q.md": verdict({ step: 0.6 }),
+      "z.md": verdict({ answer: 0.2 }),
+    })
+  })
+
+  test("AC11 — the kept of a rewrite turn counts its step notes", async () => {
+    const { result } = await run({
+      world: worldOf([], { extra: ["a", "b"] }),
+      search: { [QUESTION]: hits("a"), "new query": hits("b") },
+      rewrites: ["new query"],
+      verdicts: { "b.md": { step: 0.7 } },
+    })
+    expect(result.steps[0]!.kept).toEqual([])
+    expect(result.steps[1]!.kept).toEqual(["b.md"])
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["b.md"])
+  })
+})
+
 describe("AC8 — termination", () => {
   test("AC8 — never opens more notes than the hop budget allows", async () => {
     const { result } = await run({
@@ -1082,14 +1406,27 @@ describe("AC8 — termination", () => {
     expect(result.outcome.type).toBe("abstain")
   })
 
-  test("AC8 — no hop budget goes straight to a rewrite", async () => {
+  test("AC8 — no hop budget and nothing kept goes straight to a rewrite", async () => {
+    const { result } = await run({
+      policy: policyWith({ maxHops: 0 }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.3, step: 0.49 } },
+    })
+    expect(result.hops).toBe(0)
+    expect(result.steps[0]!.action.rule).toBe("rewrite")
+  })
+
+  test("AC8 — no hop budget with a step note kept answers with it, without opening it", async () => {
     const { result } = await run({
       policy: policyWith({ maxHops: 0 }),
       search: { [QUESTION]: hits("a") },
       verdicts: { "a.md": { step: 0.9 } },
     })
     expect(result.hops).toBe(0)
-    expect(result.steps[0]!.action.rule).toBe("rewrite")
+    expect(result.rewrites).toBe(0)
+    expect(result.steps).toHaveLength(1)
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["a.md"])
   })
 
   test("AC8 — uses every turn the budgets allow and stops there", async () => {
