@@ -16,6 +16,10 @@ export const PRICES: Record<string, Price> = {
   "claude-haiku-5-5": { input: 0.1, output: 0.5 },
   "claude-sonnet-5-5": { input: 2, output: 10 },
   "mistral-embed": { input: 0.1, output: 0 },
+  // TypeSafe's models page, as of 2026-10-09: output is free.
+  "jev-1.13.0": { input: 0.042, output: 0 },
+  // Served locally; only used to check that the code runs.
+  "clef-flash": { input: 0, output: 0 },
 }
 
 const MILLION = 1_000_000

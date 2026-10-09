@@ -7,7 +7,7 @@ import {
   type Split,
 } from "../../evals/schema.ts"
 import type { Answer, ContextChunk } from "../answer/answerer.ts"
-import type { ModelCall } from "../core/types.ts"
+import { ROLES, type ModelCall, type Role } from "../core/types.ts"
 import { RULES } from "../loop/policy.ts"
 import {
   contextMeasuresOf,
@@ -34,7 +34,25 @@ export interface LoopTrace {
   kept: string[]
   /** Paths of the notes one link away from a judged note, never judged. */
   frontier: string[]
+  /** Config C: paths of the notes the fallback judged again. */
+  fallback?: string[]
 }
+
+/** The wall-clock stages of a question, in ms. */
+export const STAGES = [
+  "searchMs",
+  "judgeMs",
+  "fallbackMs",
+  "rewriteMs",
+  "answerMs",
+] as const
+
+export type Stage = (typeof STAGES)[number]
+
+export type Stages = Record<Stage, number>
+
+/** The stages that the retrieval reports itself. */
+export type RetrievalStages = Omit<Stages, "answerMs">
 
 /** The note paths of a loop, as the grader takes them. */
 export function loopNotesOf(
@@ -66,6 +84,8 @@ export interface RunRecord extends ContextMeasures {
   calls: ModelCall[]
   latencyMs: number
   costUsd: number
+  /** Absent from the traces written before config C. */
+  stages?: Stages
 }
 
 export interface Metrics {
@@ -92,6 +112,18 @@ export interface Metrics {
   meanJudgeCalls: number | null
   /** Count of each final policy rule, only the rules that occurred. */
   finalRules: Record<string, number>
+  /** Median and mean wall-clock time of each stage, in ms. */
+  stageMedianMs: Record<Stage, number | null>
+  stageMeanMs: Record<Stage, number | null>
+  /** Mean cost (USD) and mean number of calls per question, by role. */
+  costByRole: Record<Role, number>
+  callsByRole: Record<Role, number>
+  /**
+   * Share of judged notes judged again by the fallback, and share of questions
+   * with at least one; `null` when no record has a fallback list.
+   */
+  fallbackNoteRate: number | null
+  fallbackQuestionRate: number | null
 }
 
 export interface Summary {
@@ -108,6 +140,8 @@ export interface EvalOptions {
     context: ContextChunk[]
     calls: ModelCall[]
     loop?: LoopTrace
+    /** The loop's stages; without them the retrieval time is `searchMs`. */
+    stages?: RetrievalStages
   }>
   /** `call` is `null` when no model was called. */
   answer: (
@@ -210,7 +244,13 @@ async function evaluate(
   } catch (error) {
     if (!isLoopError(error)) throw error
     return {
-      ...recordOf(question, [], error.calls, performance.now() - startedAt),
+      ...recordOf(
+        question,
+        [],
+        error.calls,
+        performance.now() - startedAt,
+        zeroStages()
+      ),
       output: null,
       error: error.message,
       loop: {
@@ -225,16 +265,25 @@ async function evaluate(
       grade: { correct: false, failure: "loop_error" },
     }
   }
+  const retrievedAt = performance.now()
   const { context, calls: retrievalCalls, loop } = retrieved
   const attempt = await attemptAnswer(answer, question.question, context, loop)
-  const latencyMs = performance.now() - startedAt
+  const answeredAt = performance.now()
+  const latencyMs = answeredAt - startedAt
+  const stages = {
+    ...(retrieved.stages ?? {
+      ...zeroStages(),
+      searchMs: retrievedAt - startedAt,
+    }),
+    answerMs: attempt.call ? answeredAt - retrievedAt : 0,
+  }
 
   const contextNotes = context.map((chunk) => chunk.notePath)
   const calls = attempt.call
     ? [...retrievalCalls, attempt.call]
     : retrievalCalls
   const record = {
-    ...recordOf(question, contextNotes, calls, latencyMs),
+    ...recordOf(question, contextNotes, calls, latencyMs, stages),
     ...(loop ? { loop } : {}),
   }
   if (attempt.output === null) {
@@ -257,7 +306,8 @@ function recordOf(
   question: Question,
   contextNotes: string[],
   calls: ModelCall[],
-  latencyMs: number
+  latencyMs: number,
+  stages: Stages
 ) {
   return {
     id: question.id,
@@ -268,7 +318,12 @@ function recordOf(
     calls,
     latencyMs,
     costUsd: sum(calls.map(callCostUsd)),
+    stages,
   }
+}
+
+function zeroStages(): Stages {
+  return { searchMs: 0, judgeMs: 0, fallbackMs: 0, rewriteMs: 0, answerMs: 0 }
 }
 
 /** What a `LoopError` carries: the calls it paid for and its steps. */
@@ -351,6 +406,61 @@ function metricsOf(records: RunRecord[]): Metrics {
       ).length,
     },
     ...loopMetricsOf(records),
+    stageMedianMs: stageStat(records, (values) => percentile(values, 0.5)),
+    stageMeanMs: stageStat(records, mean),
+    costByRole: perRole(records, (calls) => sum(calls.map(callCostUsd))),
+    callsByRole: perRole(records, (calls) => calls.length),
+    ...fallbackRatesOf(records),
+  }
+}
+
+function stageStat(
+  records: RunRecord[],
+  stat: (values: number[]) => number | null
+): Record<Stage, number | null> {
+  return Object.fromEntries(
+    STAGES.map((stage) => [
+      stage,
+      stat(records.flatMap((r) => (r.stages ? [r.stages[stage]] : []))),
+    ])
+  ) as Record<Stage, number | null>
+}
+
+/** Mean per question of `measure` over the calls of each role. */
+function perRole(
+  records: RunRecord[],
+  measure: (calls: ModelCall[]) => number
+): Record<Role, number> {
+  return Object.fromEntries(
+    ROLES.map((role) => [
+      role,
+      mean(
+        records.map((record) =>
+          measure(record.calls.filter((call) => call.role === role))
+        )
+      ) ?? 0,
+    ])
+  ) as Record<Role, number>
+}
+
+function fallbackRatesOf(
+  records: RunRecord[]
+): Pick<Metrics, "fallbackNoteRate" | "fallbackQuestionRate"> {
+  const lists = records.flatMap((record) =>
+    record.loop?.fallback
+      ? [
+          {
+            again: record.loop.fallback.length,
+            judged: Object.keys(record.loop.judged).length,
+          },
+        ]
+      : []
+  )
+  const judged = sum(lists.map((list) => list.judged))
+  return {
+    fallbackNoteRate:
+      judged === 0 ? null : sum(lists.map((l) => l.again)) / judged,
+    fallbackQuestionRate: mean(lists.map((list) => (list.again > 0 ? 1 : 0))),
   }
 }
 

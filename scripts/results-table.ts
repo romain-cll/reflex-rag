@@ -45,6 +45,11 @@ const MetricsSchema = z.looseObject({
   meanNotesInContext: z.number().nullable(),
   failuresByFamily: z.object({ retrieval: z.number(), answer: z.number() }),
   abstentions: z.object({ loop: z.number(), answerer: z.number() }),
+  // Absent from the summaries written before config C.
+  fallbackNoteRate: z.number().nullable().optional(),
+  fallbackQuestionRate: z.number().nullable().optional(),
+  stageMedianMs: z.record(z.string(), z.number().nullable()).optional(),
+  costByRole: z.record(z.string(), z.number()).optional(),
 })
 
 type Metrics = z.infer<typeof MetricsSchema>
@@ -134,8 +139,13 @@ function fixed(value: number | null, digits: number): string {
 }
 
 /** Loop measures are empty for a run without a loop. */
-function loopFixed(value: number | null, digits: number): string {
-  return value === null ? "" : value.toFixed(digits)
+function loopFixed(value: number | null | undefined, digits: number): string {
+  return value == null ? "" : value.toFixed(digits)
+}
+
+/** Fallback rates are empty for a run without a fallback. */
+function loopPercent(value: number | null | undefined): string {
+  return value == null ? "" : `${(value * 100).toFixed(1)}%`
 }
 
 function correctOverN({ accuracy, n }: Metrics): string {
@@ -161,6 +171,11 @@ const MAIN_COLUMNS: Column[] = [
       r.overall.accuracy === null
         ? "-"
         : `${correctOverN(r.overall)} (${percent(r.overall.accuracy)})`,
+  ],
+  ["fallback note rate", (r) => loopPercent(r.overall.fallbackNoteRate)],
+  [
+    "fallback question rate",
+    (r) => loopPercent(r.overall.fallbackQuestionRate),
   ],
   ["recall", (r) => percent(r.overall.meanRecall)],
   ["notes in context", (r) => fixed(r.overall.meanNotesInContext, 1)],
@@ -211,7 +226,43 @@ function provenance(runs: Run[]): string {
   return `Built from: ${runs.map((run) => `\`${run.dir}\``).join(", ")}`
 }
 
-const label = (run: Run) => `${run.config} ${run.split}`
+/** Config and split, plus the commit when another run shares them. */
+function labelOf(runs: Run[]): (run: Run) => string {
+  return (run) => {
+    const base = `${run.config} ${run.split}`
+    const shared = runs.some(
+      (other) =>
+        other !== run &&
+        other.config === run.config &&
+        other.split === run.split
+    )
+    return shared ? `${base} ${run.commit}` : base
+  }
+}
+
+const STAGES = ["searchMs", "judgeMs", "fallbackMs", "rewriteMs", "answerMs"]
+const ROLES = ["embed", "judge", "fallback", "rewrite", "answer"]
+
+const STAGE_COLUMNS: Column[] = [
+  ["config", (r) => r.config],
+  ["split", (r) => r.split],
+  ["commit", (r) => r.commit],
+  ...STAGES.map((stage): Column => [
+    `${stage.replace("Ms", "")} median (ms)`,
+    (r) => loopFixed(r.overall.stageMedianMs?.[stage], 0),
+  ]),
+  ...ROLES.map((role): Column => [
+    `${role} cost (USD)`,
+    (r) => loopFixed(r.overall.costByRole?.[role], 5),
+  ]),
+]
+
+function stageTable(runs: Run[]): string {
+  return table(
+    STAGE_COLUMNS.map(([header]) => header),
+    runs.map((run) => STAGE_COLUMNS.map(([, cell]) => cell(run)))
+  )
+}
 
 function mainTable(runs: Run[]): string {
   return table(
@@ -221,6 +272,7 @@ function mainTable(runs: Run[]): string {
 }
 
 function categoryTable(runs: Run[]): string {
+  const label = labelOf(runs)
   const measures: Array<[string, (metrics: Metrics) => string]> = [
     ["context complete", (m) => percent(m.contextCompleteRate)],
     ["context precision", (m) => percent(m.meanPrecision)],
@@ -246,6 +298,7 @@ function categoryTable(runs: Run[]): string {
 }
 
 function failureTable(runs: Run[]): string {
+  const label = labelOf(runs)
   return table(
     ["family", "failure", "lever", ...runs.map(label)],
     FAILURES.map((failure) => [
@@ -266,6 +319,12 @@ function renderPage(runs: Run[]): string {
     "## Runs",
     "",
     mainTable(runs),
+    "",
+    provenance(runs),
+    "",
+    "## By stage",
+    "",
+    stageTable(runs),
     "",
     provenance(runs),
     "",
