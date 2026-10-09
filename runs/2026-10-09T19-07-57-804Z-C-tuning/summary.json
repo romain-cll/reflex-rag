@@ -1,0 +1,419 @@
+{
+  "overall": {
+    "n": 60,
+    "accuracy": 0.8166666666666667,
+    "meanRecall": 0.875,
+    "contextCompleteRate": 0.8125,
+    "meanPrecision": 0.5152777777777778,
+    "meanNotesInContext": 2.7,
+    "latencyP50Ms": 2485.6400409999987,
+    "latencyP95Ms": 3932.461750000002,
+    "meanCostUsd": 0.0009229761,
+    "meanInputTokens": 2124.7916666666665,
+    "failures": {
+      "loop_error": 0,
+      "context_budget": 4,
+      "judge_rejected": 2,
+      "not_followed": 3,
+      "retrieval_miss": 0,
+      "answer_error": 0,
+      "false_abstention": 0,
+      "wrong_version": 1,
+      "missed_contradiction": 0,
+      "unsupported_claim": 0,
+      "wrong_answer": 1
+    },
+    "failuresByFamily": {
+      "retrieval": 9,
+      "answer": 2
+    },
+    "abstentions": {
+      "loop": 12,
+      "answerer": 5
+    },
+    "meanHops": 0.7,
+    "meanRewrites": 0.2,
+    "meanJudgeCalls": 1.9833333333333334,
+    "finalRules": {
+      "answer": 48,
+      "abstain": 12
+    },
+    "stageMedianMs": {
+      "searchMs": 200.76266600000963,
+      "judgeMs": 485.8882920000033,
+      "fallbackMs": 0,
+      "rewriteMs": 0,
+      "answerMs": 1738.6858339999999
+    },
+    "stageMeanMs": {
+      "searchMs": 275.872081966665,
+      "judgeMs": 548.0101895500017,
+      "fallbackMs": 0,
+      "rewriteMs": 208.97907494999916,
+      "answerMs": 1686.5703521166674
+    },
+    "costByRole": {
+      "embed": 0.0000018216666666666664,
+      "judge": 0.0006522411000000002,
+      "fallback": 0,
+      "rewrite": 0.000007505,
+      "answer": 0.0002614083333333333
+    },
+    "callsByRole": {
+      "embed": 1.2,
+      "judge": 1.9833333333333334,
+      "fallback": 0,
+      "rewrite": 0.2,
+      "answer": 0.8
+    },
+    "fallbackNoteRate": 0,
+    "fallbackQuestionRate": 0
+  },
+  "byCategory": {
+    "simple": {
+      "n": 12,
+      "accuracy": 0.8333333333333334,
+      "meanRecall": 0.9166666666666666,
+      "contextCompleteRate": 0.9166666666666666,
+      "meanPrecision": 0.5791666666666666,
+      "meanNotesInContext": 2.5,
+      "latencyP50Ms": 2225.2760419999995,
+      "latencyP95Ms": 4307.390125000001,
+      "meanCostUsd": 0.0008227085,
+      "meanInputTokens": 1802.75,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 1,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 1
+      },
+      "failuresByFamily": {
+        "retrieval": 1,
+        "answer": 1
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.16666666666666666,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.3333333333333333,
+      "finalRules": {
+        "answer": 12
+      },
+      "stageMedianMs": {
+        "searchMs": 188.2683339999985,
+        "judgeMs": 324.19824999999946,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 1669.4882080000007
+      },
+      "stageMeanMs": {
+        "searchMs": 209.92655924999997,
+        "judgeMs": 373.0747813333331,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 1772.2896390000003
+      },
+      "costByRole": {
+        "embed": 0.000001475,
+        "judge": 0.0005718335000000001,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 0.0002494
+      },
+      "callsByRole": {
+        "embed": 1,
+        "judge": 1.3333333333333333,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 1
+      },
+      "fallbackNoteRate": 0,
+      "fallbackQuestionRate": 0
+    },
+    "multi_hop": {
+      "n": 15,
+      "accuracy": 0.4666666666666667,
+      "meanRecall": 0.6666666666666666,
+      "contextCompleteRate": 0.4666666666666667,
+      "meanPrecision": 0.46222222222222226,
+      "meanNotesInContext": 3.6666666666666665,
+      "latencyP50Ms": 2578.1604580000057,
+      "latencyP95Ms": 3932.461750000002,
+      "meanCostUsd": 0.000936428,
+      "meanInputTokens": 2171.8,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 3,
+        "judge_rejected": 2,
+        "not_followed": 3,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 8,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 5
+      },
+      "meanHops": 0.6666666666666666,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.6666666666666667,
+      "finalRules": {
+        "answer": 15
+      },
+      "stageMedianMs": {
+        "searchMs": 173.5448749999996,
+        "judgeMs": 524.0592079999988,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 1817.938540999996
+      },
+      "stageMeanMs": {
+        "searchMs": 238.4542638666661,
+        "judgeMs": 484.9061860000009,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 2072.6492999999987
+      },
+      "costByRole": {
+        "embed": 0.0000018333333333333335,
+        "judge": 0.000603848,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 0.0003307466666666667
+      },
+      "callsByRole": {
+        "embed": 1,
+        "judge": 1.6666666666666667,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 1
+      },
+      "fallbackNoteRate": 0,
+      "fallbackQuestionRate": 0
+    },
+    "temporal": {
+      "n": 12,
+      "accuracy": 0.9166666666666666,
+      "meanRecall": 1,
+      "contextCompleteRate": 1,
+      "meanPrecision": 0.3541666666666667,
+      "meanNotesInContext": 3.9166666666666665,
+      "latencyP50Ms": 2388.397250000009,
+      "latencyP95Ms": 4748.294959000006,
+      "meanCostUsd": 0.0009433246666666668,
+      "meanInputTokens": 2380.5,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 1,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 1
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.3333333333333333,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.5,
+      "finalRules": {
+        "answer": 12
+      },
+      "stageMedianMs": {
+        "searchMs": 194.1114579999994,
+        "judgeMs": 345.8445000000065,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 1796.6867080000084
+      },
+      "stageMeanMs": {
+        "searchMs": 260.7393956666662,
+        "judgeMs": 403.7645902500032,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 2141.403038250001
+      },
+      "costByRole": {
+        "embed": 0.0000012666666666666667,
+        "judge": 0.0005828830000000001,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 0.00035917500000000004
+      },
+      "callsByRole": {
+        "embed": 1,
+        "judge": 1.5,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 1
+      },
+      "fallbackNoteRate": 0,
+      "fallbackQuestionRate": 0
+    },
+    "contradiction": {
+      "n": 9,
+      "accuracy": 1,
+      "meanRecall": 1,
+      "contextCompleteRate": 1,
+      "meanPrecision": 0.7333333333333334,
+      "meanNotesInContext": 3.3333333333333335,
+      "latencyP50Ms": 3143.251667000004,
+      "latencyP95Ms": 3637.2055420000106,
+      "meanCostUsd": 0.000953752888888889,
+      "meanInputTokens": 2134.8888888888887,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.2222222222222222,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.2222222222222223,
+      "finalRules": {
+        "answer": 9
+      },
+      "stageMedianMs": {
+        "searchMs": 179.75370800000383,
+        "judgeMs": 298.43116599999485,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 2605.1920420000097
+      },
+      "stageMeanMs": {
+        "searchMs": 187.19524077777493,
+        "judgeMs": 359.7721572222217,
+        "fallbackMs": 0,
+        "rewriteMs": 0,
+        "answerMs": 2571.129944444448
+      },
+      "costByRole": {
+        "embed": 0.0000014444444444444445,
+        "judge": 0.000572264,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 0.00038004444444444447
+      },
+      "callsByRole": {
+        "embed": 1,
+        "judge": 1.2222222222222223,
+        "fallback": 0,
+        "rewrite": 0,
+        "answer": 1
+      },
+      "fallbackNoteRate": 0,
+      "fallbackQuestionRate": 0
+    },
+    "no_answer": {
+      "n": 12,
+      "accuracy": 1,
+      "meanRecall": null,
+      "contextCompleteRate": null,
+      "meanPrecision": null,
+      "meanNotesInContext": 0,
+      "latencyP50Ms": 2475.0322499999893,
+      "latencyP95Ms": 3151.5339159999858,
+      "meanCostUsd": 0.0009629976666666668,
+      "meanInputTokens": null,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 0,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 12,
+        "answerer": 0
+      },
+      "meanHops": 2,
+      "meanRewrites": 1,
+      "meanJudgeCalls": 4.083333333333333,
+      "finalRules": {
+        "abstain": 12
+      },
+      "stageMedianMs": {
+        "searchMs": 366.4856669999717,
+        "judgeMs": 1057.549250000011,
+        "fallbackMs": 0,
+        "rewriteMs": 999.7680830000027,
+        "answerMs": 0
+      },
+      "stageMeanMs": {
+        "searchMs": 470.2301944999951,
+        "judgeMs": 1087.2497257500047,
+        "fallbackMs": 0,
+        "rewriteMs": 1044.8953747499957,
+        "answerMs": 0
+      },
+      "costByRole": {
+        "embed": 0.000002991666666666667,
+        "judge": 0.0009224810000000001,
+        "fallback": 0,
+        "rewrite": 0.000037525,
+        "answer": 0
+      },
+      "callsByRole": {
+        "embed": 2,
+        "judge": 4.083333333333333,
+        "fallback": 0,
+        "rewrite": 1,
+        "answer": 0
+      },
+      "fallbackNoteRate": 0,
+      "fallbackQuestionRate": 0
+    }
+  }
+}
