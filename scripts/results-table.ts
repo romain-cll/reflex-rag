@@ -49,6 +49,7 @@ const MetricsSchema = z.looseObject({
   fallbackNoteRate: z.number().nullable().optional(),
   fallbackQuestionRate: z.number().nullable().optional(),
   stageMedianMs: z.record(z.string(), z.number().nullable()).optional(),
+  stageMeanMs: z.record(z.string(), z.number().nullable()).optional(),
   costByRole: z.record(z.string(), z.number()).optional(),
 })
 
@@ -64,6 +65,8 @@ interface Run {
   dir: string
   /** The date of the run folder name, `YYYY-MM-DD`. */
   date: string
+  /** The time of the run folder name, `HH:MM`; empty if the name has none. */
+  time: string
   config: string
   split: string
   commit: string
@@ -87,6 +90,7 @@ function readRun(dir: string): Run {
   const date = /^\d{4}-\d{2}-\d{2}/.exec(name)?.[0]
   if (!date)
     throw new Error(`${name}: the folder name does not start with a date`)
+  const [, hours, minutes] = /^[\d-]+T(\d{2})-(\d{2})/.exec(name) ?? []
   try {
     const settings = SettingsSchema.parse(readSettings(dir))
     const summary = SummarySchema.parse(
@@ -95,6 +99,7 @@ function readRun(dir: string): Run {
     return {
       dir: relative(process.cwd(), dir),
       date,
+      time: hours === undefined ? "" : `${hours}:${minutes}`,
       config: settings.config,
       split: settings.split,
       commit: settings.gitCommit,
@@ -226,17 +231,24 @@ function provenance(runs: Run[]): string {
   return `Built from: ${runs.map((run) => `\`${run.dir}\``).join(", ")}`
 }
 
-/** Config and split, plus the commit when another run shares them. */
+/**
+ * Config and split, plus the commit when another run shares them, plus the
+ * time when another run also shares the commit.
+ */
 function labelOf(runs: Run[]): (run: Run) => string {
   return (run) => {
-    const base = `${run.config} ${run.split}`
-    const shared = runs.some(
+    const sharing = runs.filter(
       (other) =>
         other !== run &&
         other.config === run.config &&
         other.split === run.split
     )
-    return shared ? `${base} ${run.commit}` : base
+    const label = `${run.config} ${run.split}`
+    if (sharing.length === 0) return label
+    const withCommit = `${label} ${run.commit}`
+    return sharing.some((other) => other.commit === run.commit)
+      ? `${withCommit} ${run.time}`.trim()
+      : withCommit
   }
 }
 
@@ -247,10 +259,17 @@ const STAGE_COLUMNS: Column[] = [
   ["config", (r) => r.config],
   ["split", (r) => r.split],
   ["commit", (r) => r.commit],
-  ...STAGES.map((stage): Column => [
-    `${stage.replace("Ms", "")} median (ms)`,
-    (r) => loopFixed(r.overall.stageMedianMs?.[stage], 0),
-  ]),
+  ...(
+    [
+      ["median", "stageMedianMs"],
+      ["mean", "stageMeanMs"],
+    ] as const
+  ).flatMap(([name, field]) =>
+    STAGES.map((stage): Column => [
+      `${stage.replace("Ms", "")} ${name} (ms)`,
+      (r) => loopFixed(r.overall[field]?.[stage], 0),
+    ])
+  ),
   ...ROLES.map((role): Column => [
     `${role} cost (USD)`,
     (r) => loopFixed(r.overall.costByRole?.[role], 5),

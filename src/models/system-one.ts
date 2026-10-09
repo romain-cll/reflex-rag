@@ -8,12 +8,14 @@ import type { ModelCall } from "../core/types.ts"
 
 const MAX_RETRIES = 3
 const DEFAULT_RETRY_BASE_MS = 1000
+const DEFAULT_TIMEOUT_MS = 60_000
 const ERROR_BODY_CHARS = 200
 
 const JEV_URL = "https://api.typesafe.ai"
 /** Pinned, so that the published runs can be reproduced. */
 export const JEV_MODEL = "jev-1.13.0"
-const DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+const OLLAMA_PORT = 11434
+const DEFAULT_OLLAMA_HOST = `http://localhost:${OLLAMA_PORT}`
 const CLEF_MODEL = "clef-flash"
 
 const AnswerSchema = z.discriminatedUnion("type", [
@@ -38,6 +40,8 @@ export interface HttpSystemOneOptions {
   fetch?: typeof fetch
   /** First retry delay in milliseconds, doubled at each retry. Default 1000. */
   retryBaseMs?: number
+  /** Each attempt is aborted after it, and the abort is retried. Default 60000. */
+  timeoutMs?: number
 }
 
 export class HttpSystemOne implements SystemOne {
@@ -46,6 +50,7 @@ export class HttpSystemOne implements SystemOne {
   private readonly apiKey: string | undefined
   private readonly fetch: typeof fetch
   private readonly retryBaseMs: number
+  private readonly timeoutMs: number
 
   constructor(options: HttpSystemOneOptions) {
     this.baseUrl = options.baseUrl
@@ -53,6 +58,7 @@ export class HttpSystemOne implements SystemOne {
     this.apiKey = options.apiKey
     this.fetch = options.fetch ?? fetch
     this.retryBaseMs = options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   }
 
   async decide(
@@ -99,6 +105,7 @@ export class HttpSystemOne implements SystemOne {
           state: request.state,
           questions: request.questions,
         }),
+        signal: AbortSignal.timeout(this.timeoutMs),
       })
     } catch (error) {
       return error instanceof Error ? error : new Error(String(error))
@@ -106,7 +113,7 @@ export class HttpSystemOne implements SystemOne {
   }
 }
 
-type Factory = Pick<HttpSystemOneOptions, "fetch" | "retryBaseMs">
+type Factory = Pick<HttpSystemOneOptions, "fetch" | "retryBaseMs" | "timeoutMs">
 
 /** Jev, TypeSafe's hosted system one, with the key of `TYPESAFE_API_KEY`. */
 export function jevSystemOne(options: Factory = {}): HttpSystemOne {
@@ -126,9 +133,18 @@ export function jevSystemOne(options: Factory = {}): HttpSystemOne {
 export function clefSystemOne(options: Factory = {}): HttpSystemOne {
   return new HttpSystemOne({
     ...options,
-    baseUrl: process.env.OLLAMA_HOST ?? DEFAULT_OLLAMA_HOST,
+    baseUrl: ollamaBaseUrl(process.env.OLLAMA_HOST),
     model: CLEF_MODEL,
   })
+}
+
+/** `OLLAMA_HOST` as Ollama reads it: `http://` and `:11434` when missing, the default when empty. */
+function ollamaBaseUrl(host: string | undefined): string {
+  if (host === undefined || host === "") return DEFAULT_OLLAMA_HOST
+  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(host)
+    ? host
+    : `http://${host}`
+  return /:\d+$/.test(withScheme) ? withScheme : `${withScheme}:${OLLAMA_PORT}`
 }
 
 async function parseBody(response: Response) {

@@ -11,7 +11,11 @@ import {
   type ContextChunk,
 } from "../answer/answerer.ts"
 import type { Embedder } from "../core/embedder.ts"
-import type { Judge, NoteForJudge } from "../core/judge.ts"
+import {
+  JudgeCallsError,
+  type Judge,
+  type NoteForJudge,
+} from "../core/judge.ts"
 import { LLMCallError, type LLM, type LLMRequest } from "../core/llm.ts"
 import type { SystemOne, SystemOneRequest } from "../core/system-one.ts"
 import type { Chunk, ModelCall, Role } from "../core/types.ts"
@@ -269,7 +273,8 @@ function pipelineA(
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
   return {
     retrieve: retrieverOf(index, embedder, settings),
-    answer: (query, context) => answerTagged(query, context, llm),
+    answer: (query, context) =>
+      roleTagged("answer", () => answerQuestion(query, context, llm)),
     k: settings.k,
     candidates: settings.candidates,
     models: { answerer: llm.model },
@@ -287,14 +292,14 @@ function pipelineB(
   settings: EvalSettings
 ): Pipeline {
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
-  return loopPipeline(index, embedder, settings, llm, {
-    judge: new RoleTaggedJudge(new LLMJudge(llm)),
-    policy: loopPolicy(settings.k, POLICIES.B),
-    judgeModel: llm.model,
-    fallbackTrace: false,
-    loopSettings: {},
-    models: {},
-  })
+  return loopPipeline(
+    "B",
+    index,
+    embedder,
+    settings,
+    llm,
+    new RoleTaggedJudge(new LLMJudge(llm))
+  )
 }
 
 /**
@@ -308,49 +313,86 @@ function pipelineC(
   systemOne: SystemOne
 ): Pipeline {
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
-  return loopPipeline(index, embedder, settings, llm, {
-    judge: new FallbackJudge(
+  return loopPipeline(
+    "C",
+    index,
+    embedder,
+    settings,
+    llm,
+    new FallbackJudge(
       new SystemOneJudge(systemOne),
       new RoleTaggedJudge(new LLMJudge(llm)),
       { threshold: settings.fallback }
     ),
-    policy: loopPolicy(settings.k, POLICIES.C),
-    judgeModel: systemOne.model,
-    fallbackTrace: true,
-    loopSettings: {
+    systemOne.model
+  )
+}
+
+/** The models and the loop part of the settings line of a B or C run. */
+interface LoopSettings {
+  models: Record<string, string>
+  loop: {
+    policy: PolicyConfig
+    rewriter: RewriterKind
+    candidates: number
+    /** Config C only. */
+    fallbackThreshold?: number
+    systemOne?: SystemOneKind
+  }
+}
+
+/**
+ * The model of the judge is the system one's in C, which also names its
+ * fallback model, the Haiku client's.
+ */
+export function loopSettings(
+  config: "B" | "C",
+  settings: EvalSettings,
+  systemOneModel?: string
+): LoopSettings {
+  const models: Record<string, string> = {
+    rewriter: settings.rewrite === "llm" ? ANSWERER_MODEL : "none",
+    answerer: ANSWERER_MODEL,
+  }
+  const loop: LoopSettings["loop"] = {
+    policy: loopPolicy(settings.k, POLICIES[config]),
+    rewriter: settings.rewrite,
+    candidates: settings.candidates,
+  }
+  if (config === "B") {
+    return { models: { judge: ANSWERER_MODEL, ...models }, loop }
+  }
+  if (systemOneModel === undefined) {
+    throw new Error("config C needs the model of its system one")
+  }
+  return {
+    models: { judge: systemOneModel, fallback: ANSWERER_MODEL, ...models },
+    loop: {
+      ...loop,
       fallbackThreshold: settings.fallback,
       systemOne: settings.systemOne,
     },
-    models: { fallback: llm.model },
-  })
+  }
 }
 
-interface LoopVariant {
-  judge: Judge
-  policy: PolicyConfig
-  /** The model of the judge, as the settings name it. */
-  judgeModel: string
-  /** The loop trace holds the notes judged again. */
-  fallbackTrace: boolean
-  /** What the settings of the loop hold besides the policy, the rewriter and the candidates. */
-  loopSettings: Record<string, unknown>
-  /** The models other than the judge, the rewriter and the answerer. */
-  models: Record<string, string>
-}
-
-/** The retrieval loop and the answerer of the configs B and C, which differ by their judge. */
+/**
+ * The retrieval loop and the answerer of the configs B and C, which differ by
+ * their judge.
+ */
 function loopPipeline(
+  config: "B" | "C",
   index: Index,
   embedder: Embedder,
   settings: EvalSettings,
   llm: LLM,
-  variant: LoopVariant
+  judge: Judge,
+  systemOneModel?: string
 ): Pipeline {
   const retriever = new HybridRetriever(index, embedder)
   const rewriter = roleTaggedRewriter(
     settings.rewrite === "llm" ? new LLMRewriter(llm) : new CodeRewriter()
   )
-  const { policy } = variant
+  const { models, loop } = loopSettings(config, settings, systemOneModel)
   return {
     retrieve: async (query) => {
       const {
@@ -371,9 +413,9 @@ function loopPipeline(
           return { ...retrieval, calls: withRole(retrieval.calls, "embed") }
         },
         index,
-        judge: variant.judge,
+        judge,
         rewriter,
-        policy,
+        policy: loop.policy,
         candidates: settings.candidates,
       })
       return {
@@ -388,28 +430,18 @@ function loopPipeline(
           judged,
           kept,
           frontier,
-          ...(variant.fallbackTrace ? { fallback } : {}),
+          ...(config === "C" ? { fallback } : {}),
         },
       }
     },
     answer: async (query, context, loop) =>
       loop?.outcome.type === "abstain"
         ? { output: abstentionOutput(loop.outcome.rule), call: null }
-        : answerTagged(query, context, llm),
+        : roleTagged("answer", () => answerQuestion(query, context, llm)),
     k: settings.k,
     candidates: settings.candidates,
-    loop: {
-      policy,
-      rewriter: rewriter.kind,
-      candidates: settings.candidates,
-      ...variant.loopSettings,
-    },
-    models: {
-      judge: variant.judgeModel,
-      ...variant.models,
-      rewriter: rewriter.kind === "llm" ? llm.model : "none",
-      answerer: llm.model,
-    },
+    loop,
+    models,
   }
 }
 
@@ -436,42 +468,48 @@ class RoleTaggedJudge implements Judge {
   constructor(private readonly inner: Judge) {}
 
   judge(...args: Parameters<Judge["judge"]>) {
-    return tagging("judge", () => this.inner.judge(...args))
+    return roleTagged("judge", () => this.inner.judge(...args))
   }
 }
 
 function roleTaggedRewriter(inner: Rewriter): Rewriter {
   return {
     kind: inner.kind,
-    rewrite: (...args) => tagging("rewrite", () => inner.rewrite(...args)),
+    rewrite: (...args) => roleTagged("rewrite", () => inner.rewrite(...args)),
   }
 }
 
-async function answerTagged(
-  ...args: [string, ContextChunk[], LLM]
-): Promise<{ output: Answer; call: ModelCall }> {
-  const { output, call } = await answerQuestion(...args)
-  return { output, call: { ...call, role: "answer" } }
-}
-
-/** The calls of a result, or of the failed call it throws, carry `role` unless they have one. */
-async function tagging<T extends { calls: ModelCall[] }>(
-  role: Role,
-  run: () => Promise<T>
-): Promise<T> {
+/**
+ * The result of `run`, or the failure it throws, with the calls it carries
+ * (`call`, `calls`, the billed call of an `LLMCallError`) set to `role` unless
+ * they have one.
+ */
+export async function roleTagged<
+  T extends { call?: ModelCall | null; calls?: ModelCall[] },
+>(role: Role, run: () => Promise<T>): Promise<T> {
   try {
     const result = await run()
-    return { ...result, calls: withRole(result.calls, role) }
+    return {
+      ...result,
+      ...(result.call ? { call: withRole([result.call], role)[0]! } : {}),
+      ...(result.calls ? { calls: withRole(result.calls, role) } : {}),
+    }
   } catch (error) {
-    // The billed call of a failed call counts for its role too.
+    // The billed calls of a failure count for their role too.
     if (error instanceof LLMCallError) {
       throw new LLMCallError(error.message, withRole([error.call], role)[0]!)
+    }
+    if (error instanceof JudgeCallsError) {
+      throw new JudgeCallsError(error.message, withRole(error.calls, role), {
+        cause: error.cause,
+      })
     }
     throw error
   }
 }
 
-function withRole(calls: ModelCall[], role: Role): ModelCall[] {
+/** The calls with `role` set where they have none. */
+export function withRole(calls: ModelCall[], role: Role): ModelCall[] {
   return calls.map((call) => ({ ...call, role: call.role ?? role }))
 }
 
