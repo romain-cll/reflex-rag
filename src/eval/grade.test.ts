@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test"
 import type { Question } from "../../evals/schema.ts"
-import { grade } from "./grade.ts"
+import { FAILURES, grade } from "./grade.ts"
+import * as grading from "./grade.ts"
+
+/**
+ * Read from the namespace: a named import of a symbol that does not exist yet
+ * would fail the whole file instead of the tests that need it.
+ */
+const FAILURE_INFO = (
+  grading as unknown as {
+    FAILURE_INFO: Record<
+      string,
+      { family: "retrieval" | "answer"; lever: string }
+    >
+  }
+).FAILURE_INFO
 
 interface Output {
   status: "answered" | "conflict" | "abstained"
@@ -866,5 +880,324 @@ describe("AC2 — failure taxonomy", () => {
       [ANYA]
     )
     expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+})
+
+/** The loop's note paths as `grade` takes them (docs/features/eval-run.md, AC11). */
+function loopOf(
+  lists: Partial<{ judged: string[]; kept: string[]; frontier: string[] }> = {}
+) {
+  return { judged: [], kept: [], frontier: [], ...lists }
+}
+
+const WESTGATE = "Customers/Westgate Realty Partners.md"
+
+/** Two source groups, ANYA and HANDOFF; the answer is wrong whatever the context. */
+function twoGroups(overrides: Partial<Question> = {}): Question {
+  return valueQuestion(["Denver"], {
+    sources: [ANYA, HANDOFF],
+    sourceGroups: [[ANYA], [HANDOFF]],
+    ...overrides,
+  })
+}
+
+describe("AC12 — failures and levers", () => {
+  test("AC12 — FAILURES lists the failures in the order of AC11, retrieval family first", () => {
+    expect([...FAILURES]).toEqual([
+      "loop_error",
+      "context_budget",
+      "judge_rejected",
+      "not_followed",
+      "retrieval_miss",
+      "answer_error",
+      "false_abstention",
+      "wrong_version",
+      "missed_contradiction",
+      "unsupported_claim",
+      "wrong_answer",
+    ])
+  })
+
+  test("AC12 — FAILURE_INFO has exactly one entry per failure", () => {
+    expect(Object.keys(FAILURE_INFO).sort()).toEqual([...FAILURES].sort())
+  })
+
+  test("AC12 — the retrieval family is loop_error, context_budget, judge_rejected, not_followed and retrieval_miss", () => {
+    const retrieval = FAILURES.filter(
+      (failure) => FAILURE_INFO[failure].family === "retrieval"
+    )
+    expect(retrieval).toEqual([
+      "loop_error",
+      "context_budget",
+      "judge_rejected",
+      "not_followed",
+      "retrieval_miss",
+    ])
+  })
+
+  test("AC12 — the answer family is answer_error, false_abstention, wrong_version, missed_contradiction, unsupported_claim and wrong_answer", () => {
+    const answer = FAILURES.filter(
+      (failure) => FAILURE_INFO[failure].family === "answer"
+    )
+    expect(answer).toEqual([
+      "answer_error",
+      "false_abstention",
+      "wrong_version",
+      "missed_contradiction",
+      "unsupported_claim",
+      "wrong_answer",
+    ])
+  })
+
+  test("AC12 — every failure has a non-empty lever", () => {
+    for (const failure of FAILURES) {
+      expect(typeof FAILURE_INFO[failure].lever).toBe("string")
+      expect(FAILURE_INFO[failure].lever.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  test("AC12 — the lever of judge_rejected is the answer threshold", () => {
+    expect(FAILURE_INFO.judge_rejected.lever).toMatch(/answer threshold/i)
+  })
+
+  test("AC12 — the lever of not_followed is the step threshold", () => {
+    expect(FAILURE_INFO.not_followed.lever).toMatch(/step threshold/i)
+  })
+
+  test("AC12 — the lever of context_budget is the context budget", () => {
+    expect(FAILURE_INFO.context_budget.lever).toMatch(/context budget/i)
+  })
+
+  test("AC12 — the lever of wrong_version is supersession in the answerer's prompt", () => {
+    expect(FAILURE_INFO.wrong_version.lever).toMatch(/supersession/i)
+  })
+
+  test("AC12 — the lever of missed_contradiction is contradictions in the answerer's prompt", () => {
+    expect(FAILURE_INFO.missed_contradiction.lever).toMatch(/contradiction/i)
+  })
+})
+
+describe("AC11 — retrieval family from the loop's lists", () => {
+  test("AC11 — context_budget: the missing note was kept by the loop but is not in the context", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [ANYA, HANDOFF], kept: [ANYA, HANDOFF] })
+    )
+    expect(result).toEqual({ correct: false, failure: "context_budget" })
+  })
+
+  test("AC11 — judge_rejected: the missing note was judged but not kept", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [ANYA, HANDOFF], kept: [ANYA] })
+    )
+    expect(result).toEqual({ correct: false, failure: "judge_rejected" })
+  })
+
+  test("AC11 — not_followed: the missing note is in the frontier, one link away and never judged", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [ANYA], kept: [ANYA], frontier: [HANDOFF] })
+    )
+    expect(result).toEqual({ correct: false, failure: "not_followed" })
+  })
+
+  test("AC11 — retrieval_miss: the missing note is in none of the loop's lists", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [ANYA], kept: [ANYA], frontier: [WESTGATE] })
+    )
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
+  })
+
+  test("AC11 — retrieval_miss: without the loop's lists (config A), every retrieval failure is a retrieval_miss", () => {
+    const result = grade(twoGroups(), output("answered", "Austin."), [ANYA])
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
+  })
+
+  test("AC11 — retrieval_miss: an empty context with empty lists", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [],
+      loopOf()
+    )
+    expect(result).toEqual({ correct: false, failure: "retrieval_miss" })
+  })
+
+  test("AC11 — context_budget comes before judge_rejected for a note both kept and judged", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [HANDOFF], kept: [HANDOFF], frontier: [] })
+    )
+    expect(result.failure).toBe("context_budget")
+  })
+
+  test("AC11 — judge_rejected comes before not_followed for a note both judged and in the frontier", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [HANDOFF], frontier: [HANDOFF] })
+    )
+    expect(result.failure).toBe("judge_rejected")
+  })
+
+  test("AC11 — context_budget comes before not_followed for a note both kept and in the frontier", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ kept: [HANDOFF], frontier: [HANDOFF] })
+    )
+    expect(result.failure).toBe("context_budget")
+  })
+
+  test("AC11 — only the notes of a source group with no note in the context decide: a covered group's note in the lists is ignored", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA],
+      // ANYA is in the context, so its kept status says nothing; HANDOFF is only a frontier note.
+      loopOf({ judged: [ANYA], kept: [ANYA], frontier: [HANDOFF] })
+    )
+    expect(result.failure).toBe("not_followed")
+  })
+
+  test("AC11 — a group of several notes: any of its notes in a list decides", () => {
+    const result = grade(
+      twoGroups({
+        sources: [ANYA, HANDOFF, WESTGATE],
+        sourceGroups: [[ANYA], [HANDOFF, WESTGATE]],
+      }),
+      output("answered", "Austin."),
+      [ANYA],
+      loopOf({ judged: [ANYA, WESTGATE], kept: [ANYA] })
+    )
+    expect(result.failure).toBe("judge_rejected")
+  })
+
+  test("AC11 — several missing groups: the first failure that applies to a note of any of them", () => {
+    const result = grade(
+      twoGroups({
+        sources: [ANYA, HANDOFF, WESTGATE],
+        sourceGroups: [[ANYA], [HANDOFF], [WESTGATE]],
+      }),
+      output("answered", "Austin."),
+      [ANYA],
+      // HANDOFF was only a frontier note, WESTGATE was kept then cut by the budget.
+      loopOf({ kept: [ANYA, WESTGATE], frontier: [HANDOFF] })
+    )
+    expect(result.failure).toBe("context_budget")
+  })
+
+  test("AC11 — an abstention with an incomplete context is of the retrieval family, not a false_abstention", () => {
+    const result = grade(
+      twoGroups(),
+      output("abstained", "The excerpts do not say."),
+      [ANYA],
+      loopOf({ judged: [ANYA, HANDOFF], kept: [ANYA] })
+    )
+    expect(result.failure).toBe("judge_rejected")
+  })
+
+  test("AC11 — a stale value with an incomplete context is of the retrieval family, not a wrong_version", () => {
+    const result = grade(
+      twoGroups({ stale: ["Portland"] }),
+      output("answered", "Portland."),
+      [ANYA],
+      loopOf({ kept: [HANDOFF] })
+    )
+    expect(result.failure).toBe("context_budget")
+  })
+
+  test("AC11 — a correct answer has no failure even when the context is incomplete and the lists name the missing note", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Denver."),
+      [ANYA],
+      loopOf({ kept: [HANDOFF] })
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC11 — the loop's lists are ignored when the context is complete: wrong_answer", () => {
+    const result = grade(
+      twoGroups(),
+      output("answered", "Austin."),
+      [ANYA, HANDOFF],
+      loopOf({ judged: [ANYA, HANDOFF], kept: [ANYA, HANDOFF] })
+    )
+    expect(result).toEqual({ correct: false, failure: "wrong_answer" })
+  })
+
+  test("AC11 — complete context, answer family: false_abstention", () => {
+    const result = grade(
+      twoGroups(),
+      output("abstained", "The excerpts do not say."),
+      [ANYA, HANDOFF],
+      loopOf({ judged: [ANYA, HANDOFF], kept: [ANYA, HANDOFF] })
+    )
+    expect(result.failure).toBe("false_abstention")
+  })
+
+  test("AC11 — complete context, answer family: wrong_version", () => {
+    const result = grade(
+      twoGroups({ stale: ["Portland"] }),
+      output("answered", "Portland."),
+      [ANYA, HANDOFF],
+      loopOf({ kept: [ANYA, HANDOFF] })
+    )
+    expect(result.failure).toBe("wrong_version")
+  })
+
+  test("AC11 — complete context, answer family: missed_contradiction", () => {
+    const result = grade(
+      conflictQuestion(),
+      output("answered", "The contract value is $143,000."),
+      [ANYA, HANDOFF],
+      loopOf({ kept: [ANYA, HANDOFF] })
+    )
+    expect(result.failure).toBe("missed_contradiction")
+  })
+
+  test("AC11 — a question without source is of the answer family whatever the lists hold: unsupported_claim", () => {
+    const result = grade(
+      abstainQuestion(),
+      output("answered", "A policy from Acme."),
+      [],
+      loopOf({ judged: [WESTGATE], kept: [WESTGATE], frontier: [ANYA] })
+    )
+    expect(result.failure).toBe("unsupported_claim")
+  })
+
+  test("AC11 — a correct abstention of the loop on a question without source has no failure", () => {
+    const result = grade(
+      abstainQuestion(),
+      output("abstained", "No relevant note was found."),
+      [],
+      loopOf()
+    )
+    expect(result).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC11 — grade never returns loop_error or answer_error: the run sets them", () => {
+    const failures = [
+      grade(twoGroups(), output("answered", "Austin."), [], loopOf()),
+      grade(twoGroups(), output("abstained", ""), [ANYA, HANDOFF], loopOf()),
+      grade(twoGroups(), output("answered", "Austin."), [ANYA, HANDOFF]),
+    ].map((result) => result.failure)
+    expect(failures).not.toContain("loop_error")
+    expect(failures).not.toContain("answer_error")
   })
 })

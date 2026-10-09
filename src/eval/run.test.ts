@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Question } from "../../evals/schema.ts"
 import type { ModelCall } from "../core/types.ts"
-import { runEval, summarize } from "./run.ts"
+import { renderReport, runEval, summarize } from "./run.ts"
 
 type RunRecord = Parameters<typeof summarize>[0][number]
 
@@ -28,6 +28,10 @@ interface LoopData {
   hops: number
   rewrites: number
   steps: unknown[]
+  /** Note path -> score of each judge question. */
+  judged: Record<string, Record<string, number>>
+  kept: string[]
+  frontier: string[]
 }
 
 /** What the fake retriever and answerer return for one question. */
@@ -41,6 +45,10 @@ interface Step {
   answerCall?: ModelCall | null
   /** The answerer throws this instead of answering. */
   answerError?: { message: string; call?: ModelCall }
+  /** `retrieve` throws this instead of returning: a `LoopError` carries calls and steps. */
+  loopError?: { message: string; calls: ModelCall[]; steps: unknown[] }
+  /** `retrieve` throws a plain error (no calls, no steps). */
+  retrieveError?: string
 }
 
 /** An error of the answerer; `call` is the call the API billed, if any. */
@@ -48,6 +56,17 @@ class AnswerError extends Error {
   constructor(
     message: string,
     readonly call?: ModelCall
+  ) {
+    super(message)
+  }
+}
+
+/** The error of a retrieval loop that failed: the calls it paid for and its steps. */
+class LoopError extends Error {
+  constructor(
+    message: string,
+    readonly calls: ModelCall[],
+    readonly steps: unknown[]
   ) {
     super(message)
   }
@@ -127,6 +146,13 @@ function fakes(steps: Map<string, Step>) {
       retrieved.push({ query, k })
       const step = steps.get(query)
       if (!step) throw new Error(`unscripted question: ${query}`)
+      if (step.loopError) {
+        const { message, calls, steps: loopSteps } = step.loopError
+        return Promise.reject(new LoopError(message, calls, loopSteps))
+      }
+      if (step.retrieveError) {
+        return Promise.reject(new Error(step.retrieveError))
+      }
       const context = step.notes.map(chunk)
       contexts.set(query, context)
       return Promise.resolve({
@@ -178,6 +204,7 @@ interface RunOptions {
   models?: Record<string, string>
   /** Config B: the loop settings written to the settings line. */
   loop?: Record<string, unknown>
+  candidates?: number
 }
 
 /** Always writes into a temporary runs folder, never into the repository. */
@@ -189,6 +216,7 @@ function runWith(questions: Question[], options: RunOptions = {}) {
     retrieve: fake.retrieve,
     answer: fake.answer,
     k: options.k ?? 8,
+    candidates: options.candidates ?? 50,
     maxCostUsd: options.maxCostUsd ?? 1000,
     runsDir,
     config: options.config ?? "A",
@@ -715,25 +743,57 @@ describe("AC4 — cost cap", () => {
   })
 })
 
-function makeRecord(n: number, overrides: Partial<RunRecord> = {}): RunRecord {
+function makeRecord(
+  n: number,
+  overrides: Partial<RunRecord> & Record<string, unknown> = {}
+): RunRecord {
   return {
     id: id(n),
     split: "test",
     category: "simple",
     contextNotes: [],
     recall: 1,
+    contextComplete: true,
+    precision: 1,
+    notesInContext: 1,
     output: answered("Denver"),
     grade: { correct: true, failure: null },
     calls: [call("claude-haiku-5-5", 1000, 100, 300)],
     latencyMs: 300,
     costUsd: 0.01,
     ...overrides,
-  }
+  } as RunRecord
 }
 
 const wrong = (
-  failure: "retrieval_miss" | "wrong_answer" | "false_abstention"
+  failure:
+    | "retrieval_miss"
+    | "wrong_answer"
+    | "false_abstention"
+    | "loop_error"
+    | "context_budget"
+    | "judge_rejected"
+    | "not_followed"
+    | "answer_error"
+    | "wrong_version"
+    | "missed_contradiction"
+    | "unsupported_claim"
 ) => ({ correct: false, failure })
+
+/** Every failure at zero, in the order of AC12. */
+const NO_FAILURES = {
+  loop_error: 0,
+  context_budget: 0,
+  judge_rejected: 0,
+  not_followed: 0,
+  retrieval_miss: 0,
+  answer_error: 0,
+  false_abstention: 0,
+  wrong_version: 0,
+  missed_contradiction: 0,
+  unsupported_claim: 0,
+  wrong_answer: 0,
+}
 
 describe("AC5 — metrics", () => {
   test("AC5 — accuracy is correct over n, per category and overall", () => {
@@ -846,7 +906,7 @@ describe("AC5 — metrics", () => {
     expect(summarize(records).overall.meanInputTokens).toBeCloseTo(2000, 9)
   })
 
-  test("AC5 — counts each failure, with zero for the ones that did not occur", () => {
+  test("AC5 — counts each failure of the Revision 3 taxonomy, with zero for the ones that did not occur", () => {
     const records = [
       makeRecord(1),
       makeRecord(2, { grade: wrong("retrieval_miss") }),
@@ -856,22 +916,15 @@ describe("AC5 — metrics", () => {
     ]
     const summary = summarize(records)
     expect(plain(summary.overall.failures)).toEqual({
+      ...NO_FAILURES,
       retrieval_miss: 2,
       false_abstention: 1,
-      wrong_version: 0,
-      missed_contradiction: 0,
-      unsupported_claim: 0,
       wrong_answer: 1,
-      answer_error: 0,
     })
     expect(plain(summary.byCategory.simple!.failures)).toEqual({
+      ...NO_FAILURES,
       retrieval_miss: 2,
-      false_abstention: 0,
-      wrong_version: 0,
-      missed_contradiction: 0,
-      unsupported_claim: 0,
       wrong_answer: 1,
-      answer_error: 0,
     })
     expect(summary.byCategory.temporal!.failures.false_abstention).toBe(1)
   })
@@ -1051,12 +1104,17 @@ function loopOf(
   rule: string,
   hops: number,
   rewrites: number,
-  type: "answer" | "abstain" = "answer"
+  type: "answer" | "abstain" = "answer",
+  notes: Partial<Pick<LoopData, "judged" | "kept" | "frontier">> = {}
 ): LoopData {
   return {
     outcome: { type, rule },
     hops,
     rewrites,
+    judged: {},
+    kept: [],
+    frontier: [],
+    ...notes,
     steps: [
       {
         kind: "search",
@@ -1580,5 +1638,817 @@ describe("AC4 — settings line and report of a loop run (config B)", () => {
     for (const column of ["n", "recall", "p50 (ms)", "p95 (ms)"]) {
       expect(table!.header).toContain(column)
     }
+  })
+})
+
+/** The error a promise rejects with; fails the test if it resolves. */
+async function rejection(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise
+  } catch (error) {
+    if (error instanceof Error) return error
+    throw new Error("rejected with a non-Error value", { cause: error })
+  }
+  throw new Error("expected the promise to reject")
+}
+
+/** A step whose answer is wrong, to read the failure of its context. */
+function wrongStep(notes: string[], loop?: LoopData): Step {
+  return {
+    notes,
+    output: answered("Austin"),
+    answerCall: call(HAIKU, 1000, 100, 300),
+    ...(loop ? { loop } : {}),
+  }
+}
+
+describe("AC10 — context measures", () => {
+  const groups = {
+    sources: ["A.md", "B.md", "C.md"],
+    sourceGroups: [["A.md", "B.md"], ["C.md"]],
+  }
+
+  async function recordOf(question: Question, step: Step) {
+    const overrides = new Map([[question.id, step]])
+    const { records } = await runWith([question], { overrides }).result
+    return plain(records[0])
+  }
+
+  test("AC10 — contextComplete is true when every source group has a note in the context", async () => {
+    const record = await recordOf(
+      makeQuestion(1, groups),
+      wrongStep(["B.md", "C.md"])
+    )
+    expect(record.contextComplete).toBe(true)
+  })
+
+  test("AC10 — contextComplete is false when a source group has no note in the context", async () => {
+    const record = await recordOf(makeQuestion(1, groups), wrongStep(["A.md"]))
+    expect(record.contextComplete).toBe(false)
+  })
+
+  test("AC10 — contextComplete is false for an empty context on a question with sources", async () => {
+    const record = await recordOf(makeQuestion(1, groups), wrongStep([]))
+    expect(record.contextComplete).toBe(false)
+  })
+
+  test("AC10 — contextComplete is null for a question without sources", async () => {
+    const question = makeQuestion(1, {
+      category: "no_answer",
+      expected: { kind: "abstain" },
+      stale: [],
+      sources: [],
+      sourceGroups: [],
+    })
+    const record = await recordOf(question, wrongStep(["X.md"]))
+    expect(record.contextComplete).toBeNull()
+  })
+
+  test("AC10 — precision is the share of the distinct context notes that belong to a source group", async () => {
+    const record = await recordOf(
+      makeQuestion(1, groups),
+      // Distinct notes: B.md, C.md, X.md; two of the three are sources.
+      wrongStep(["B.md", "C.md", "X.md", "X.md", "B.md"])
+    )
+    expect(record.precision).toBeCloseTo(2 / 3, 9)
+  })
+
+  test("AC10 — precision is 1 when every context note belongs to a source group", async () => {
+    const record = await recordOf(
+      makeQuestion(1, groups),
+      wrongStep(["A.md", "B.md", "C.md"])
+    )
+    expect(record.precision).toBe(1)
+  })
+
+  test("AC10 — precision is 0 when no context note belongs to a source group", async () => {
+    const record = await recordOf(
+      makeQuestion(1, groups),
+      wrongStep(["X.md", "Y.md"])
+    )
+    expect(record.precision).toBe(0)
+  })
+
+  test("AC10 — precision is 0 for a question without sources and a non-empty context", async () => {
+    const question = makeQuestion(1, {
+      category: "no_answer",
+      expected: { kind: "abstain" },
+      stale: [],
+      sources: [],
+      sourceGroups: [],
+    })
+    const record = await recordOf(question, wrongStep(["X.md"]))
+    expect(record.precision).toBe(0)
+  })
+
+  test("AC10 — precision is null when the context is empty, with or without sources", async () => {
+    const noSource = makeQuestion(2, {
+      category: "no_answer",
+      expected: { kind: "abstain" },
+      stale: [],
+      sources: [],
+      sourceGroups: [],
+    })
+    const overrides = new Map([
+      ["q-001", wrongStep([])],
+      ["q-002", wrongStep([])],
+    ])
+    const { records } = await runWith([makeQuestion(1, groups), noSource], {
+      overrides,
+    }).result
+    expect(plain(records[0]).precision).toBeNull()
+    expect(plain(records[1]).precision).toBeNull()
+  })
+
+  test("AC10 — notesInContext counts the distinct context notes", async () => {
+    const record = await recordOf(
+      makeQuestion(1, groups),
+      wrongStep(["A.md", "A.md", "B.md", "X.md", "X.md"])
+    )
+    expect(record.notesInContext).toBe(3)
+  })
+
+  test("AC10 — notesInContext is 0 for an empty context", async () => {
+    const record = await recordOf(makeQuestion(1, groups), wrongStep([]))
+    expect(record.notesInContext).toBe(0)
+  })
+
+  test("AC10 — duplicates in the context do not change recall or contextComplete", async () => {
+    const record = await recordOf(
+      makeQuestion(1, groups),
+      wrongStep(["A.md", "A.md", "A.md"])
+    )
+    expect(record.recall).toBe(0.5)
+    expect(record.contextComplete).toBe(false)
+  })
+
+  test("AC10 — the trace line of a record holds the three measures", async () => {
+    const question = makeQuestion(1, groups)
+    const overrides = new Map([[question.id, wrongStep(["B.md", "X.md"])]])
+    const { result, runsDir } = runWith([question], { overrides })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const traced = plain(JSON.parse(lines[1]!))
+    expect(traced.contextComplete).toBe(false)
+    expect(traced.precision).toBeCloseTo(0.5, 9)
+    expect(traced.notesInContext).toBe(2)
+  })
+})
+
+describe("AC11 — failures by layer in a run", () => {
+  const question = makeQuestion(1, {
+    sources: ["A.md", "B.md"],
+    sourceGroups: [["A.md"], ["B.md"]],
+  })
+  const scores = { relevance: 0.2 }
+
+  async function failureOf(step: Step, q: Question = question) {
+    const overrides = new Map([[q.id, step]])
+    const { records } = await runWith([q], { config: "B", overrides }).result
+    return records[0]!.grade
+  }
+
+  test("AC11 — context_budget: the loop kept the missing note but the context budget cut it", async () => {
+    const loop = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "A.md": scores, "B.md": scores },
+      kept: ["A.md", "B.md"],
+    })
+    expect(await failureOf(wrongStep(["A.md"], loop))).toEqual({
+      correct: false,
+      failure: "context_budget",
+    })
+  })
+
+  test("AC11 — judge_rejected: the loop judged the missing note and did not keep it", async () => {
+    const loop = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "A.md": scores, "B.md": scores },
+      kept: ["A.md"],
+    })
+    expect(await failureOf(wrongStep(["A.md"], loop))).toEqual({
+      correct: false,
+      failure: "judge_rejected",
+    })
+  })
+
+  test("AC11 — not_followed: the missing note is in the frontier of the loop", async () => {
+    const loop = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "A.md": scores },
+      kept: ["A.md"],
+      frontier: ["B.md"],
+    })
+    expect(await failureOf(wrongStep(["A.md"], loop))).toEqual({
+      correct: false,
+      failure: "not_followed",
+    })
+  })
+
+  test("AC11 — retrieval_miss: the loop never saw the missing note", async () => {
+    const loop = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "A.md": scores },
+      kept: ["A.md"],
+    })
+    expect(await failureOf(wrongStep(["A.md"], loop))).toEqual({
+      correct: false,
+      failure: "retrieval_miss",
+    })
+  })
+
+  test("AC11 — an abstention of the loop with a rejected note is judge_rejected", async () => {
+    const loop = loopOf("abstain-nothing-relevant", 0, 1, "abstain", {
+      judged: { "B.md": scores },
+    })
+    const step: Step = {
+      notes: [],
+      loop,
+      output: {
+        status: "abstained",
+        value: "",
+        answer: "No relevant note (abstain-nothing-relevant).",
+        citations: [],
+      },
+      answerCall: null,
+    }
+    expect(await failureOf(step)).toEqual({
+      correct: false,
+      failure: "judge_rejected",
+    })
+  })
+
+  test("AC11 — the run passes the note paths judged by the loop, the keys of judged, to the grader", async () => {
+    // B.md is judged and not kept even though its score is high: only the lists decide.
+    const loop = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "B.md": { relevance: 0.99 } },
+      kept: [],
+    })
+    expect((await failureOf(wrongStep(["A.md"], loop))).failure).toBe(
+      "judge_rejected"
+    )
+  })
+
+  test("AC11 — a complete context is of the answer family whatever the loop holds: wrong_answer", async () => {
+    const loop = loopOf("sufficient", 1, 0, "answer", {
+      judged: { "A.md": scores, "B.md": scores },
+      kept: ["A.md", "B.md"],
+    })
+    expect(await failureOf(wrongStep(["A.md", "B.md"], loop))).toEqual({
+      correct: false,
+      failure: "wrong_answer",
+    })
+  })
+
+  test("AC11 — a complete context and an abstention is a false_abstention", async () => {
+    const step: Step = {
+      notes: ["A.md", "B.md"],
+      output: {
+        status: "abstained",
+        value: "",
+        answer: "The excerpts do not say.",
+        citations: [],
+      },
+      loop: loopOf("sufficient", 1, 0),
+      answerCall: call(HAIKU, 1000, 100, 300),
+    }
+    expect((await failureOf(step)).failure).toBe("false_abstention")
+  })
+
+  test("AC11 — config A, without a loop, names every retrieval failure retrieval_miss", async () => {
+    const overrides = new Map([[question.id, wrongStep(["A.md"])]])
+    const { records } = await runWith([question], { overrides }).result
+    expect(records[0]!.grade).toEqual({
+      correct: false,
+      failure: "retrieval_miss",
+    })
+  })
+
+  test("AC11 — a correct answer on an incomplete context has no failure", async () => {
+    const loop = loopOf("sufficient", 1, 0, "answer", { kept: ["B.md"] })
+    const step: Step = {
+      notes: ["A.md"],
+      output: answered("Denver"),
+      loop,
+      answerCall: call(HAIKU, 1000, 100, 300),
+    }
+    expect(await failureOf(step)).toEqual({ correct: true, failure: null })
+  })
+
+  test("AC11 — report.md lists the failures with their ids, the retrieval family before the answer family", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2), makeQuestion(3)]
+    const overrides = new Map<string, Step>([
+      // Wrong answer on a complete context.
+      ["q-001", wrongStep(questions[0]!.sources)],
+      // Incomplete context, never retrieved.
+      ["q-002", wrongStep(["Other.md"])],
+      ["q-003", wrongStep(["Other.md"])],
+    ])
+    const { result, runsDir } = runWith(questions, { overrides })
+    await result
+    const report = readFileSync(join(readRunDir(runsDir), "report.md"), "utf8")
+    const missAt = report.indexOf("### retrieval_miss")
+    const wrongAt = report.indexOf("### wrong_answer")
+    expect(missAt).toBeGreaterThanOrEqual(0)
+    expect(wrongAt).toBeGreaterThan(missAt)
+    expect(report.indexOf("q-002, q-003", missAt)).toBeGreaterThan(missAt)
+    expect(report.indexOf("q-001", wrongAt)).toBeGreaterThan(wrongAt)
+  })
+})
+
+describe("AC13 — context and layer metrics", () => {
+  const records = [
+    makeRecord(1, {
+      category: "simple",
+      contextComplete: true,
+      precision: 1,
+      notesInContext: 2,
+    }),
+    makeRecord(2, {
+      category: "simple",
+      contextComplete: false,
+      precision: 0.5,
+      notesInContext: 4,
+      grade: wrong("judge_rejected"),
+    }),
+    makeRecord(3, {
+      category: "no_answer",
+      contextComplete: null,
+      precision: null,
+      notesInContext: 0,
+    }),
+    makeRecord(4, {
+      category: "temporal",
+      contextComplete: true,
+      precision: 0,
+      notesInContext: 3,
+      grade: wrong("wrong_answer"),
+    }),
+  ]
+
+  test("AC13 — contextCompleteRate is the share of complete contexts over the questions with sources", () => {
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).contextCompleteRate as number).toBeCloseTo(2 / 3, 9)
+    expect(plain(byCategory.simple).contextCompleteRate as number).toBeCloseTo(
+      0.5,
+      9
+    )
+    expect(plain(byCategory.temporal).contextCompleteRate).toBe(1)
+  })
+
+  test("AC13 — contextCompleteRate is null when no question has sources", () => {
+    const { byCategory } = summarize(records)
+    expect(plain(byCategory.no_answer).contextCompleteRate).toBeNull()
+  })
+
+  test("AC13 — meanPrecision averages the records with a non-empty context", () => {
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).meanPrecision as number).toBeCloseTo(0.5, 9)
+    expect(plain(byCategory.simple).meanPrecision as number).toBeCloseTo(
+      0.75,
+      9
+    )
+    expect(plain(byCategory.temporal).meanPrecision).toBe(0)
+  })
+
+  test("AC13 — meanPrecision is null when every context is empty", () => {
+    const { byCategory } = summarize(records)
+    expect(plain(byCategory.no_answer).meanPrecision).toBeNull()
+  })
+
+  test("AC13 — meanNotesInContext averages the notes in the context over every record", () => {
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).meanNotesInContext as number).toBeCloseTo(2.25, 9)
+    expect(plain(byCategory.simple).meanNotesInContext as number).toBeCloseTo(
+      3,
+      9
+    )
+    expect(plain(byCategory.no_answer).meanNotesInContext).toBe(0)
+  })
+
+  const graded = [
+    makeRecord(1),
+    makeRecord(2, { category: "temporal", grade: wrong("loop_error") }),
+    makeRecord(3, { category: "temporal", grade: wrong("context_budget") }),
+    makeRecord(4, { grade: wrong("judge_rejected") }),
+    makeRecord(5, { grade: wrong("not_followed") }),
+    makeRecord(6, { grade: wrong("retrieval_miss") }),
+    makeRecord(7, { category: "temporal", grade: wrong("answer_error") }),
+    makeRecord(8, { grade: wrong("false_abstention") }),
+    makeRecord(9, { grade: wrong("wrong_answer") }),
+  ]
+
+  test("AC13 — failuresByFamily counts the failures of each family, a correct answer in none", () => {
+    const { overall, byCategory } = summarize(graded)
+    expect(plain(overall).failuresByFamily).toEqual({ retrieval: 5, answer: 3 })
+    expect(plain(byCategory.temporal).failuresByFamily).toEqual({
+      retrieval: 2,
+      answer: 1,
+    })
+    expect(plain(byCategory.simple).failuresByFamily).toEqual({
+      retrieval: 3,
+      answer: 2,
+    })
+  })
+
+  test("AC13 — failuresByFamily is zero for both families when every answer is correct", () => {
+    const { overall } = summarize([makeRecord(1), makeRecord(2)])
+    expect(plain(overall).failuresByFamily).toEqual({ retrieval: 0, answer: 0 })
+  })
+
+  test("AC13 — failures keeps a count for every failure of the taxonomy", () => {
+    const { overall } = summarize(graded)
+    expect(plain(overall.failures)).toEqual({
+      ...NO_FAILURES,
+      loop_error: 1,
+      context_budget: 1,
+      judge_rejected: 1,
+      not_followed: 1,
+      retrieval_miss: 1,
+      answer_error: 1,
+      false_abstention: 1,
+      wrong_answer: 1,
+    })
+  })
+
+  const abstained = {
+    status: "abstained" as const,
+    value: "",
+    answer: "No answer.",
+    citations: [],
+  }
+
+  test("AC13 — abstentions separates the abstentions of the loop from those of the answerer", () => {
+    const summary = summarize([
+      // The loop abstained: no answerer call.
+      makeRecord(1, {
+        category: "no_answer",
+        output: abstained,
+        loop: loopOf("abstain-nothing-relevant", 0, 1, "abstain"),
+      }),
+      makeRecord(2, {
+        category: "no_answer",
+        output: abstained,
+        loop: loopOf("abstain-nothing-relevant", 0, 0, "abstain"),
+      }),
+      // The answerer abstained, on a loop run.
+      makeRecord(3, {
+        output: abstained,
+        loop: loopOf("sufficient", 1, 0, "answer"),
+      }),
+      // The answerer abstained, config A (no loop).
+      makeRecord(4, { output: abstained }),
+      // Answered.
+      makeRecord(5, { loop: loopOf("sufficient", 1, 0, "answer") }),
+      // The answerer threw: no output, no abstention.
+      makeRecord(6, {
+        output: null,
+        grade: wrong("answer_error"),
+        loop: loopOf("sufficient", 1, 0, "answer"),
+      }),
+      // The loop failed: no output, no abstention.
+      makeRecord(7, {
+        output: null,
+        grade: wrong("loop_error"),
+        loop: {
+          ...loopOf("loop_error", 0, 0),
+          outcome: { type: "error", rule: "loop_error" },
+        },
+      }),
+    ])
+    expect(plain(summary.overall).abstentions).toEqual({ loop: 2, answerer: 2 })
+    expect(plain(summary.byCategory.no_answer).abstentions).toEqual({
+      loop: 2,
+      answerer: 0,
+    })
+    expect(plain(summary.byCategory.simple).abstentions).toEqual({
+      loop: 0,
+      answerer: 2,
+    })
+  })
+
+  test("AC13 — abstentions are zero for a run without any abstention", () => {
+    const { overall } = summarize([makeRecord(1), makeRecord(2)])
+    expect(plain(overall).abstentions).toEqual({ loop: 0, answerer: 0 })
+  })
+
+  test("AC13 — runEval writes the new metrics in summary.json", async () => {
+    const questions = [
+      makeQuestion(1),
+      makeQuestion(2, {
+        sources: ["A.md", "B.md"],
+        sourceGroups: [["A.md"], ["B.md"]],
+      }),
+    ]
+    const overrides = new Map<string, Step>([
+      [
+        "q-001",
+        { ...goodStep(questions[0]!), notes: ["Notes/source-1.md", "X.md"] },
+      ],
+      ["q-002", wrongStep(["A.md"])],
+    ])
+    const { result, runsDir } = runWith(questions, { overrides })
+    const { summary } = await result
+    expect(plain(summary.overall).contextCompleteRate).toBeCloseTo(0.5, 9)
+    expect(plain(summary.overall).meanPrecision).toBeCloseTo(0.75, 9)
+    expect(plain(summary.overall).meanNotesInContext).toBeCloseTo(1.5, 9)
+    expect(plain(summary.overall).failuresByFamily).toEqual({
+      retrieval: 1,
+      answer: 0,
+    })
+    const written = JSON.parse(
+      readFileSync(join(readRunDir(runsDir), "summary.json"), "utf8")
+    ) as { overall: Record<string, unknown> }
+    expect(written.overall.contextCompleteRate).toBeCloseTo(0.5, 9)
+    expect(written.overall.meanPrecision).toBeCloseTo(0.75, 9)
+    expect(written.overall.meanNotesInContext).toBeCloseTo(1.5, 9)
+    expect(written.overall.failuresByFamily).toEqual({
+      retrieval: 1,
+      answer: 0,
+    })
+    expect(written.overall.abstentions).toEqual({ loop: 0, answerer: 0 })
+  })
+})
+
+describe("AC14 — loop errors", () => {
+  const LOOP_ERROR_CALLS = [
+    // 2 USD: a judge call that was paid for before the loop failed.
+    judgeCall(MILLION, 0, 200, "claude-sonnet-5-5"),
+    // 0.10 USD: the query embedding.
+    call("mistral-embed", MILLION, 0, 10),
+  ]
+  const LOOP_ERROR_STEPS = [{ kind: "search", query: "q" }, { kind: "judge" }]
+  const failedLoop = {
+    message: "judge returned an invalid answer",
+    calls: LOOP_ERROR_CALLS,
+    steps: LOOP_ERROR_STEPS,
+  }
+
+  function failingLoop(question: Question): Map<string, Step> {
+    return new Map([
+      [
+        question.id,
+        { notes: [], output: answered("unused"), loopError: failedLoop },
+      ],
+    ])
+  }
+
+  test("AC14 — a loop that throws a LoopError is recorded with its message, its calls and a null output", async () => {
+    const question = makeQuestion(1)
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides: failingLoop(question),
+    }).result
+    const record = plain(records[0])
+    expect(record.id).toBe("q-001")
+    expect(record.error).toBe("judge returned an invalid answer")
+    expect(record.calls).toEqual(LOOP_ERROR_CALLS)
+    expect(record.output).toBeNull()
+    expect(record.contextNotes).toEqual([])
+  })
+
+  test("AC14 — the record holds a loop of outcome error, rule loop_error, with the steps of the error and empty lists", async () => {
+    const question = makeQuestion(1)
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides: failingLoop(question),
+    }).result
+    expect(plain(records[0]).loop).toEqual({
+      outcome: { type: "error", rule: "loop_error" },
+      hops: 0,
+      rewrites: 0,
+      steps: LOOP_ERROR_STEPS,
+      judged: {},
+      kept: [],
+      frontier: [],
+    })
+  })
+
+  test("AC14 — the grade is a loop_error failure", async () => {
+    const question = makeQuestion(1)
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides: failingLoop(question),
+    }).result
+    expect(records[0]!.grade).toEqual({ correct: false, failure: "loop_error" })
+  })
+
+  test("AC14 — a loop_error is a failure even on a question that expects an abstention", async () => {
+    const question = makeQuestion(1, {
+      category: "no_answer",
+      expected: { kind: "abstain" },
+      stale: [],
+      sources: [],
+      sourceGroups: [],
+    })
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides: failingLoop(question),
+    }).result
+    expect(records[0]!.grade).toEqual({ correct: false, failure: "loop_error" })
+    expect(plain(records[0]).contextComplete).toBeNull()
+  })
+
+  test("AC14 — the cost counts the calls of the error", async () => {
+    const question = makeQuestion(1)
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides: failingLoop(question),
+    }).result
+    expect(records[0]!.costUsd).toBeCloseTo(2.1, 9)
+  })
+
+  test("AC14 — the answerer is not called for a question whose loop failed", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const overrides = failingLoop(questions[0]!)
+    const { fake, result } = runWith(questions, { config: "B", overrides })
+    await result
+    expect(fake.answerCalls.map((a) => a.question)).toEqual([
+      questions[1]!.question,
+    ])
+  })
+
+  test("AC14 — the context measures of a failed loop are those of an empty context", async () => {
+    const question = makeQuestion(1)
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides: failingLoop(question),
+    }).result
+    const record = plain(records[0])
+    expect(record.recall).toBe(0)
+    expect(record.contextComplete).toBe(false)
+    expect(record.precision).toBeNull()
+    expect(record.notesInContext).toBe(0)
+  })
+
+  test("AC14 — the run goes on with the next questions", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2), makeQuestion(3)]
+    const { records, skipped } = await runWith(questions, {
+      config: "B",
+      overrides: failingLoop(questions[1]!),
+    }).result
+    expect(records.map((r) => r.id)).toEqual(["q-001", "q-002", "q-003"])
+    expect(skipped).toBe(0)
+    expect(records.map((r) => r.grade.failure)).toEqual([
+      null,
+      "loop_error",
+      null,
+    ])
+  })
+
+  test("AC14 — the cost of a failed loop counts toward the cost cap", async () => {
+    const questions = [1, 2, 3].map((n) => makeQuestion(n))
+    const overrides = new Map<string, Step>(
+      questions.map((q) => [
+        q.id,
+        { notes: [], output: answered("unused"), loopError: failedLoop },
+      ])
+    )
+    const { records, skipped } = await runWith(questions, {
+      config: "B",
+      maxCostUsd: 2,
+      overrides,
+    }).result
+    expect(records).toHaveLength(1)
+    expect(skipped).toBe(2)
+  })
+
+  test("AC14 — the trace keeps the failed question with its loop, its error and its cost", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const { result, runsDir } = runWith(questions, {
+      config: "B",
+      overrides: failingLoop(questions[0]!),
+    })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    expect(lines).toHaveLength(3)
+    const traced = plain(JSON.parse(lines[1]!))
+    expect(traced.error).toBe("judge returned an invalid answer")
+    expect(traced.output).toBeNull()
+    expect(plain(traced.loop).outcome).toEqual({
+      type: "error",
+      rule: "loop_error",
+    })
+    expect(plain(traced.grade).failure).toBe("loop_error")
+    expect(traced.costUsd as number).toBeCloseTo(2.1, 9)
+  })
+
+  test("AC14 — loop_error is counted in the failures, in the retrieval family, and is no abstention", async () => {
+    const questions = [
+      makeQuestion(1),
+      makeQuestion(2, { category: "temporal" }),
+    ]
+    const { summary } = await runWith(questions, {
+      config: "B",
+      overrides: failingLoop(questions[1]!),
+    }).result
+    expect(plain(summary.overall.failures).loop_error).toBe(1)
+    expect(plain(summary.byCategory.temporal!.failures).loop_error).toBe(1)
+    expect(plain(summary.byCategory.simple!.failures).loop_error).toBe(0)
+    expect(plain(summary.overall).failuresByFamily).toEqual({
+      retrieval: 1,
+      answer: 0,
+    })
+    expect(plain(summary.overall).abstentions).toEqual({ loop: 0, answerer: 0 })
+  })
+
+  test("AC14 — a failed loop does not count in the answerer's input tokens", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const { summary } = await runWith(questions, {
+      config: "B",
+      overrides: failingLoop(questions[1]!),
+    }).result
+    // Only q-001 reached the answerer, with 1000 input tokens.
+    expect(summary.overall.meanInputTokens).toBeCloseTo(1000, 9)
+  })
+
+  test("AC14 — any other error thrown by retrieve stops the run", async () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const overrides = new Map<string, Step>([
+      [
+        "q-001",
+        { notes: [], output: answered("unused"), retrieveError: "index gone" },
+      ],
+    ])
+    const { fake, result } = runWith(questions, { overrides })
+    const error = await rejection(result)
+    expect(error.message).toBe("index gone")
+    expect(fake.answerCalls).toEqual([])
+  })
+})
+
+describe("AC8 (eval-config-b) — candidates in the settings line and the report header", () => {
+  const questions = [makeQuestion(1)]
+
+  test("AC8 — the settings line holds k and candidates", async () => {
+    const { result, runsDir } = runWith(questions, { k: 5, candidates: 30 })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const header = plain(JSON.parse(lines[0]!))
+    expect(header.k).toBe(5)
+    expect(header.candidates).toBe(30)
+  })
+
+  test("AC8 — the settings line of a B run holds the candidates next to the loop settings", async () => {
+    const { result, runsDir } = runWith(questions, {
+      config: "B",
+      models: B_MODELS,
+      loop: LOOP_SETTINGS,
+      candidates: 50,
+    })
+    await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const header = plain(JSON.parse(lines[0]!))
+    expect(header.candidates).toBe(50)
+    expect(header.loop).toEqual(LOOP_SETTINGS)
+  })
+
+  test("AC8 — the report header shows k, candidates and the commit", async () => {
+    const { result, runsDir } = runWith(questions, { k: 5, candidates: 50 })
+    await result
+    const report = readFileSync(join(readRunDir(runsDir), "report.md"), "utf8")
+    expect(report.split("\n")).toContain(
+      "k = 5, candidates = 50, commit abc1234"
+    )
+  })
+
+  test("AC8 — renderReport takes the candidates from its settings", () => {
+    const settings = {
+      config: "A",
+      split: "test" as const,
+      k: 5,
+      candidates: 20,
+      gitCommit: "def5678",
+    }
+    const report = renderReport(settings, [], summarize([]))
+    expect(report.split("\n")).toContain(
+      "k = 5, candidates = 20, commit def5678"
+    )
+  })
+})
+
+describe("AC9 (eval-config-b) — loop records", () => {
+  test("AC9 — a B record's loop holds the final rule, hops, rewrites, steps, judged, kept and frontier as returned", async () => {
+    const question = makeQuestion(1)
+    const loop = loopOf("sufficient", 2, 1, "answer", {
+      judged: {
+        "Notes/source-1.md": { relevance: 0.9 },
+        "Notes/dropped.md": { relevance: 0.1 },
+      },
+      kept: ["Notes/source-1.md"],
+      frontier: ["Notes/linked.md"],
+    })
+    const overrides = new Map([[question.id, { ...goodStep(question), loop }]])
+    const { result, runsDir } = runWith([question], { config: "B", overrides })
+    const { records } = await result
+    expect(plain(records[0]).loop).toEqual(loop)
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    expect(plain(JSON.parse(lines[1]!)).loop).toEqual(loop)
   })
 })
