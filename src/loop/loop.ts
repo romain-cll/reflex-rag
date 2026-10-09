@@ -1,12 +1,17 @@
 import type { ContextChunk } from "../answer/answerer.ts"
-import type { Assessment, Judge } from "../core/judge.ts"
-import type { Chunk, DatedChunk, Link, ModelCall } from "../core/types.ts"
+import type { Judge, NoteForJudge, Verdict } from "../core/judge.ts"
+import { LLMCallError } from "../core/llm.ts"
+import type { ModelCall } from "../core/types.ts"
 import type { Index } from "../index/read.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
 import { decide, type Action, type PolicyConfig } from "./policy.ts"
 import type { Rewriter } from "./rewriter.ts"
 
 const DEFAULT_CANDIDATES = 50
+/** Notes given to the rewriter. */
+const REWRITER_NOTES = 5
+
+type Verdicts = Record<Verdict, number>
 
 export interface LoopDeps {
   /** The shape of `HybridRetriever.retrieve`. */
@@ -19,18 +24,19 @@ export interface LoopDeps {
   candidates?: number
 }
 
-/** One turn of the loop: what it looked at, what it kept, what was decided. */
+/** One turn of the loop: what it judged, what it kept, what was decided. */
 export interface LoopStep {
-  kind: "search" | "follow" | "rewrite"
+  kind: "search" | "expand" | "rewrite"
   /** The query of a search or a rewrite. */
   query?: string
-  /** The link followed. */
-  link?: Link
-  /** Relevance of the chunks sent to the judge this turn, by chunk id. */
-  judged: Record<string, number>
-  /** The chunks of `judged` at or above the relevance threshold. */
+  /** The notes whose links were opened. */
+  expanded?: string[]
+  /** Verdicts of the notes judged this turn, by path. */
+  judged: Record<string, Verdicts>
+  /** The note each note reached by a link came from. */
+  parents: Record<string, string>
+  /** The notes of `judged` at or above the answer threshold. */
   kept: string[]
-  assessment: Assessment
   action: Action
 }
 
@@ -44,14 +50,44 @@ export interface LoopResult {
   calls: ModelCall[]
   hops: number
   rewrites: number
+  /** Verdicts of every judged note, by path. */
+  judged: Record<string, Verdicts>
+  /** The kept notes and their ancestors, in context order, before the cut. */
+  kept: string[]
+  /** Link targets of judged notes that were never judged. */
+  frontier: string[]
 }
 
-type Turn = Pick<LoopStep, "kind" | "query" | "link" | "judged" | "kept">
+/** A failed run: the original message, with the cost and the trace so far. */
+export class LoopError extends Error {
+  constructor(
+    message: string,
+    readonly calls: ModelCall[],
+    readonly steps: LoopStep[],
+    options?: ErrorOptions
+  ) {
+    super(message, options)
+  }
+}
 
-interface Judged {
-  chunk: Chunk
-  /** The highest probability the chunk was given. */
-  probability: number
+type Turn = Omit<LoopStep, "action">
+
+interface JudgedEntry {
+  note: NoteForJudge
+  verdicts: Verdicts
+  expanded: boolean
+  /** The note it was reached from, if reached by a link. */
+  parent: string | null
+}
+
+/** The text of a note: its sections in order, each under a `## ` heading line. */
+export function noteText(index: Pick<Index, "chunksOf">, path: string): string {
+  return index
+    .chunksOf(path)
+    .map((chunk) =>
+      chunk.heading === "" ? chunk.text : `## ${chunk.heading}\n${chunk.text}`
+    )
+    .join("\n\n")
 }
 
 /** Retrieves, judges and decides until the policy answers or abstains. */
@@ -63,9 +99,9 @@ export async function runLoop(
 }
 
 class Loop {
-  /** Every chunk judged so far, in order of first judgement. */
-  private readonly judged = new Map<string, Judged>()
-  private readonly followed = new Set<string>()
+  /** Every note judged so far, in order of first judgement. */
+  private readonly judged = new Map<string, JudgedEntry>()
+  private readonly steps: LoopStep[] = []
   private readonly calls: ModelCall[] = []
   private hops = 0
   private rewrites = 0
@@ -76,153 +112,222 @@ class Loop {
   ) {}
 
   async run(): Promise<LoopResult> {
-    const steps: LoopStep[] = []
-    let turn = await this.search(this.question, "search")
-    for (;;) {
-      const step = await this.assess(turn)
-      steps.push(step)
-      const { action } = step
-      if (action.type === "follow") turn = await this.follow(action.link)
-      else if (action.type === "rewrite") turn = await this.rewrite(step)
-      else return this.result(action, steps)
+    try {
+      return await this.loop()
+    } catch (error) {
+      const billed = error instanceof LLMCallError ? [error.call] : []
+      throw new LoopError(
+        error instanceof Error ? error.message : String(error),
+        [...this.calls, ...billed],
+        this.steps,
+        { cause: error }
+      )
     }
   }
 
-  /** Retrieves for `query` and judges the chunks not judged yet. */
+  private async loop(): Promise<LoopResult> {
+    let turn = await this.search(this.question, "search")
+    for (;;) {
+      const action = this.decide()
+      this.steps.push({ ...turn, action })
+      if (action.type === "expand") turn = await this.expand(action.paths)
+      else if (action.type === "rewrite") turn = await this.rewrite()
+      else return this.result(action)
+    }
+  }
+
+  /** Retrieves for `query` and judges the notes not judged yet. */
   private async search(
     query: string,
     kind: "search" | "rewrite"
   ): Promise<Turn> {
     const retrieval = await this.deps.retrieve(query, this.candidates)
     this.calls.push(...retrieval.calls)
-    const fresh = retrieval.chunks
-      .map((retrieved) => retrieved.chunk)
-      .filter((chunk) => !this.judged.has(chunk.id))
-    return { kind, query, ...(await this.judge(fresh)) }
+    const paths = [
+      ...new Set(retrieval.chunks.map(({ chunk }) => chunk.notePath)),
+    ].filter((path) => !this.judged.has(path))
+    return { kind, query, ...(await this.judgeNotes(paths, new Map())) }
   }
 
-  private async follow(link: Link): Promise<Turn> {
-    this.followed.add(link.targetPath)
+  /** Opens the links of the notes and judges the targets never judged. */
+  private async expand(paths: string[]): Promise<Turn> {
+    const parents = new Map<string, string>()
+    for (const path of paths) {
+      const entry = this.judged.get(path)!
+      entry.expanded = true
+      for (const target of entry.note.links) {
+        if (!this.judged.has(target) && !parents.has(target)) {
+          parents.set(target, path)
+        }
+      }
+    }
     this.hops++
-    const chunks = this.deps.index.chunksOf(link.targetPath)
-    return { kind: "follow", link, ...(await this.judge(chunks)) }
+    return {
+      kind: "expand",
+      expanded: paths,
+      ...(await this.judgeNotes([...parents.keys()], parents)),
+    }
   }
 
-  private async rewrite(previous: LoopStep): Promise<Turn> {
+  private async rewrite(): Promise<Turn> {
+    const best = ranked(
+      [...this.judged.values()],
+      ({ verdicts }) => verdicts.answer + verdicts.step
+    ).slice(0, REWRITER_NOTES)
     const { query, calls } = await this.deps.rewriter.rewrite(
       this.question,
-      this.best().map(({ chunk }) => chunk),
-      previous.assessment.missing.choice
+      best.map(({ note }) => ({ path: note.path, text: note.text }))
     )
     this.calls.push(...calls)
     this.rewrites++
     return this.search(query, "rewrite")
   }
 
-  /** Judges the chunks and keeps the highest probability of each. */
-  private async judge(chunks: Chunk[]): Promise<Pick<Turn, "judged" | "kept">> {
-    const unique = [...new Map(chunks.map((chunk) => [chunk.id, chunk]))]
-    const relevance = await this.deps.judge.relevance(
-      this.question,
-      unique.map(([, chunk]) => this.dated(chunk))
-    )
-    this.calls.push(...relevance.calls)
-    const judged: Record<string, number> = {}
-    for (const [id, chunk] of unique) {
-      const probability = relevance.chunks[id] ?? 0
-      judged[id] = probability
-      const before = this.judged.get(id)?.probability ?? 0
-      this.judged.set(id, { chunk, probability: Math.max(before, probability) })
+  /** Judges the notes in one call; none to judge, no call. */
+  private async judgeNotes(
+    paths: string[],
+    parents: Map<string, string>
+  ): Promise<Pick<Turn, "judged" | "parents" | "kept">> {
+    const notes = paths.map((path) => this.noteForJudge(path))
+    const judgement = await this.deps.judge.judge(this.question, notes)
+    this.calls.push(...judgement.calls)
+    const judged: Record<string, Verdicts> = {}
+    for (const note of notes) {
+      const verdicts = judgement.notes[note.path] ?? {
+        answer: 0,
+        step: 0,
+        none: 1,
+      }
+      judged[note.path] = verdicts
+      this.judged.set(note.path, {
+        note,
+        verdicts,
+        expanded: false,
+        parent: parents.get(note.path) ?? null,
+      })
     }
-    const kept = Object.keys(judged).filter(
-      (id) => judged[id]! >= this.threshold
-    )
-    return { judged, kept }
+    return {
+      judged,
+      parents: Object.fromEntries(parents),
+      kept: Object.keys(judged).filter((path) => this.isKept(judged[path]!)),
+    }
   }
 
-  /** Assesses the kept chunks and decides what comes next. */
-  private async assess(turn: Turn): Promise<LoopStep> {
-    const kept = this.kept()
-    const links = this.visibleLinks(kept)
-    const assessment = await this.deps.judge.assess(
-      this.question,
-      this.best().map(({ chunk }) => this.dated(chunk)),
-      links
-    )
-    this.calls.push(...assessment.calls)
+  private noteForJudge(path: string): NoteForJudge {
+    const links = this.deps.index.outgoingLinks(path)
+    return {
+      path,
+      date: this.deps.index.getNote(path)?.date ?? null,
+      text: noteText(this.deps.index, path),
+      links: [...new Set(links.map((link) => link.targetPath))],
+    }
+  }
+
+  /** The next action; past the turns the budgets allow, it ends the loop. */
+  private decide(): Action {
+    const { maxHops, maxRewrites } = this.deps.policy.budgets
     const action = decide(
       {
-        assessment,
-        links,
-        contextNotes: [...new Set(kept.map(({ chunk }) => chunk.notePath))],
-        relevantCount: kept.length,
+        notes: [...this.judged.values()].map((entry) => ({
+          path: entry.note.path,
+          verdict: entry.verdicts,
+          expanded: entry.expanded,
+          hasUnjudgedLinks: entry.note.links.some(
+            (target) => !this.judged.has(target)
+          ),
+        })),
         hops: this.hops,
         rewrites: this.rewrites,
       },
       this.deps.policy
     )
-    return { ...turn, assessment, action }
+    const turnsLeft = 1 + maxHops + maxRewrites - (this.steps.length + 1)
+    if (
+      turnsLeft > 0 ||
+      action.type === "answer" ||
+      action.type === "abstain"
+    ) {
+      return action
+    }
+    const type = this.keptEntries().length > 0 ? "answer" : "abstain"
+    return { type, rule: type }
   }
 
-  private result(outcome: Action, steps: LoopStep[]): LoopResult {
+  private result(outcome: Action): LoopResult {
+    const kept = this.keptWithAncestors()
     const context =
       outcome.type === "abstain"
         ? []
-        : this.best().map(({ chunk }) => this.contextChunk(chunk))
+        : kept
+            .slice(0, this.deps.policy.budgets.maxNotes)
+            .map((path) => this.contextChunk(path))
     return {
       context,
       outcome,
-      steps,
+      steps: this.steps,
       calls: this.calls,
       hops: this.hops,
       rewrites: this.rewrites,
+      judged: Object.fromEntries(
+        [...this.judged].map(([path, { verdicts }]) => [path, verdicts])
+      ),
+      kept,
+      frontier: this.frontier(),
     }
   }
 
-  /** The links out of the kept notes to notes neither kept nor followed. */
-  private visibleLinks(kept: Judged[]): Link[] {
-    const inContext = new Set(kept.map(({ chunk }) => chunk.notePath))
-    return [...inContext]
-      .flatMap((path) => this.deps.index.outgoingLinks(path))
-      .filter(
-        (link) =>
-          !inContext.has(link.targetPath) && !this.followed.has(link.targetPath)
-      )
+  /** The kept notes, each followed by its ancestors not listed yet. */
+  private keptWithAncestors(): string[] {
+    const paths = new Set<string>()
+    for (const { note } of this.keptEntries()) {
+      let path: string | null = note.path
+      while (path !== null && !paths.has(path)) {
+        paths.add(path)
+        path = this.judged.get(path)!.parent
+      }
+    }
+    return [...paths]
   }
 
-  /** The kept chunks, most relevant first, ties by order of first judgement. */
-  private kept(): Judged[] {
-    return [...this.judged.values()]
-      .filter(({ probability }) => probability >= this.threshold)
-      .sort((a, b) => b.probability - a.probability)
+  /** The kept notes, most probable answer first, ties by order of judgement. */
+  private keptEntries(): JudgedEntry[] {
+    return ranked(
+      [...this.judged.values()].filter(({ verdicts }) => this.isKept(verdicts)),
+      ({ verdicts }) => verdicts.answer
+    )
   }
 
-  /** The kept chunks within the chunk budget. */
-  private best(): Judged[] {
-    return this.kept().slice(0, this.deps.policy.budgets.maxChunks)
+  /** The targets of the links of judged notes that were never judged. */
+  private frontier(): string[] {
+    return [
+      ...new Set(
+        [...this.judged.values()]
+          .flatMap(({ note }) => note.links)
+          .filter((target) => !this.judged.has(target))
+      ),
+    ]
   }
 
-  private dated(chunk: Chunk): DatedChunk {
+  private contextChunk(path: string): ContextChunk {
+    const { note } = this.judged.get(path)!
     return {
-      ...chunk,
-      noteDate: this.deps.index.getNote(chunk.notePath)?.date ?? null,
+      notePath: path,
+      noteDate: note.date,
+      heading: "",
+      text: note.text,
     }
   }
 
-  private contextChunk(chunk: Chunk): ContextChunk {
-    return {
-      notePath: chunk.notePath,
-      noteDate: this.deps.index.getNote(chunk.notePath)?.date ?? null,
-      heading: chunk.heading,
-      text: chunk.text,
-    }
-  }
-
-  private get threshold(): number {
-    return this.deps.policy.thresholds.relevance
+  private isKept(verdicts: Verdicts): boolean {
+    return verdicts.answer >= this.deps.policy.thresholds.answer
   }
 
   private get candidates(): number {
     return this.deps.candidates ?? DEFAULT_CANDIDATES
   }
+}
+
+/** The items by decreasing score; ties stay in their order. */
+function ranked<T>(items: T[], score: (item: T) => number): T[] {
+  return [...items].sort((a, b) => score(b) - score(a))
 }
