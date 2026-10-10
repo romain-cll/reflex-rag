@@ -348,9 +348,10 @@ class Loop {
 
   /**
    * The context order, among the kept notes: each answer note (`answer` at
-   * the answer threshold or at its `step`), most probable first, followed by its ancestors and the step notes that link to it; then
-   * the other kept notes, by decreasing step. With `contextSteps: "linked"`,
-   * the other kept notes are added only when there is no answer note.
+   * the answer threshold or at its `step`), most probable first, followed by
+   * its ancestors and the step notes that link to it; then the other kept
+   * notes, by decreasing step. With `contextSteps: "linked"`, the other kept
+   * notes are added only when there is no answer note.
    */
   private keptWithAncestors(): string[] {
     const { policy } = this.deps
