@@ -42,6 +42,12 @@ The project measures the retrieval brick (search, judge, fallback, rewrites) cou
 - **AC17 — retrieval time**: each record gets `retrievalMs`, the wall-clock time from the start of the question to the end of `retrieve` (to its error for a loop error).
 - **AC18 — retrieval measures**: per category and overall, `meanRetrievalCostUsd` (mean per question of the cost of the calls whose role is not `answer`; `null` when a call of the records has no role, as in the traces written before roles), `retrievalP50Ms` and `retrievalP95Ms` (nearest-rank percentiles of `retrievalMs`; a record without it but with `stages` counts `latencyMs − stages.answerMs`; `null` when no record has either). The run's `report.md` shows them next to the end-to-end cost and latency. `scripts/regrade-run.ts` recomputes them from the trace.
 
+## Revision 6 — one folder per run
+
+The first attempt at the final runs started five runs in the same millisecond: the three config C runs got the same folder name and wrote into one trace (108 records for three runs, moved to `runs/_superseded/crashed-2026-10-10/`).
+
+- **AC20 — exclusive folder**: `runEval` creates its run folder exclusively. When `<timestamp>-<config>-<split>` already exists, or another run creates it at the same moment, it appends `-2`, then `-3`, and so on, until it creates a folder no other run holds; each run writes only into its own folder. `runEval` takes an optional `now: () => Date` (default the current time), the source of the timestamp, so that tests can force two runs onto the same name.
+
 ## Technical plan
 
 Files:
