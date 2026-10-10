@@ -98,11 +98,13 @@ function readSettings(dir: string): unknown {
   return JSON.parse(trace.split("\n")[0]!)
 }
 
-/** `0.85`, `none` without fallback, plus the scope when it is `nothing-kept`. */
+/** `0.85`, `none` without fallback, plus the scope when it is not `uncertain`. */
 function fallbackOf(loop: z.infer<typeof SettingsSchema>["loop"]): string {
   if (loop?.fallbackLow === undefined) return ""
   const low = loop.fallbackLow === null ? "none" : String(loop.fallbackLow)
-  return loop.fallbackWhen === "nothing-kept" ? `${low} nothing-kept` : low
+  return loop.fallbackWhen === undefined || loop.fallbackWhen === "uncertain"
+    ? low
+    : `${low} ${loop.fallbackWhen}`
 }
 
 function readRun(dir: string): Run {

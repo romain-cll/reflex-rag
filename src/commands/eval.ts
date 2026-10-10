@@ -28,6 +28,7 @@ import { SystemOneJudge } from "../judge/system-one-judge.ts"
 import { noteText, runLoop } from "../loop/loop.ts"
 import {
   DEFAULT_POLICY,
+  isAnswerNote,
   isKept,
   keepScore,
   POLICIES,
@@ -64,7 +65,7 @@ const REWRITERS = ["llm", "code"] as const
 
 type RewriterKind = (typeof REWRITERS)[number]
 
-const FALLBACK_WHENS = ["uncertain", "nothing-kept"] as const
+const FALLBACK_WHENS = ["uncertain", "nothing-kept", "no-answer"] as const
 
 type FallbackWhen = (typeof FALLBACK_WHENS)[number]
 
@@ -351,7 +352,8 @@ const C_VETO = { none: 0.7, best: 0.02 }
 /**
  * Config C: like B, but the system one judges the notes, and the LLM judges
  * again those it nearly kept: the grey zone from `--fallback` to the keep
- * threshold of C, always or only when nothing is kept (`--fallback-when`).
+ * threshold of C, always, only when nothing is kept, or only while no answer
+ * note is kept (`--fallback-when`).
  * With `--fallback none`, the system one judges alone.
  */
 function pipelineC(
@@ -381,6 +383,7 @@ function pipelineC(
             isKept: (verdict) => isKept(verdict, POLICIES.C),
             score: (verdict) => keepScore(verdict, POLICIES.C),
             when: settings.fallbackWhen,
+            isAnswer: (verdict) => isAnswerNote(verdict, POLICIES.C),
           }
         ),
     systemOne.model

@@ -16,6 +16,12 @@ export interface NoteForJudge {
   links: string[]
 }
 
+/**
+ * A note already kept, as the judge reads it. `verdict` is the one it was kept
+ * with: a fallback judge reads it, a judge never shows it to its model.
+ */
+export type ContextNote = NoteForJudge & { verdict?: Record<Verdict, number> }
+
 export interface Judgement {
   /** A probability for each verdict, summing to 1, by note path. */
   notes: Record<string, Record<Verdict, number>>
@@ -41,12 +47,13 @@ export interface Judgement {
 export interface Judge {
   /**
    * `context` holds notes already kept: the judge reads them but does not
-   * score them, so that the result holds verdicts for `notes` only.
+   * score them, so that the result holds verdicts for `notes` only. Their
+   * verdicts are not part of what the model reads.
    */
   judge(
     question: string,
     notes: NoteForJudge[],
-    context?: NoteForJudge[]
+    context?: ContextNote[]
   ): Promise<Judgement>
 }
 

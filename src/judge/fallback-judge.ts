@@ -1,6 +1,7 @@
 import {
   JudgeCallsError,
   billedCalls,
+  type ContextNote,
   type Judge,
   type Judgement,
   type NoteForJudge,
@@ -19,14 +20,18 @@ export interface FallbackJudgeOptions {
    * `uncertain` (default): the fallback judges every uncertain note.
    * `nothing-kept`: only when the context is empty and the primary kept none
    * of the notes of the call.
+   * `no-answer`: only while no answer note is kept, in the context (by the
+   * verdict it carries) or among the notes the primary kept in this call.
    */
-  when?: "uncertain" | "nothing-kept"
+  when?: "uncertain" | "nothing-kept" | "no-answer"
+  /** Whether a kept verdict is an answer note; required by `no-answer`. */
+  isAnswer?: (verdict: Record<Verdict, number>) => boolean
 }
 
 /**
  * Judges with `primary`, then judges again with `fallback`, in one call, the
- * notes that `primary` nearly kept. The fallback reads the notes `primary`
- * kept as context. The sufficiency is the primary's: the fallback is not asked.
+ * notes that `primary` nearly kept. The fallback reads the context of the
+ * call, then the notes `primary` kept, as context. The sufficiency is the primary's: the fallback is not asked.
  */
 export class FallbackJudge implements Judge {
   constructor(
@@ -38,13 +43,14 @@ export class FallbackJudge implements Judge {
   async judge(
     question: string,
     notes: NoteForJudge[],
-    context: NoteForJudge[] = []
+    context: ContextNote[] = []
   ): Promise<Judgement> {
     const {
       low,
       isKept,
       score = (verdict) => Math.max(verdict.answer, verdict.step),
       when = "uncertain",
+      isAnswer,
     } = this.options
     const primaryStart = performance.now()
     const first = await this.primary.judge(question, notes, context)
@@ -56,7 +62,10 @@ export class FallbackJudge implements Judge {
       return !isKept(verdict) && score(verdict) >= low
     })
     const asked =
-      when === "uncertain" || (context.length === 0 && keptNotes.length === 0)
+      when === "uncertain" ||
+      (when === "nothing-kept"
+        ? context.length === 0 && keptNotes.length === 0
+        : !hasAnswer(context, keptNotes, first, isAnswer))
     if (!asked || uncertain.length === 0) {
       return {
         ...first,
@@ -91,6 +100,25 @@ export class FallbackJudge implements Judge {
       stages: { judgeMs, fallbackMs },
     }
   }
+}
+
+/**
+ * Whether a context note, by the verdict it carries, or a note the primary
+ * kept in this call is an answer note.
+ */
+function hasAnswer(
+  context: ContextNote[],
+  keptNotes: NoteForJudge[],
+  first: Judgement,
+  isAnswer: FallbackJudgeOptions["isAnswer"]
+): boolean {
+  if (isAnswer === undefined) {
+    throw new Error("The no-answer scope needs an isAnswer option")
+  }
+  return (
+    context.some(({ verdict }) => verdict !== undefined && isAnswer(verdict)) ||
+    keptNotes.some((note) => isAnswer(first.notes[note.path]!))
+  )
 }
 
 function asFallback(call: ModelCall): ModelCall {

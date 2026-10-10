@@ -1,6 +1,7 @@
 import { z } from "zod"
 import {
   VERDICTS,
+  type ContextNote,
   type Judge,
   type Judgement,
   type NoteForJudge,
@@ -63,7 +64,7 @@ export class LLMJudge implements Judge {
   async judge(
     question: string,
     notes: NoteForJudge[],
-    context: NoteForJudge[] = []
+    context: ContextNote[] = []
   ): Promise<Judgement> {
     if (notes.length === 0) return { notes: {}, calls: [] }
     const schema: z.ZodType<Output> = this.sufficiency
@@ -107,7 +108,7 @@ function alias(index: number): string {
 function promptOf(
   question: string,
   notes: NoteForJudge[],
-  context: NoteForJudge[]
+  context: ContextNote[]
 ): string {
   const scored = notes
     .map((note, index) => noteSection(note, `[${alias(index)}] `))

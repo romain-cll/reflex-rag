@@ -1,6 +1,7 @@
 import {
   VERDICTS,
   JudgeCallsError,
+  type ContextNote,
   type Judge,
   type Judgement,
   type NoteForJudge,
@@ -52,7 +53,7 @@ interface BatchResult {
 /**
  * Asks `JUDGE_QUESTION` of the system one, one question per note, all the
  * notes of a batch sharing one state and one call. The kept notes given as
- * context are in the state, without a question. With the `veto` option, the
+ * context are in the state, without a question and without their verdict. With the `veto` option, the
  * same call also holds the questions of the veto, and with `sufficiency`, the
  * question of sufficiency.
  */
@@ -73,7 +74,7 @@ export class SystemOneJudge implements Judge {
   async judge(
     question: string,
     notes: NoteForJudge[],
-    context: NoteForJudge[] = []
+    context: ContextNote[] = []
   ): Promise<Judgement> {
     const batches: NoteForJudge[][] = []
     for (let i = 0; i < notes.length; i += this.maxNotesPerCall) {
@@ -160,18 +161,19 @@ function alias(prefix: "n" | "k" | "x", index: number): string {
 }
 
 /**
- * The request for one batch: the notes are `n1…`, the context notes `k1…`;
+ * The request for one batch: the notes are `n1…`, the context notes `k1…`
+ * (path, date, links and text only);
  * with `veto`, the questions `x1…` and `best` come with the questions `n1…`,
  * and with `sufficiency`, the question `sufficient`.
  */
 function requestOf(
   question: string,
   batch: NoteForJudge[],
-  context: NoteForJudge[],
+  context: ContextNote[],
   veto: boolean,
   sufficiency: boolean
 ): SystemOneRequest {
-  const inState = (prefix: "n" | "k", group: NoteForJudge[]) =>
+  const inState = (prefix: "n" | "k", group: ContextNote[]) =>
     Object.fromEntries(
       group.map(({ path, date, links, text }, index) => [
         alias(prefix, index),

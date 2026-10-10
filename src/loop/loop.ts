@@ -1,6 +1,7 @@
 import type { ContextChunk } from "../answer/answerer.ts"
 import {
   billedCalls,
+  type ContextNote,
   type Judge,
   type NoteForJudge,
   type Verdict,
@@ -8,7 +9,13 @@ import {
 import type { ModelCall } from "../core/types.ts"
 import type { Index } from "../index/read.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
-import { decide, isKept, type Action, type PolicyConfig } from "./policy.ts"
+import {
+  decide,
+  isAnswerNote,
+  isKept,
+  type Action,
+  type PolicyConfig,
+} from "./policy.ts"
 import type { Rewriter } from "./rewriter.ts"
 
 const DEFAULT_CANDIDATES = 50
@@ -222,7 +229,10 @@ class Loop {
     return this.search(query, "rewrite")
   }
 
-  /** Judges the notes in one call, with the notes kept so far as context. */
+  /**
+   * Judges the notes in one call, with the notes kept so far as context, each
+   * with the verdict it was kept with.
+   */
   private async judgeNotes(
     paths: string[],
     parents: Map<string, string>
@@ -233,9 +243,9 @@ class Loop {
     >
   > {
     const notes = paths.map((path) => this.noteForJudge(path))
-    const context = [...this.judged.values()]
+    const context: ContextNote[] = [...this.judged.values()]
       .filter(({ verdicts }) => isKept(verdicts, this.deps.policy))
-      .map(({ note }) => note)
+      .map(({ note, verdicts }) => ({ ...note, verdict: verdicts }))
     const startedAt = performance.now()
     const judgement = await this.model(() =>
       this.deps.judge.judge(this.question, notes, context)
@@ -347,8 +357,8 @@ class Loop {
   }
 
   /**
-   * The context order, among the kept notes: each answer note (`answer` at
-   * the answer threshold or at its `step`), most probable first, followed by
+   * The context order, among the kept notes: each answer note
+   * (`isAnswerNote`), most probable first, followed by
    * its ancestors and the step notes that link to it; then the other kept
    * notes, by decreasing step. With `contextSteps: "linked"`, the other kept
    * notes are added only when there is no answer note.
@@ -359,11 +369,7 @@ class Loop {
       isKept(verdicts, policy)
     )
     const answers = ranked(
-      entries.filter(
-        ({ verdicts }) =>
-          verdicts.answer >= policy.thresholds.answer ||
-          verdicts.answer >= verdicts.step
-      ),
+      entries.filter(({ verdicts }) => isAnswerNote(verdicts, policy)),
       ({ verdicts }) => verdicts.answer
     )
     const steps = ranked(

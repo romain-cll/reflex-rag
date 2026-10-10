@@ -126,6 +126,17 @@ export const isKept = (
     : verdict.answer + verdict.step >= keep
 }
 
+/**
+ * A kept note is an answer note when its `answer` reaches `thresholds.answer`
+ * or its `step`. A note that is not kept never is, whatever its `answer`.
+ */
+export const isAnswerNote = (
+  verdict: Record<Verdict, number>,
+  config: PolicyConfig
+) =>
+  isKept(verdict, config) &&
+  (verdict.answer >= config.thresholds.answer || verdict.answer >= verdict.step)
+
 /** The score `isKept` compares to its threshold: the grey zone sits just below it. */
 export const keepScore = (
   verdict: Record<Verdict, number>,

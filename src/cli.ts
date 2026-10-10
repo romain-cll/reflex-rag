@@ -13,7 +13,7 @@ Commands:
     [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
     [--candidates <n>] [--rewrite llm|code]    (--rewrite: configs B and C)
     [--system-one jev|clef] [--fallback <low>|none]    (config C)
-    [--fallback-when uncertain|nothing-kept]    (config C)
+    [--fallback-when uncertain|nothing-kept|no-answer]    (config C)
 
 Options:
   -h, --help                 Show this help`
