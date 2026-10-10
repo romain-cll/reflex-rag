@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import type { Judge, Judgement, NoteForJudge, Verdict } from "../core/judge.ts"
+import type {
+  ContextNote,
+  Judge,
+  Judgement,
+  NoteForJudge,
+  Verdict,
+} from "../core/judge.ts"
 import { LLMCallError } from "../core/llm.ts"
 import type { Chunk, Link, ModelCall, Note } from "../core/types.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
@@ -1856,7 +1862,9 @@ describe("AC14 — errors carrying calls", () => {
 
 describe("AC15 — context of the judge", () => {
   /** The context of a judge call: no context is an empty one. */
-  function contextOf(call: { context: NoteForJudge[] | undefined }) {
+  function contextOf(call: {
+    context: ContextNote[] | undefined
+  }): ContextNote[] {
     return call.context ?? []
   }
 
@@ -2036,11 +2044,13 @@ describe("retrieval-loop AC19 — verdicts in the context", () => {
 
   test("retrieval-loop AC19 — a note kept by the sum of answer and step carries its split verdict", async () => {
     const split = verdict({ answer: 0.5, step: 0.4375, none: 0.0625 })
+    // A low sufficiency makes follow-kept open a, so that a second call has a in its context.
     const { judgeCalls } = await run({
       world: worldOf([["a", "x"]]),
-      policy: policyWith({}, { answer: 0.7, step: 0.7, keep: 0.9 }),
+      policy: policyAsking({}, { answer: 0.7, step: 0.7, keep: 0.9 }),
       search: { [QUESTION]: hits("a") },
       verdicts: { "a.md": split },
+      judgements: [{ sufficient: 0.2 }],
     })
     expect(verdictsByPath(contextOf(judgeCalls[1]!))).toEqual({
       "a.md": split,

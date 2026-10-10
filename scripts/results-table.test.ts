@@ -2199,13 +2199,19 @@ describe("Revision 4 AC11 — the scope in the fallback text", () => {
   test("Revision 4 AC11 — each row shows the fallback text of its own run", () => {
     const { main } = tablesOf(sweep)
     const fallback = column(main, /^fallback$/i)
+    // The precision tells the runs apart (see sweepRun).
+    const precision = column(main, /^context precision$/i)
     for (const [spec, cell] of [
       [C_FALLBACK_08, "0.8"],
       [C_FALLBACK_08_NOTHING_KEPT, "0.8 nothing-kept"],
       [C_FALLBACK_08_NO_ANSWER, "0.8 no-answer"],
       [C_FALLBACK_NONE, "none"],
     ] as const) {
-      expect(rowOf(main, spec)[fallback]!).toBe(cell)
+      const rows = main.rows.filter((cells) =>
+        showsRate(cells[precision]!, spec.precision)
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]![fallback]!).toBe(cell)
     }
   })
 
