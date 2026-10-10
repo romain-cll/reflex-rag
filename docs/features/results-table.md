@@ -18,6 +18,13 @@ The headline cost and latency become those of the retrieval brick, without the a
 - **AC7 — headline columns**: config, split, date, commit; number of questions; context complete rate; context precision; retrieval cost per question; retrieval latency p50; retrieval latency p95; accuracy as `correct/n` and percentage. Then the end-to-end measures, with the answerer: cost per question, latency p50 and latency p95, each header starting with `end-to-end`; then the other columns of AC2 and the fallback rates, in their current order. A run whose summary has no retrieval measure (written before them) shows `-` in those columns.
 - **AC8 — what retrieval means**: a line under the main table says that the retrieval measures count the search, the judge, its fallback and the rewrites, and not the answerer, which is the same for every config.
 
+## Revision 3 — the fallback of each run
+
+The threshold sweep runs config C on the same split with the grey zone from 0.8, from 0.85 and without fallback (`fallbackLow` 0.8, 0.85, `null` in the settings line); two of these runs share a commit and a minute, so the table could not tell them apart.
+
+- **AC9 — fallback column**: the main table gets a column `fallback` right after `commit`: the run's `loop.fallbackLow` from the settings line (`0.85`), `none` when it is `null`, followed by ` nothing-kept` when `loop.fallbackWhen` is `nothing-kept`; empty when the settings have no `fallbackLow` (configs A and B). The "By stage" table gets the same column after `commit`.
+- **AC10 — labels**: a run whose settings have `fallbackLow` gets it in its column label after the split, as in the fallback column (`C tuning fallback 0.85`, `C tuning fallback none`). The commit, then the time, are added as today (docs/features/eval-config-c.md, AC13) only when another run shares config, split and fallback.
+
 ## Technical plan
 
 - `scripts/results-table.ts` (new). Reads `FAILURES` (families, levers) and `CATEGORIES` from `src/eval/` and `evals/schema.ts`.
