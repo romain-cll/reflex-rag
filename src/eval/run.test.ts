@@ -1,7 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import type { Question } from "../../evals/schema.ts"
 import type { ModelCall } from "../core/types.ts"
 import { callCostUsd, PRICES } from "./prices.ts"
@@ -223,6 +231,8 @@ interface RunOptions {
   /** Config B: the loop settings written to the settings line. */
   loop?: Record<string, unknown>
   candidates?: number
+  /** The clock of the run folder's timestamp. */
+  now?: () => Date
   onProgress?: (record: RunRecord, done: number, total: number) => void
 }
 
@@ -249,6 +259,7 @@ function runWith(questions: Question[], options: RunOptions = {}) {
     index: INDEX,
     ...(options.loop ? { loop: options.loop } : {}),
     ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+    ...(options.now ? { now: options.now } : {}),
   }
   const result = runEval(evalOptions)
   return { fake, runsDir, result }
@@ -3685,5 +3696,183 @@ describe("AC18 (revision 5) — retrieval measures", () => {
       ).toBe("-")
       expect(reportCell(report, "retrieval p50 (ms)", "overall")).toMatch(/^\d/)
     })
+  })
+})
+
+describe("AC20 (eval-run) — one folder per run", () => {
+  const fixedDate = new Date("2026-10-10T14:59:36.183Z")
+  const now = () => fixedDate
+  const BASE = "2026-10-10T14-59-36-183Z-C-test"
+
+  function traceLines(dir: string): Array<Record<string, unknown>> {
+    return readFileSync(join(dir, "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+  }
+
+  /** A runs folder holding `names`, each with a file that a run must not touch. */
+  function runsDirWith(...names: string[]): string {
+    const runsDir = join(makeTempDir(), "runs")
+    for (const name of names) {
+      mkdirSync(join(runsDir, name), { recursive: true })
+      writeFileSync(join(runsDir, name, "keep.txt"), `held by ${name}`)
+    }
+    return runsDir
+  }
+
+  function expectUntouched(runsDir: string, name: string): void {
+    expect(readdirSync(join(runsDir, name))).toEqual(["keep.txt"])
+    expect(readFileSync(join(runsDir, name, "keep.txt"), "utf8")).toBe(
+      `held by ${name}`
+    )
+  }
+
+  test("AC20 — the folder is named from now: the ISO timestamp with : and . replaced by -, then the config and the split", async () => {
+    const { result, runsDir } = runWith([makeQuestion(1)], {
+      config: "C",
+      now,
+    })
+    const { runDir } = await result
+    expect(readdirSync(runsDir)).toEqual([BASE])
+    expect(runDir).toBe(join(runsDir, BASE))
+    expect(existsSync(join(runDir, "trace.jsonl"))).toBe(true)
+  })
+
+  test("AC20 — an existing folder of that name is left untouched and the run goes to -2", async () => {
+    const runsDir = runsDirWith(BASE)
+    const { result } = runWith([makeQuestion(1)], {
+      config: "C",
+      now,
+      runsDir,
+    })
+    const { runDir } = await result
+    expect(readdirSync(runsDir).sort()).toEqual([BASE, `${BASE}-2`])
+    expectUntouched(runsDir, BASE)
+    expect(runDir).toBe(join(runsDir, `${BASE}-2`))
+    expect(traceLines(runDir)).toHaveLength(2)
+  })
+
+  test("AC20 — with -2 also taken, the run goes to -3", async () => {
+    const runsDir = runsDirWith(BASE, `${BASE}-2`)
+    const { result } = runWith([makeQuestion(1)], {
+      config: "C",
+      now,
+      runsDir,
+    })
+    const { runDir } = await result
+    expect(readdirSync(runsDir).sort()).toEqual([
+      BASE,
+      `${BASE}-2`,
+      `${BASE}-3`,
+    ])
+    expectUntouched(runsDir, BASE)
+    expectUntouched(runsDir, `${BASE}-2`)
+    expect(runDir).toBe(join(runsDir, `${BASE}-3`))
+    expect(traceLines(runDir)).toHaveLength(2)
+  })
+
+  test("AC20 — a run after a run with the same now goes to -2 and leaves the first trace as it was", async () => {
+    const runsDir = join(makeTempDir(), "runs")
+    const first = await runWith([makeQuestion(1)], {
+      config: "C",
+      now,
+      runsDir,
+    }).result
+    const before = readFileSync(join(first.runDir, "trace.jsonl"), "utf8")
+    const second = await runWith([makeQuestion(2), makeQuestion(3)], {
+      config: "C",
+      now,
+      runsDir,
+    }).result
+    expect(first.runDir).toBe(join(runsDir, BASE))
+    expect(second.runDir).toBe(join(runsDir, `${BASE}-2`))
+    expect(readFileSync(join(first.runDir, "trace.jsonl"), "utf8")).toBe(before)
+    expect(traceLines(second.runDir)).toHaveLength(3)
+  })
+
+  test("AC20 — two runs started together with the same now, config and split end in two distinct folders, each trace holding its own settings line and records", async () => {
+    const runsDir = join(makeTempDir(), "runs")
+    const firstQuestions = [1, 2, 3].map((n) => makeQuestion(n))
+    const secondQuestions = [11, 12, 13, 14].map((n) => makeQuestion(n))
+    const [first, second] = await Promise.all([
+      runWith(firstQuestions, { config: "C", now, runsDir, k: 5 }).result,
+      runWith(secondQuestions, { config: "C", now, runsDir, k: 6 }).result,
+    ])
+
+    expect(first.runDir).not.toBe(second.runDir)
+    expect(readdirSync(runsDir)).toHaveLength(2)
+    for (const result of [first, second]) {
+      expect(readdirSync(runsDir)).toContain(basename(result.runDir))
+      expect(basename(result.runDir)).toMatch(new RegExp(`^${BASE}(-\\d+)?$`))
+    }
+
+    const firstLines = traceLines(first.runDir)
+    expect(firstLines.map((line) => line.id)).toEqual([
+      undefined,
+      "q-001",
+      "q-002",
+      "q-003",
+    ])
+    expect(firstLines[0]).toMatchObject({ config: "C", split: "test", k: 5 })
+
+    const secondLines = traceLines(second.runDir)
+    expect(secondLines.map((line) => line.id)).toEqual([
+      undefined,
+      "q-011",
+      "q-012",
+      "q-013",
+      "q-014",
+    ])
+    expect(secondLines[0]).toMatchObject({ config: "C", split: "test", k: 6 })
+
+    // The records of each result are the records of its own trace.
+    expect(first.records.map((record) => record.id)).toEqual([
+      "q-001",
+      "q-002",
+      "q-003",
+    ])
+    expect(second.records).toHaveLength(4)
+    expect(existsSync(join(first.runDir, "report.md"))).toBe(true)
+    expect(existsSync(join(second.runDir, "summary.json"))).toBe(true)
+  })
+
+  test("AC20 — three runs started together end in three distinct folders", async () => {
+    const runsDir = join(makeTempDir(), "runs")
+    const results = await Promise.all(
+      [1, 2, 3].map(
+        (n) => runWith([makeQuestion(n)], { config: "C", now, runsDir }).result
+      )
+    )
+    expect(new Set(results.map((result) => result.runDir)).size).toBe(3)
+    expect(readdirSync(runsDir).sort()).toEqual([
+      BASE,
+      `${BASE}-2`,
+      `${BASE}-3`,
+    ])
+    for (const [index, result] of results.entries()) {
+      expect(traceLines(result.runDir).map((line) => line.id)).toEqual([
+        undefined,
+        id(index + 1),
+      ])
+    }
+  })
+
+  test("AC20 — without now, one run makes one folder named from the current time", async () => {
+    const before = Date.now()
+    const { result, runsDir } = runWith([makeQuestion(1)], { config: "C" })
+    const { runDir } = await result
+    const entries = readdirSync(runsDir)
+    expect(entries).toHaveLength(1)
+    expect(runDir).toBe(join(runsDir, entries[0]!))
+    const match = /^(.+Z)-C-test$/.exec(entries[0]!)
+    expect(match).not.toBeNull()
+    const iso = match![1]!.replace(
+      /T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/,
+      "T$1:$2:$3.$4Z"
+    )
+    const stamp = new Date(iso).getTime()
+    expect(stamp).toBeGreaterThanOrEqual(before - 1000)
+    expect(stamp).toBeLessThanOrEqual(Date.now() + 1000)
   })
 })
