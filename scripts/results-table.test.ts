@@ -1394,7 +1394,10 @@ describe("eval-config-c AC9 — By stage", () => {
 
   test("eval-config-c AC9 — the page holds a fourth table, under a By stage heading", () => {
     const text = page()
-    expect(tablesOf(text)).toHaveLength(4)
+    // The repeated runs table (Revision 5) comes on top of these four.
+    expect(
+      tablesOf(text).filter((candidate) => !candidate.header.includes("runs"))
+    ).toHaveLength(4)
     const table = stageTable(text)
     const lines = text.split("\n")
     const heading = lines.findIndex((l) => /^#{1,6}\s+by stage\b/i.test(l))
@@ -2267,5 +2270,526 @@ describe("Revision 4 AC11 — the scope in the fallback text", () => {
     const { main } = tablesOf([withScopeOnly, C_FALLBACK_085])
     const fallback = column(main, /^fallback$/i)
     expect(rowOf(main, withScopeOnly)[fallback]!).toBe("")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Revision 5 — repeated runs, as mean and range
+// ---------------------------------------------------------------------------
+
+/**
+ * The repeated runs table of docs/features/results-table.md, Revision 5, AC12.
+ * A cell is the mean over the group, formatted as in the main table, then
+ * ` [min–max]` (en dash, each bound formatted like the mean) when the group has
+ * several runs and the values differ. Accuracy is the mean number correct with
+ * one decimal over n, then the range of the counts: `53.3/60 [52–55]`, and
+ * `43.0/60` when the counts are identical or the group has a single run.
+ */
+const REPEATED_HEADER = [
+  "config",
+  "split",
+  "commit",
+  "fallback",
+  "runs",
+  "context complete",
+  "context precision",
+  "retrieval cost/question (USD)",
+  "retrieval latency p50 (ms)",
+  "retrieval latency p95 (ms)",
+  "accuracy",
+  "embed cost (USD)",
+  "judge cost (USD)",
+  "fallback cost (USD)",
+  "rewrite cost (USD)",
+  "answer cost (USD)",
+  "end-to-end cost/question (USD)",
+  "end-to-end latency p50 (ms)",
+]
+
+let repeatedSeq = 0
+
+/** A run of `base` with its own folder name (one minute apart) and the given measures. */
+function repeated(base: RunSpec, overrides: Partial<RunSpec>): RunSpec {
+  repeatedSeq++
+  const merged = { ...base, ...overrides }
+  const minutes = String(repeatedSeq).padStart(2, "0")
+  return {
+    ...merged,
+    name: `2026-10-10T16-${minutes}-00-000Z-${merged.config}-${merged.split}`,
+  }
+}
+
+/** The correct answers of a run that has `total` of them, filled category by category. */
+function correctTotal(total: number): Record<Category, number> {
+  let left = total
+  return Object.fromEntries(
+    CATEGORIES.map((category) => {
+      const count = Math.min(left, CATEGORY_N[category])
+      left -= count
+      return [category, count]
+    })
+  ) as Record<Category, number>
+}
+
+/** The stage profile of `base` with some roles' mean cost replaced. */
+function withRoleCosts(
+  base: RunSpec,
+  costUsd: Record<(typeof ROLES)[number], number>
+): StageProfile {
+  const stage = base.stage ?? NO_STAGE
+  return { ...stage, costUsd: { ...stage.costUsd, ...costUsd } }
+}
+
+/**
+ * Three runs of B on the test split at one commit, whose measures differ (but
+ * the retrieval p95 and the embed and answer costs): the means are exact.
+ */
+const REPEATED_B = [
+  repeated(B_TEST, {
+    contextComplete: 0.8,
+    precision: 0.5,
+    costUsd: 0.003,
+    p50: 5000,
+    retrieval: { costUsd: 0.001, p50: 2000, p95: 6000 },
+    correct: correctTotal(52),
+    stage: withRoleCosts(B_TEST, { judge: 0.001, rewrite: 0.0006 }),
+  }),
+  repeated(B_TEST, {
+    contextComplete: 0.85,
+    precision: 0.6,
+    costUsd: 0.0033,
+    p50: 5200,
+    retrieval: { costUsd: 0.0008, p50: 2500, p95: 6000 },
+    correct: correctTotal(53),
+    stage: withRoleCosts(B_TEST, { judge: 0.0016, rewrite: 0.0006 }),
+  }),
+  repeated(B_TEST, {
+    contextComplete: 0.9,
+    precision: 0.7,
+    costUsd: 0.0036,
+    p50: 5400,
+    retrieval: { costUsd: 0.0012, p50: 3000, p95: 6000 },
+    correct: correctTotal(55),
+    stage: withRoleCosts(B_TEST, { judge: 0.001, rewrite: 0.0009 }),
+  }),
+]
+
+/** One run of B on the test split from another commit. */
+const REPEATED_B_OTHER_COMMIT = repeated(B_TEST, { commit: "bbb7777" })
+
+/** Two runs of C on the tuning split, fallback 0.85: identical but for the fallback cost. */
+const REPEATED_C = [
+  repeated(C_TEST, {
+    split: "tuning",
+    loopSettings: { fallbackLow: 0.85 },
+    correct: correctTotal(43),
+    stage: withRoleCosts(C_TEST, { fallback: 0.0012 }),
+  }),
+  repeated(C_TEST, {
+    split: "tuning",
+    loopSettings: { fallbackLow: 0.85 },
+    correct: correctTotal(43),
+    stage: withRoleCosts(C_TEST, { fallback: 0.0014 }),
+  }),
+]
+
+const C_TUNING_NONE = repeated(C_TEST, {
+  split: "tuning",
+  loopSettings: { fallbackLow: null },
+})
+const C_TUNING_OTHER_COMMIT = repeated(C_TEST, {
+  split: "tuning",
+  commit: "ccc8888",
+  loopSettings: { fallbackLow: 0.85 },
+})
+const C_TEST_SPLIT = repeated(C_TEST, {
+  split: "test",
+  loopSettings: { fallbackLow: 0.85 },
+})
+const C_TUNING_NOTHING_KEPT = repeated(C_TEST, {
+  split: "tuning",
+  loopSettings: { fallbackLow: 0.8, fallbackWhen: "nothing-kept" },
+})
+const C_TUNING_08 = repeated(C_TEST, {
+  split: "tuning",
+  loopSettings: { fallbackLow: 0.8, fallbackWhen: "uncertain" },
+})
+
+/** Every group of the main fixture, each one a list of runs. */
+const REPEATED_GROUPS: RunSpec[][] = [
+  [A_TEST],
+  REPEATED_B,
+  [REPEATED_B_OTHER_COMMIT],
+  [B_TUNING],
+  REPEATED_C,
+  [C_TUNING_NONE],
+  [C_TUNING_OTHER_COMMIT],
+  [C_TEST_SPLIT],
+  [C_TUNING_NOTHING_KEPT],
+  [C_TUNING_08],
+]
+
+const REPEATED_RUNS = REPEATED_GROUPS.flat()
+
+/** Two runs of a summary from before the retrieval measures and the costs by role. */
+const REPEATED_LEGACY = [
+  repeated(B_TEST, {
+    commit: "leg0001",
+    legacy: true,
+    costUsd: 0.003,
+    p50: 5000,
+    correct: correctTotal(51),
+  }),
+  repeated(B_TEST, {
+    commit: "leg0001",
+    legacy: true,
+    costUsd: 0.0034,
+    p50: 5400,
+    correct: correctTotal(53),
+  }),
+]
+
+/** Two runs whose records gave no retrieval measure: the summary holds them as null. */
+const REPEATED_RETRIEVAL_NULL = [
+  repeated(B_TEST, {
+    commit: "bbb8888",
+    retrieval: { costUsd: null, p50: null, p95: null },
+  }),
+  repeated(B_TEST, {
+    commit: "bbb8888",
+    retrieval: { costUsd: null, p50: null, p95: null },
+  }),
+]
+
+/** Writes the runs, generates the page from their folders and returns it. */
+function repeatedPage(specs: RunSpec[]): string {
+  const { cwd, runs } = workdir(specs)
+  return generate(cwd, runs)
+}
+
+/** The heading line, the table and the lines of the `## Repeated runs` section. */
+function repeatedSection(page: string) {
+  const lines = page.split("\n")
+  const heading = lines.findIndex((l) => /^#{1,6}\s+repeated runs\s*$/i.test(l))
+  expect({ heading: heading >= 0 }).toEqual({ heading: true })
+  const next = lines.findIndex((l, i) => i > heading && l.startsWith("#"))
+  const end = next < 0 ? lines.length : next
+  const table = tablesOf(page).find(
+    (candidate) => candidate.start > heading && candidate.start < end
+  )
+  expect({ table: table !== undefined }).toEqual({ table: true })
+  return { lines, heading, end, table: table! }
+}
+
+/** The cells of the group's row by header, found by config, split, commit and fallback. */
+function groupRow(
+  table: Table,
+  spec: RunSpec,
+  fallback: string
+): Record<string, string> {
+  const key = [spec.config, spec.split, spec.commit, fallback]
+  const rows = table.rows.filter((cells) =>
+    key.every((value, index) => cells[index] === value)
+  )
+  expect({ key, rows: rows.length }).toEqual({ key, rows: 1 })
+  return Object.fromEntries(
+    table.header.map((name, index) => [name, rows[0]![index]!])
+  )
+}
+
+function pick(row: Record<string, string>, headers: string[]) {
+  return Object.fromEntries(headers.map((name) => [name, row[name]]))
+}
+
+describe("Revision 5 AC12 — the repeated runs section", () => {
+  test("Revision 5 AC12 — a Repeated runs section comes before the Runs section", () => {
+    const page = repeatedPage(REPEATED_RUNS)
+    const { heading } = repeatedSection(page)
+    const runsHeading = page
+      .split("\n")
+      .findIndex((l) => /^#{1,6}\s+runs\s*$/i.test(l))
+    expect(runsHeading).toBeGreaterThan(heading)
+  })
+
+  test("Revision 5 AC12 — the section holds one table, with the columns in the order of the spec", () => {
+    const page = repeatedPage(REPEATED_RUNS)
+    const { lines, heading, end, table } = repeatedSection(page)
+    expect(table.header).toEqual(REPEATED_HEADER)
+    const tablesInSection = lines
+      .slice(heading, end)
+      .filter((l) => l.trimStart().startsWith("|") && /^\|[\s-|]+\|$/.test(l))
+    expect(tablesInSection).toHaveLength(1)
+  })
+
+  test("Revision 5 AC12 — one row per group of runs sharing config, split, commit and fallback text; the main table keeps one row per run", () => {
+    const page = repeatedPage(REPEATED_RUNS)
+    const { table } = repeatedSection(page)
+    expect(table.rows).toHaveLength(REPEATED_GROUPS.length)
+    expect(table.rows.map((row) => row.slice(0, 5)).sort()).toEqual(
+      [
+        ["A", "test", "aaa1111", "", "1"],
+        ["B", "test", "bbb3333", "", "3"],
+        ["B", "test", "bbb7777", "", "1"],
+        ["B", "tuning", "bbb4444", "", "1"],
+        ["C", "tuning", "ccc6666", "0.85", "2"],
+        ["C", "tuning", "ccc6666", "none", "1"],
+        ["C", "tuning", "ccc8888", "0.85", "1"],
+        ["C", "test", "ccc6666", "0.85", "1"],
+        ["C", "tuning", "ccc6666", "0.8 nothing-kept", "1"],
+        ["C", "tuning", "ccc6666", "0.8", "1"],
+      ].sort()
+    )
+    expect(threeTables(page)[0].rows).toHaveLength(REPEATED_RUNS.length)
+  })
+
+  test("Revision 5 AC12 — a different commit makes another row", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RUNS))
+    expect(groupRow(table, REPEATED_B[0]!, "").runs).toBe("3")
+    expect(groupRow(table, REPEATED_B_OTHER_COMMIT, "").runs).toBe("1")
+    expect(groupRow(table, C_TUNING_OTHER_COMMIT, "0.85").runs).toBe("1")
+    expect(groupRow(table, REPEATED_C[0]!, "0.85").runs).toBe("2")
+  })
+
+  test("Revision 5 AC12 — a different split makes another row", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RUNS))
+    expect(groupRow(table, C_TEST_SPLIT, "0.85").runs).toBe("1")
+    expect(groupRow(table, REPEATED_C[0]!, "0.85").runs).toBe("2")
+  })
+
+  test("Revision 5 AC12 — a different fallback text makes another row: none, a threshold, a threshold with a scope", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RUNS))
+    expect(groupRow(table, REPEATED_C[0]!, "0.85").runs).toBe("2")
+    expect(groupRow(table, C_TUNING_NONE, "none").runs).toBe("1")
+    expect(groupRow(table, C_TUNING_08, "0.8").runs).toBe("1")
+    expect(
+      groupRow(table, C_TUNING_NOTHING_KEPT, "0.8 nothing-kept").runs
+    ).toBe("1")
+  })
+
+  test("Revision 5 AC12 — the rows are ordered by config, split and fallback text", () => {
+    const { table } = repeatedSection(
+      repeatedPage([
+        C_TUNING_NONE,
+        ...REPEATED_C,
+        C_TEST_SPLIT,
+        B_TUNING,
+        REPEATED_B[0]!,
+        A_TEST,
+        C_TUNING_08,
+      ])
+    )
+    expect(table.rows.map((row) => [row[0], row[1], row[3]])).toEqual([
+      ["A", "test", ""],
+      ["B", "test", ""],
+      ["B", "tuning", ""],
+      ["C", "test", "0.85"],
+      ["C", "tuning", "0.8"],
+      ["C", "tuning", "0.85"],
+      ["C", "tuning", "none"],
+    ])
+  })
+
+  test("Revision 5 AC12 — the fallback cell is empty for A and B, which have no fallback", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RUNS))
+    expect(groupRow(table, A_TEST, "").fallback).toBe("")
+    expect(groupRow(table, B_TUNING, "").fallback).toBe("")
+  })
+})
+
+describe("Revision 5 AC12 — mean and range", () => {
+  const row = () =>
+    groupRow(
+      repeatedSection(repeatedPage(REPEATED_RUNS)).table,
+      REPEATED_B[0]!,
+      ""
+    )
+
+  test("Revision 5 AC12 — context complete and precision: the mean as a percent with one decimal, then the range of the group", () => {
+    expect(
+      pick(row(), ["runs", "context complete", "context precision"])
+    ).toEqual({
+      runs: "3",
+      "context complete": "85.0% [80.0%–90.0%]",
+      "context precision": "60.0% [50.0%–70.0%]",
+    })
+  })
+
+  test("Revision 5 AC12 — retrieval cost per question: the mean with 5 decimals, then the range", () => {
+    expect(row()["retrieval cost/question (USD)"]).toBe(
+      "0.00100 [0.00080–0.00120]"
+    )
+  })
+
+  test("Revision 5 AC12 — retrieval latency p50 and p95 in ms without decimals; identical values show no range", () => {
+    expect(
+      pick(row(), ["retrieval latency p50 (ms)", "retrieval latency p95 (ms)"])
+    ).toEqual({
+      "retrieval latency p50 (ms)": "2500 [2000–3000]",
+      "retrieval latency p95 (ms)": "6000",
+    })
+  })
+
+  test("Revision 5 AC12 — accuracy: the mean number correct over n with one decimal, then the range of the counts", () => {
+    expect(row().accuracy).toBe("53.3/60 [52–55]")
+  })
+
+  test("Revision 5 AC12 — the mean cost per question of each role, with the range when it differs", () => {
+    expect(
+      pick(row(), [
+        "embed cost (USD)",
+        "judge cost (USD)",
+        "fallback cost (USD)",
+        "rewrite cost (USD)",
+        "answer cost (USD)",
+      ])
+    ).toEqual({
+      "embed cost (USD)": "0.00040",
+      "judge cost (USD)": "0.00120 [0.00100–0.00160]",
+      "fallback cost (USD)": "0.00000",
+      "rewrite cost (USD)": "0.00070 [0.00060–0.00090]",
+      "answer cost (USD)": "0.00270",
+    })
+  })
+
+  test("Revision 5 AC12 — end-to-end cost per question and latency p50", () => {
+    expect(
+      pick(row(), [
+        "end-to-end cost/question (USD)",
+        "end-to-end latency p50 (ms)",
+      ])
+    ).toEqual({
+      "end-to-end cost/question (USD)": "0.00330 [0.00300–0.00360]",
+      "end-to-end latency p50 (ms)": "5200 [5000–5400]",
+    })
+  })
+
+  test("Revision 5 AC12 — a single run shows its values as in the main table, with no range", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RUNS))
+    const single = groupRow(table, REPEATED_B_OTHER_COMMIT, "")
+    expect(single).toEqual({
+      config: "B",
+      split: "test",
+      commit: "bbb7777",
+      fallback: "",
+      runs: "1",
+      "context complete": "90.0%",
+      "context precision": "60.0%",
+      "retrieval cost/question (USD)": "0.00110",
+      "retrieval latency p50 (ms)": "2500",
+      "retrieval latency p95 (ms)": "6200",
+      accuracy: "51.0/60",
+      "embed cost (USD)": "0.00040",
+      "judge cost (USD)": "0.00160",
+      "fallback cost (USD)": "0.00000",
+      "rewrite cost (USD)": "0.00070",
+      "answer cost (USD)": "0.00270",
+      "end-to-end cost/question (USD)": "0.00310",
+      "end-to-end latency p50 (ms)": "5200",
+    })
+  })
+
+  test("Revision 5 AC12 — several runs with the same value show it once, with no range; only the measures that differ get one", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RUNS))
+    expect(groupRow(table, REPEATED_C[0]!, "0.85")).toEqual({
+      config: "C",
+      split: "tuning",
+      commit: "ccc6666",
+      fallback: "0.85",
+      runs: "2",
+      "context complete": "90.0%",
+      "context precision": "60.0%",
+      "retrieval cost/question (USD)": "0.00060",
+      "retrieval latency p50 (ms)": "1400",
+      "retrieval latency p95 (ms)": "3100",
+      accuracy: "43.0/60",
+      "embed cost (USD)": "0.00050",
+      "judge cost (USD)": "0.00080",
+      "fallback cost (USD)": "0.00130 [0.00120–0.00140]",
+      "rewrite cost (USD)": "0.00060",
+      "answer cost (USD)": "0.00240",
+      "end-to-end cost/question (USD)": "0.00310",
+      "end-to-end latency p50 (ms)": "5200",
+    })
+  })
+
+  test("Revision 5 AC12 — a measure absent from every run of the group (summaries from before the retrieval measures and the costs by role) shows -", () => {
+    const { table } = repeatedSection(
+      repeatedPage([...REPEATED_LEGACY, REPEATED_B_OTHER_COMMIT])
+    )
+    const legacy = groupRow(table, REPEATED_LEGACY[0]!, "")
+    expect(legacy).toEqual({
+      config: "B",
+      split: "test",
+      commit: "leg0001",
+      fallback: "",
+      runs: "2",
+      "context complete": "90.0%",
+      "context precision": "60.0%",
+      "retrieval cost/question (USD)": "-",
+      "retrieval latency p50 (ms)": "-",
+      "retrieval latency p95 (ms)": "-",
+      accuracy: "52.0/60 [51–53]",
+      "embed cost (USD)": "-",
+      "judge cost (USD)": "-",
+      "fallback cost (USD)": "-",
+      "rewrite cost (USD)": "-",
+      "answer cost (USD)": "-",
+      "end-to-end cost/question (USD)": "0.00320 [0.00300–0.00340]",
+      "end-to-end latency p50 (ms)": "5200 [5000–5400]",
+    })
+    // The group next to it, which has them, still shows them.
+    expect(
+      groupRow(table, REPEATED_B_OTHER_COMMIT, "")["retrieval latency p50 (ms)"]
+    ).toBe("2500")
+  })
+
+  test("Revision 5 AC12 — retrieval measures that are null in every run of the group show - too, the other measures stay", () => {
+    const { table } = repeatedSection(repeatedPage(REPEATED_RETRIEVAL_NULL))
+    const row = groupRow(table, REPEATED_RETRIEVAL_NULL[0]!, "")
+    expect(
+      pick(row, [
+        "retrieval cost/question (USD)",
+        "retrieval latency p50 (ms)",
+        "retrieval latency p95 (ms)",
+        "judge cost (USD)",
+        "end-to-end cost/question (USD)",
+      ])
+    ).toEqual({
+      "retrieval cost/question (USD)": "-",
+      "retrieval latency p50 (ms)": "-",
+      "retrieval latency p95 (ms)": "-",
+      "judge cost (USD)": "0.00160",
+      "end-to-end cost/question (USD)": "0.00310",
+    })
+  })
+})
+
+describe("Revision 5 AC13 — provenance of the repeated runs", () => {
+  test("Revision 5 AC13 — under the table, one line per group lists the run folders of that group and no other", () => {
+    const page = repeatedPage(REPEATED_RUNS)
+    const { lines, table, end } = repeatedSection(page)
+    const below = lines.slice(table.end + 1, end).filter((l) => l.trim() !== "")
+    expect(below.length).toBeGreaterThanOrEqual(REPEATED_GROUPS.length)
+    for (const group of REPEATED_GROUPS) {
+      const names = group.map((spec) => spec.name)
+      const others = REPEATED_RUNS.map((spec) => spec.name).filter(
+        (name) => !names.includes(name)
+      )
+      const matching = below.filter((l) =>
+        names.every((name) => l.includes(name))
+      )
+      expect({ names, lines: matching.length }).toEqual({ names, lines: 1 })
+      expect(others.filter((name) => matching[0]!.includes(name))).toEqual([])
+    }
+  })
+
+  test("Revision 5 AC13 — the provenance of the other tables is unchanged: all the run folders on one line", () => {
+    const page = repeatedPage(REPEATED_RUNS)
+    const { table } = repeatedSection(page)
+    const lines = page.split("\n")
+    const [main] = threeTables(page)
+    const below = lines.slice(main.end + 1).find((l) => /^built from/i.test(l))
+    expect(table.start).toBeLessThan(main.start)
+    for (const spec of REPEATED_RUNS) expect(below).toContain(spec.name)
   })
 })
