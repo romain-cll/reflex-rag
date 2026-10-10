@@ -9,6 +9,9 @@
     "latencyP50Ms": 3689.460416999995,
     "latencyP95Ms": 5833.175042000003,
     "meanCostUsd": 0.0012279951000000002,
+    "meanRetrievalCostUsd": 0.001011618433333333,
+    "retrievalP50Ms": 2284.5254170000007,
+    "retrievalP95Ms": 3147.2507079999996,
     "meanInputTokens": 1756.5833333333333,
     "failures": {
       "loop_error": 0,
@@ -80,6 +83,9 @@
       "latencyP50Ms": 3849.739791,
       "latencyP95Ms": 4853.133125,
       "meanCostUsd": 0.0010820891666666664,
+      "meanRetrievalCostUsd": 0.0009066308333333335,
+      "retrievalP50Ms": 2053.225208,
+      "retrievalP95Ms": 3147.2507079999996,
       "meanInputTokens": 1272.9166666666667,
       "failures": {
         "loop_error": 0,
@@ -149,6 +155,9 @@
       "latencyP50Ms": 4123.558917000002,
       "latencyP95Ms": 9848.31979200001,
       "meanCostUsd": 0.0012931837333333336,
+      "meanRetrievalCostUsd": 0.0010445437333333335,
+      "retrievalP50Ms": 2349.475250000003,
+      "retrievalP95Ms": 7537.602583,
       "meanInputTokens": 1718.0666666666666,
       "failures": {
         "loop_error": 0,
@@ -218,6 +227,9 @@
       "latencyP50Ms": 2620.569417000006,
       "latencyP95Ms": 6871.444542000012,
       "meanCostUsd": 0.0012862503333333334,
+      "meanRetrievalCostUsd": 0.0009378336666666668,
+      "retrievalP50Ms": 675.9630830000096,
+      "retrievalP95Ms": 3238.9247500000056,
       "meanInputTokens": 2248.75,
       "failures": {
         "loop_error": 0,
@@ -287,6 +299,9 @@
       "latencyP50Ms": 4290.225124999997,
       "latencyP95Ms": 5523.487083999993,
       "meanCostUsd": 0.0012300273333333337,
+      "meanRetrievalCostUsd": 0.0009004162222222222,
+      "retrievalP50Ms": 2165.86729200001,
+      "retrievalP95Ms": 2638.1202909999993,
       "meanInputTokens": 1809.4444444444443,
       "failures": {
         "loop_error": 0,
@@ -356,6 +371,9 @@
       "latencyP50Ms": 2709.371332999988,
       "latencyP95Ms": 3163.5480830000015,
       "meanCostUsd": 0.0012326358333333333,
+      "meanRetrievalCostUsd": 0.0012326358333333333,
+      "retrievalP50Ms": 2709.371332999988,
+      "retrievalP95Ms": 3163.5480830000015,
       "meanInputTokens": null,
       "failures": {
         "loop_error": 0,
