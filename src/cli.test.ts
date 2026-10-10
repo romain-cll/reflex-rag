@@ -852,3 +852,164 @@ describe("eval-config-c AC2 — TYPESAFE_API_KEY", () => {
     expect(exitCode).toBe(1)
   })
 })
+
+describe("eval-config-c AC20 — --fallback none", () => {
+  /** A folder with the files of a run, so that only the key can be missing. */
+  function folderWithFiles(): string {
+    const cwd = makeTempDir("reflex-cli-eval-c-none-")
+    mkdirSync(join(cwd, "evals", "dev"), { recursive: true })
+    copyFileSync(repoQuestions, join(cwd, "evals", "dev", "questions.json"))
+    mkdirSync(join(cwd, ".reflex"))
+    writeFileSync(join(cwd, ".reflex", "index.db"), "")
+    return cwd
+  }
+
+  test("eval-config-c AC20 — --fallback none is accepted: it goes on to the file checks", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-none-ok-"),
+      DUMMY_TYPESAFE,
+      "--config",
+      "C",
+      "--fallback",
+      "none"
+    )
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(stderr).not.toMatch(/unknown option/i)
+    expect(stderr).not.toContain("--fallback")
+    expect(stderr).not.toContain("not implemented")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("eval-config-c AC20 — --fallback none works with --dry-run and the other options of C", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-none-options-"),
+      DUMMY_TYPESAFE,
+      "--config",
+      "C",
+      "--split",
+      "tuning",
+      "--limit",
+      "3",
+      "--system-one",
+      "clef",
+      "--fallback",
+      "none",
+      "--dry-run"
+    )
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(stderr).not.toContain("--fallback")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  test("eval-config-c AC20 — the system one is still needed: --fallback none without TYPESAFE_API_KEY gives a one-line error naming it", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      folderWithFiles(),
+      { TYPESAFE_API_KEY: undefined },
+      "--config",
+      "C",
+      "--fallback",
+      "none"
+    )
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toContain("TYPESAFE_API_KEY")
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const when of ["uncertain", "nothing-kept"]) {
+    test(`eval-config-c AC20 — --fallback none with --fallback-when ${when} is a one-line error naming both options, before any file check`, () => {
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        makeTempDir("reflex-cli-eval-c-none-when-"),
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--fallback",
+        "none",
+        "--fallback-when",
+        when
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("--fallback-when")
+      // `--fallback` itself, not only as the start of `--fallback-when`.
+      expect(stderr).toMatch(/--fallback(?!-when)/)
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toContain("not implemented")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toMatch(/^\s+at /m)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("eval-config-c AC20 — the order of the two options does not matter", () => {
+    const { stdout, stderr, exitCode } = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-none-when-order-"),
+      DUMMY_TYPESAFE,
+      "--config",
+      "C",
+      "--fallback-when",
+      "uncertain",
+      "--fallback",
+      "none"
+    )
+    expect(nonEmptyLines(stderr)).toHaveLength(1)
+    expect(stderr).toContain("--fallback-when")
+    expect(stderr).toMatch(/--fallback(?!-when)/)
+    expect(stdout).toBe("")
+    expect(exitCode).toBe(1)
+  })
+
+  for (const config of ["A", "B"]) {
+    test(`eval-config-c AC20 — --fallback none is rejected for config ${config}, like any --fallback`, () => {
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        makeTempDir("reflex-cli-eval-c-none-ab-"),
+        DUMMY_TYPESAFE,
+        "--config",
+        config,
+        "--fallback",
+        "none"
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("--fallback")
+      expect(stderr).toContain("config C")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const value of ["None", "NONE", "null", "no", "nothing", "false"]) {
+    test(`eval-config-c AC20 — --fallback "${value}" is still an invalid value: a one-line error naming --fallback`, () => {
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        makeTempDir("reflex-cli-eval-c-none-bad-"),
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--fallback",
+        value
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("--fallback")
+      expect(stderr).not.toMatch(/unknown option/i)
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  test("eval-config-c AC20 — a number is still accepted next to --fallback-when (only none conflicts)", () => {
+    const { stderr, exitCode } = runEvalWithEnv(
+      makeTempDir("reflex-cli-eval-c-number-when-"),
+      DUMMY_TYPESAFE,
+      "--config",
+      "C",
+      "--fallback",
+      "0.85",
+      "--fallback-when",
+      "nothing-kept"
+    )
+    expect(stderr).toMatch(/questions\.json|index\.db/)
+    expect(exitCode).toBe(1)
+  })
+})

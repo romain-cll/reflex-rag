@@ -1355,3 +1355,247 @@ describe("eval-config-c AC19 — upperBoundCallsC sizes the system-one request w
     expect(second).toEqual(first)
   })
 })
+
+// ---------------------------------------------------------------------------
+// eval-config-c, revision 7
+// ---------------------------------------------------------------------------
+
+/**
+ * The settings of `--fallback none`: the parser leaves no lower bound for the
+ * grey zone (`EvalSettings` is not exported; `fallbackWhen` keeps its default).
+ */
+const NO_FALLBACK = { ...SETTINGS, fallback: null }
+
+describe("eval-config-c AC20 — loopSettings, config C without fallback", () => {
+  test("eval-config-c AC20 — the loop records fallbackLow: null", () => {
+    const { loop } = evalCommand.loopSettings("C", NO_FALLBACK, "clef-flash")
+    expect((loop as unknown as { fallbackLow: unknown }).fallbackLow).toBeNull()
+  })
+
+  test("eval-config-c AC20 — the loop records no fallbackWhen, whatever the settings hold", () => {
+    for (const fallbackWhen of ["uncertain", "nothing-kept"] as const) {
+      const { loop } = evalCommand.loopSettings(
+        "C",
+        { ...NO_FALLBACK, fallbackWhen },
+        "clef-flash"
+      )
+      expect("fallbackWhen" in loop).toBe(false)
+    }
+  })
+
+  test("eval-config-c AC20 — the models have no fallback: the judge is the system-one model", () => {
+    const { models } = evalCommand.loopSettings("C", NO_FALLBACK, "clef-flash")
+    expect("fallback" in models).toBe(false)
+    expect(models).toEqual({
+      judge: "clef-flash",
+      rewriter: HAIKU,
+      answerer: HAIKU,
+    })
+  })
+
+  test("eval-config-c AC20 — the judge follows the system-one model it is given", () => {
+    const { models } = evalCommand.loopSettings(
+      "C",
+      { ...NO_FALLBACK, systemOne: "jev" },
+      JEV
+    )
+    expect(models.judge).toBe(JEV)
+    expect("fallback" in models).toBe(false)
+  })
+
+  test("eval-config-c AC20 — the rest of the loop is that of C: policy with k, veto, rewriter, candidates, system one", () => {
+    const { loop } = evalCommand.loopSettings("C", NO_FALLBACK, "clef-flash")
+    expect(loop as unknown).toEqual({
+      policy: evalCommand.loopPolicy(4, policyModule.POLICIES.C),
+      rewriter: "llm",
+      candidates: 30,
+      veto: { none: 0.7, best: 0.02 },
+      fallbackLow: null,
+      systemOne: "clef",
+    })
+  })
+
+  test("eval-config-c AC20 — with a number, C keeps its fallback model, fallbackLow and fallbackWhen", () => {
+    const { models, loop } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, fallback: 0.85, fallbackWhen: "nothing-kept" },
+      "clef-flash"
+    )
+    expect(models.fallback).toBe(HAIKU)
+    const recorded = loop as unknown as {
+      fallbackLow: number
+      fallbackWhen: string
+    }
+    expect(recorded.fallbackLow).toBe(0.85)
+    expect(recorded.fallbackWhen).toBe("nothing-kept")
+  })
+
+  test("eval-config-c AC20 — B records neither a null fallbackLow nor a fallback model, whatever the settings hold", () => {
+    const { models, loop } = evalCommand.loopSettings("B", NO_FALLBACK)
+    expect("fallback" in models).toBe(false)
+    expect("fallbackLow" in loop).toBe(false)
+    expect("fallbackWhen" in loop).toBe(false)
+  })
+})
+
+/** The calls of the LLM, which are not the system one's. */
+function llmCalls(calls: ModelCall[]): ModelCall[] {
+  return calls.filter((call) => call.model === HAIKU)
+}
+
+describe("eval-config-c AC21 — upperBoundCallsC without fallback", () => {
+  test("eval-config-c AC21 — llm rewriter: the 4 system-one calls, then the rewriter and the answerer, no judge call", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "llm",
+      JEV,
+      { fallback: false }
+    )
+    expect(systemOneCalls(calls)).toHaveLength(4)
+    // maxRewrites (1) rewriter call, then the answerer.
+    expect(llmCalls(calls)).toHaveLength(1 + 1)
+    expect(calls).toHaveLength(4 + 1 + 1)
+  })
+
+  test("eval-config-c AC21 — code rewriter: the system-one calls and the answerer only", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "code",
+      JEV,
+      { fallback: false }
+    )
+    expect(systemOneCalls(calls)).toHaveLength(4)
+    expect(llmCalls(calls)).toHaveLength(1)
+    expect(calls).toHaveLength(4 + 1)
+  })
+
+  test("eval-config-c AC21 — the count follows the budgets: 6 turns, 2 rewriter calls and the answerer", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(5, 300),
+      policy(3, 2, 5),
+      "llm",
+      JEV,
+      { fallback: false }
+    )
+    expect(systemOneCalls(calls)).toHaveLength(6)
+    expect(calls).toHaveLength(6 + 2 + 1)
+  })
+
+  test("eval-config-c AC21 — the system-one calls come first, the others are the rewriter and answerer calls of upperBoundCalls", async () => {
+    for (const rewriter of ["llm", "code"] as const) {
+      const candidates = notes(7, 600)
+      const calls = await evalCommand.upperBoundCallsC(
+        QUESTION,
+        candidates,
+        DEFAULT_POLICY,
+        rewriter,
+        JEV,
+        { fallback: false }
+      )
+      const withJudge = await evalCommand.upperBoundCalls(
+        QUESTION,
+        candidates,
+        DEFAULT_POLICY,
+        rewriter
+      )
+      for (const call of calls.slice(0, 4)) expect(call.model).toBe(JEV)
+      // upperBoundCalls holds its 4 judge calls first.
+      expect(calls.slice(4)).toEqual(withJudge.slice(4))
+    }
+  })
+
+  test("eval-config-c AC21 — the system-one calls are those of the default bound", async () => {
+    const candidates = notes(6, 400)
+    const without = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm",
+      JEV,
+      { fallback: false }
+    )
+    const withFallback = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm"
+    )
+    expect(systemOneCalls(without)).toEqual(systemOneCalls(withFallback))
+    expect(without.length).toBeLessThan(withFallback.length)
+  })
+
+  test("eval-config-c AC21 — a policy asking for sufficiency sizes the system-one calls, and still has no judge call", async () => {
+    const candidates = notes(6, 400)
+    const plain = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm",
+      JEV,
+      { fallback: false }
+    )
+    const askedCalls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      asking(DEFAULT_POLICY),
+      "llm",
+      JEV,
+      { fallback: false }
+    )
+    expect(askedCalls).toHaveLength(4 + 1 + 1)
+    expect(plain).toHaveLength(4 + 1 + 1)
+    expect(systemOneCalls(askedCalls)).toHaveLength(4)
+    expect(llmCalls(askedCalls)).toEqual(llmCalls(plain))
+  })
+
+  test("eval-config-c AC21 — { fallback: true } and no option are the default bound, judge calls included", async () => {
+    const candidates = notes(7, 600)
+    const omitted = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm"
+    )
+    const explicit = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm",
+      JEV,
+      { fallback: true }
+    )
+    expect(explicit).toEqual(omitted)
+    expect(omitted).toHaveLength(4 + (4 + 1 + 1))
+  })
+
+  test("eval-config-c AC21 — resolves without any API key", async () => {
+    const keys = [
+      "ANTHROPIC_API_KEY",
+      "MISTRAL_API_KEY",
+      "TYPESAFE_API_KEY",
+    ] as const
+    const saved = keys.map((key) => process.env[key])
+    for (const key of keys) delete process.env[key]
+    try {
+      const calls = await evalCommand.upperBoundCallsC(
+        QUESTION,
+        notes(3, 200),
+        DEFAULT_POLICY,
+        "llm",
+        JEV,
+        { fallback: false }
+      )
+      expect(calls.length).toBeGreaterThan(0)
+    } finally {
+      keys.forEach((key, index) => {
+        const value = saved[index]
+        if (value !== undefined) process.env[key] = value
+      })
+    }
+  })
+})
