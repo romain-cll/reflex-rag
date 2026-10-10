@@ -39,6 +39,13 @@ Phase 4. `reflex eval --config C` runs the questions through the retrieval loop 
 
 - **AC19 — judges asked for sufficiency**: when the policy of the config sets `thresholds.sufficient` (docs/features/decision-policy.md, AC12), B's judge is `LLMJudge(llm, { sufficiency: true })` and C's primary judge `SystemOneJudge(systemOne, { veto, sufficiency: true })`; C's fallback is not asked. `upperBoundCalls` and `upperBoundCallsC` size their judges the same way. The settings record the policy with its `sufficient` threshold.
 
+## Revision 7 — C without fallback
+
+The threshold sweep (docs: reflex-rag-preuves.md, three values) compares C with the grey zone from 0.8, from 0.85 and without fallback; the last one cannot be run so far, `--fallback` having to be a number below 0.9.
+
+- **AC20 — `--fallback none`**: config C runs with `SystemOneJudge(systemOne, { veto, sufficiency })` alone, without `FallbackJudge`: no LLM judge call. The settings record `fallbackLow: null` and no `fallbackWhen`, and `models` has no `fallback`. `--fallback none` with `--fallback-when` is a one-line error naming both options.
+- **AC21 — dry run without fallback**: `upperBoundCallsC` takes an optional last argument `{ fallback: boolean }` (default `true`); with `false`, the bound holds no LLM judge call (the rewriter and answerer calls stay). The dry run of `--fallback none` uses it and prints `no fallback` instead of the grey zone.
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.
