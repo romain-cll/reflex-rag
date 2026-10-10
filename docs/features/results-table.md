@@ -29,6 +29,13 @@ The threshold sweep runs config C on the same split with the grey zone from 0.8,
 
 - **AC11 — scope**: the fallback text of AC9 and AC10 is followed by the scope whenever it is not `uncertain` (`0.8 nothing-kept`, `0.8 no-answer`).
 
+## Revision 5 — repeated runs, as mean and range
+
+The final runs repeat each config three times on the test split (`runs/2026-10-10T15-33-58-836Z-A-test` to `runs/2026-10-10T16-08-01-461Z-C-test`), so that no conclusion is drawn below the run-to-run spread. The README's figures must come from a generated table, not from a hand computation.
+
+- **AC12 — repeated runs table**: a section `## Repeated runs`, before `## Runs`, with one row per group of runs sharing config, split, commit and fallback text (AC9), ordered by config, split and fallback text. Columns: config, split, commit, fallback, runs (the number of runs); then context complete, context precision, retrieval cost/question, retrieval latency p50, retrieval latency p95, accuracy; then the mean cost per question of each role of the "By stage" table (embed, judge, fallback, rewrite, answer); then end-to-end cost/question and end-to-end latency p50. Each cell is the mean over the group's runs, formatted as in the main table, followed by ` [min–max]` when the group has more than one run and the values differ; accuracy is the mean number correct over n (`53.3/60 [52–55]`). A measure absent from every run of the group shows `-`.
+- **AC13 — provenance**: under the table, each group's run folders.
+
 ## Technical plan
 
 - `scripts/results-table.ts` (new). Reads `FAILURES` (families, levers) and `CATEGORIES` from `src/eval/` and `evals/schema.ts`.
