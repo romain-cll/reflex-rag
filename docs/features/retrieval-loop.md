@@ -52,6 +52,10 @@ In the same run, q-024 lost its intermediate note after the loop had kept it: `a
 - **AC17 — answer notes**: in the context assembly (AC11, AC16), an answer note is a kept note whose `answer` probability is ≥ the answer threshold **or** ≥ its `step` probability. Step notes are unchanged.
 - **AC18 — sufficiency**: the loop passes `decide` the `sufficient` value of the last judgement that reported one (docs/features/decision-policy.md, AC10); each step records `sufficient`, the value the judgement of that turn reported, when it reported one.
 
+## Revision 8 — the context of the judge with its verdicts
+
+- **AC19 — verdicts in the context**: each context note the loop gives `judge.judge` (AC15) carries the `verdict` it was kept with (docs/features/system-one-judge.md, AC16). The context assembly classifies answer notes with `isAnswerNote` (docs/features/decision-policy.md, AC13), with the same result as AC17.
+
 ## Technical plan
 
 Files:

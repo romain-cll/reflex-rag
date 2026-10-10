@@ -46,6 +46,10 @@ The threshold sweep (docs: reflex-rag-preuves.md, three values) compares C with 
 - **AC20 — `--fallback none`**: config C runs with `SystemOneJudge(systemOne, { veto, sufficiency })` alone, without `FallbackJudge`: no LLM judge call. The settings record `fallbackLow: null` and no `fallbackWhen`, and `models` has no `fallback`. `--fallback none` with `--fallback-when` is a one-line error naming both options.
 - **AC21 — dry run without fallback**: `upperBoundCallsC` takes an optional last argument `{ fallback: boolean }` (default `true`); with `false`, the bound holds no LLM judge call (the rewriter and answerer calls stay). The dry run of `--fallback none` uses it and prints `no fallback` instead of the grey zone.
 
+## Revision 8 — fallback scope `no-answer`
+
+- **AC22 — option**: `--fallback-when` accepts `no-answer` (docs/features/system-one-judge.md, AC17); C's `FallbackJudge` then gets `isAnswer: (verdict) => isAnswerNote(verdict, POLICIES.C)`. The settings record `fallbackWhen: "no-answer"`. The default stays `uncertain`.
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.

@@ -42,6 +42,10 @@ In C's run at commit ce00e69 (`runs/2026-10-09T22-06-41-730Z-C-tuning`), 3 multi
 - **AC11 — `follow-kept`**: a rule between `follow-steps` and `answer`. It applies when `thresholds.sufficient` is set, `state.sufficient` is defined and below it, hops remain and some kept note is openable; the action `expand` carries the openable kept notes, ranked by decreasing `answer` + `step` (ties by order of judgement), at most the explore budget. `RULES` becomes `follow-steps`, `follow-kept`, `answer`, `explore`, `rewrite`, `abstain`.
 - **AC12 — configuration**: `thresholds.sufficient` is optional; `POLICIES.B` and `POLICIES.C` set it to 0.5; `DEFAULT_POLICY` leaves it unset.
 
+## Revision 7 — answer notes, shared
+
+- **AC13 — `isAnswerNote(verdict, config)`**: exported by `src/loop/policy.ts`: the note is kept (`isKept`) and its `answer` probability is ≥ the answer threshold or ≥ its `step` probability (docs/features/retrieval-loop.md, AC17). The loop's context assembly and config C's fallback use it.
+
 ## Technical plan
 
 Files:

@@ -25,6 +25,10 @@ The threshold sweep runs config C on the same split with the grey zone from 0.8,
 - **AC9 — fallback column**: the main table gets a column `fallback` right after `commit`: the run's `loop.fallbackLow` from the settings line (`0.85`), `none` when it is `null`, followed by ` nothing-kept` when `loop.fallbackWhen` is `nothing-kept`; empty when the settings have no `fallbackLow` (configs A and B). The "By stage" table gets the same column after `commit`.
 - **AC10 — labels**: a run whose settings have `fallbackLow` gets it in its column label after the split, as in the fallback column (`C tuning fallback 0.85`, `C tuning fallback none`). The commit, then the time, are added as today (docs/features/eval-config-c.md, AC13) only when another run shares config, split and fallback.
 
+## Revision 4 — every fallback scope in the fallback text
+
+- **AC11 — scope**: the fallback text of AC9 and AC10 is followed by the scope whenever it is not `uncertain` (`0.8 nothing-kept`, `0.8 no-answer`).
+
 ## Technical plan
 
 - `scripts/results-table.ts` (new). Reads `FAILURES` (families, levers) and `CATEGORIES` from `src/eval/` and `evals/schema.ts`.

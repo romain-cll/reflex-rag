@@ -38,6 +38,13 @@ Judged one by one, a note about another entity than the question's can look like
 - **AC14 — sufficiency**: `SystemOneJudge` takes an option `sufficiency: boolean` (default `false`). When set, each batch call also holds a question `sufficient: { type: "noul", instructions: JUDGE_SUFFICIENT_QUESTION }` (docs/features/llm-judge.md, AC9). The `Judgement` gains `sufficient`, the highest `noul` among the batches, clamped to [0, 1]; a batch whose answer is missing or not a `noul` is ignored; with no valid answer, `sufficient` is absent. Without the option, the call is unchanged.
 - **AC15 — through the fallback**: `FallbackJudge` returns the primary's `sufficient` when it has one, with or without a fallback call.
 
+## Revision 6 — the fallback only while no answer is found
+
+The fallback sweep on the tuning split showed the LLM fallback mostly asked about notes Jev had rightly left out, after the answer was found. With the grey zone from 0.85 (`runs/2026-10-10T12-43-16-465Z-C-tuning`), Haiku judged again 42 of the 1,779 notes, in 25 of the 60 questions: it confirmed the rejection of 30, kept 9 notes that are not sources, and kept 3 sources (q-019, q-020, q-021); in 23 of its 25 calls, Jev had already kept an answer note. From 0.8 (`runs/2026-10-10T11-29-39-582Z-C-tuning`): 66 notes in 32 questions, 51 rejections confirmed, 12 non-sources kept, 1 source kept and 2 rejected; 31 of its 33 calls came after an answer note. Rare per note, the fallback is frequent per question, and its time is paid per call: about 1.5 s for a Haiku call against 0.3 s for a Jev call; the questions with a fallback took 2.2 s (median), C without fallback 0.69 s (`runs/2026-10-10T12-43-23-494Z-C-tuning`). Replayed on these traces, calling the fallback only while no answer note is kept leaves 2 of the 25 calls and 2 of the 3 rescues (q-019, q-021).
+
+- **AC16 — verdicts of the context**: a context note may carry the `verdict` it was kept with (`ContextNote = NoteForJudge & { verdict?: Record<Verdict, number> }` in `src/core/judge.ts`; `Judge.judge` takes `context?: ContextNote[]`). The judges show the model the note as before, never the verdict.
+- **AC17 — scope `no-answer`**: `FallbackJudge` takes `when: "no-answer"`, with an option `isAnswer(verdict)`. The uncertain notes are judged again only when no context note has a verdict for which `isAnswer` is true and no note the primary kept in this call has one; a context note without `verdict` does not count as an answer. With another scope, `isAnswer` is not used.
+
 ## Technical plan
 
 - `src/core/judge.ts` (modified): optional `fallback` and `stages` on `Judgement`.
