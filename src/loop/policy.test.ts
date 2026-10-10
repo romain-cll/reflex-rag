@@ -1791,7 +1791,7 @@ describe("decision-policy AC10–AC12 — follow-kept (Revision 6)", () => {
         ],
         0.2
       ),
-      asking()
+      asking({ explore: 4 })
     )
     expect(action).toEqual(opens(["a.md", "z.md", "m.md", "b.md"]))
   })
