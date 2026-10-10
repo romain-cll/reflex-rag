@@ -939,3 +939,353 @@ describe("system-one-judge AC13 — the veto", () => {
     expect(result.notes["notes/a3.md"]).toEqual(VETOED_VERDICT)
   })
 })
+
+const SUFFICIENT_QUESTION =
+  "Taken together, do all the notes given, context notes included, state the complete answer to the question, with nothing left to look up in another note?"
+
+interface SufficiencyFakeOptions {
+  /** The answer to the `sufficient` question of the batch whose first note is at that path. */
+  sufficient?: (firstPath: string) => SystemOneAnswer | undefined
+  /** The probabilities answered to every cross question `xK` (default: no answer). */
+  cross?: Record<string, number>
+  /** The probabilities answered to `best` (default: no answer). */
+  best?: Record<string, number>
+}
+
+const noul = (value: number): SystemOneAnswer => ({
+  type: "noul",
+  noul: value,
+})
+
+/**
+ * A fake system one that answers the verdict question of every note with
+ * `answer` (0.9 / 0.05 / 0.05), and the `sufficient`, `xK` and `best`
+ * questions from the scripts.
+ */
+function sufficiencyFake(options: SufficiencyFakeOptions = {}) {
+  const requests: SystemOneRequest[] = []
+  const systemOne: SystemOne = {
+    model: "fake-system-one",
+    decide(request) {
+      requests.push(request)
+      const notes = (request.state as StateOfRequest).notes
+      const firstPath = notes["n1"]?.path ?? ""
+      const answers: Record<string, SystemOneAnswer> = {}
+      const choice = (probabilities: Record<string, number>) =>
+        ({
+          type: "choice",
+          choice: "none",
+          probabilities,
+          confidence: 0.5,
+        }) satisfies SystemOneAnswer
+      for (const key of Object.keys(request.questions)) {
+        if (/^n\d+$/.test(key)) {
+          answers[key] = choice({ answer: 0.9, step: 0.05, none: 0.05 })
+        } else if (/^x\d+$/.test(key) && options.cross) {
+          answers[key] = choice(options.cross)
+        } else if (key === "best" && options.best) {
+          answers[key] = choice(options.best)
+        } else if (key === "sufficient") {
+          const answer = options.sufficient?.(firstPath)
+          if (answer !== undefined) answers[key] = answer
+        }
+      }
+      return Promise.resolve({
+        answers,
+        call: {
+          model: "fake-system-one",
+          inputTokens: 100,
+          outputTokens: 5,
+          latencyMs: Number(/\d+/.exec(firstPath)?.[0]),
+        },
+      })
+    },
+  }
+  return { systemOne, requests }
+}
+
+/** The `sufficient` of a judgement, whether the type has it yet or not. */
+function sufficientOf(result: object): number | undefined {
+  return (result as { sufficient?: number }).sufficient
+}
+
+/** A judge asked for sufficiency (the option is not in the options type yet). */
+function sufficientJudge(systemOne: SystemOne, extra: object = {}) {
+  return new SystemOneJudge(systemOne, { sufficiency: true, ...extra })
+}
+
+describe("system-one-judge AC14 — the sufficient question", () => {
+  test("system-one-judge AC14 — each batch call holds a noul question sufficient with the instructions of JUDGE_SUFFICIENT_QUESTION and no criteria", async () => {
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.5),
+    })
+    await sufficientJudge(systemOne).judge(QUESTION, manyNotes(3))
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.questions["sufficient"]).toStrictEqual({
+      type: "noul",
+      instructions: SUFFICIENT_QUESTION,
+    })
+  })
+
+  test("system-one-judge AC14 — the instructions are the JUDGE_SUFFICIENT_QUESTION of src/judge/question.ts", async () => {
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.5),
+    })
+    await sufficientJudge(systemOne).judge(QUESTION, manyNotes(1))
+    const asked = requests[0]?.questions["sufficient"] as {
+      instructions: string
+    }
+    expect(
+      (questionModule as unknown as { JUDGE_SUFFICIENT_QUESTION: string })
+        .JUDGE_SUFFICIENT_QUESTION
+    ).toBe(SUFFICIENT_QUESTION)
+    expect(asked.instructions).toBe(SUFFICIENT_QUESTION)
+  })
+
+  test("system-one-judge AC14 — the nK questions come with it, unchanged, and the state is unchanged", async () => {
+    const notes = manyNotes(2)
+    const plain = sufficiencyFake()
+    await new SystemOneJudge(plain.systemOne).judge(QUESTION, notes)
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.5),
+    })
+    await sufficientJudge(systemOne).judge(QUESTION, notes)
+    expect(Object.keys(requests[0]?.questions ?? {}).sort()).toEqual([
+      "n1",
+      "n2",
+      "sufficient",
+    ])
+    expect(requests[0]?.questions["n1"]).toEqual(
+      plain.requests[0]?.questions["n1"]
+    )
+    expect(requests[0]?.questions["n2"]).toEqual(
+      plain.requests[0]?.questions["n2"]
+    )
+    expect(requests[0]?.state).toEqual(plain.requests[0]?.state)
+  })
+
+  test("system-one-judge AC14 — every batch call holds the question, still one call per batch", async () => {
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.5),
+    })
+    const result = await sufficientJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(5))
+    expect(requests).toHaveLength(3)
+    for (const request of requests) {
+      expect(request.questions["sufficient"]).toMatchObject({ type: "noul" })
+    }
+    expect(result.calls).toHaveLength(3)
+    for (const call of result.calls) expect(call.role).toBe("judge")
+  })
+
+  test("system-one-judge AC14 — the context notes are in the state and get no question, the sufficient question is asked", async () => {
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.5),
+    })
+    await sufficientJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(2),
+      manyNotes(2, "c")
+    )
+    expect(Object.keys(requests[0]?.questions ?? {}).sort()).toEqual([
+      "n1",
+      "n2",
+      "sufficient",
+    ])
+    expect(
+      Object.keys((requests[0]?.state as StateOfRequest).context!)
+    ).toEqual(["k1", "k2"])
+  })
+
+  test("system-one-judge AC14 — without the option, no sufficient question and no sufficient in the judgement, even if the system one answered one", async () => {
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.9),
+    })
+    const result = await new SystemOneJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(2)
+    )
+    expect(Object.keys(requests[0]?.questions ?? {}).sort()).toEqual([
+      "n1",
+      "n2",
+    ])
+    expect("sufficient" in result).toBe(false)
+  })
+
+  test("system-one-judge AC14 — sufficiency: false behaves as no option", async () => {
+    const { systemOne, requests } = sufficiencyFake()
+    const result = await new SystemOneJudge(systemOne, {
+      sufficiency: false,
+    }).judge(QUESTION, manyNotes(2))
+    expect("sufficient" in (requests[0]?.questions ?? {})).toBe(false)
+    expect("sufficient" in result).toBe(false)
+  })
+
+  test("system-one-judge AC14 — with no note, no call is made and there is no sufficient", async () => {
+    const { systemOne, requests } = sufficiencyFake()
+    const result = await sufficientJudge(systemOne).judge(QUESTION, [])
+    expect(requests).toHaveLength(0)
+    expect("sufficient" in result).toBe(false)
+  })
+})
+
+describe("system-one-judge AC14 — the sufficient of the judgement", () => {
+  test("system-one-judge AC14 — the noul of the only batch", async () => {
+    const { systemOne } = sufficiencyFake({ sufficient: () => noul(0.3) })
+    const result = await sufficientJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(2)
+    )
+    expect(sufficientOf(result)).toBe(0.3)
+  })
+
+  test("system-one-judge AC14 — a sufficient of 0 is a value, present in the judgement", async () => {
+    const { systemOne } = sufficiencyFake({ sufficient: () => noul(0) })
+    const result = await sufficientJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(2)
+    )
+    expect("sufficient" in result).toBe(true)
+    expect(sufficientOf(result)).toBe(0)
+  })
+
+  test("system-one-judge AC14 — clamped to [0, 1]", async () => {
+    const high = await sufficientJudge(
+      sufficiencyFake({ sufficient: () => noul(1.4) }).systemOne
+    ).judge(QUESTION, manyNotes(1))
+    const low = await sufficientJudge(
+      sufficiencyFake({ sufficient: () => noul(-0.2) }).systemOne
+    ).judge(QUESTION, manyNotes(1))
+    expect(sufficientOf(high)).toBe(1)
+    expect(sufficientOf(low)).toBe(0)
+  })
+
+  test("system-one-judge AC14 — the highest noul among the batches, whatever their order", async () => {
+    const byBatch: Record<string, number> = {
+      "notes/a0.md": 0.3,
+      "notes/a2.md": 0.8,
+      "notes/a4.md": 0.5,
+    }
+    const { systemOne } = sufficiencyFake({
+      sufficient: (path) => noul(byBatch[path] ?? 0),
+    })
+    const result = await sufficientJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(5))
+    expect(sufficientOf(result)).toBe(0.8)
+
+    const reversed = await sufficientJudge(
+      sufficiencyFake({
+        sufficient: (path) => noul(1 - (byBatch[path] ?? 1)),
+      }).systemOne,
+      { maxNotesPerCall: 2 }
+    ).judge(QUESTION, manyNotes(5))
+    // 0.7, 0.2, 0.5 for the batches a0, a2, a4.
+    expect(sufficientOf(reversed)).toBeCloseTo(0.7, 10)
+  })
+
+  test("system-one-judge AC14 — the clamping applies to each batch: 1.3 and 0.6 give 1", async () => {
+    const { systemOne } = sufficiencyFake({
+      sufficient: (path) => noul(path === "notes/a0.md" ? 1.3 : 0.6),
+    })
+    const result = await sufficientJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(4))
+    expect(sufficientOf(result)).toBe(1)
+  })
+
+  test("system-one-judge AC14 — a batch without an answer is ignored", async () => {
+    const { systemOne } = sufficiencyFake({
+      sufficient: (path) => (path === "notes/a2.md" ? noul(0.4) : undefined),
+    })
+    const result = await sufficientJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(4))
+    expect(sufficientOf(result)).toBe(0.4)
+  })
+
+  test("system-one-judge AC14 — a batch whose answer is not a noul is ignored", async () => {
+    const choice: SystemOneAnswer = {
+      type: "choice",
+      choice: "answer",
+      probabilities: { answer: 1 },
+      confidence: 0.5,
+    }
+    const { systemOne } = sufficiencyFake({
+      sufficient: (path) => (path === "notes/a0.md" ? choice : noul(0.2)),
+    })
+    const result = await sufficientJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(4))
+    expect(sufficientOf(result)).toBe(0.2)
+  })
+
+  test("system-one-judge AC14 — no valid answer: the key is absent, and the verdicts are mapped as usual", async () => {
+    const choice: SystemOneAnswer = {
+      type: "choice",
+      choice: "answer",
+      probabilities: { answer: 1 },
+      confidence: 0.5,
+    }
+    for (const sufficient of [undefined, choice]) {
+      const { systemOne } = sufficiencyFake({ sufficient: () => sufficient })
+      const result = await sufficientJudge(systemOne).judge(
+        QUESTION,
+        manyNotes(2)
+      )
+      expect("sufficient" in result).toBe(false)
+      expect(result.notes["notes/a0.md"]?.answer).toBeCloseTo(0.9, 10)
+      expect(result.notes["notes/a1.md"]?.answer).toBeCloseTo(0.9, 10)
+    }
+  })
+
+  test("system-one-judge AC14 — the sufficient question does not disturb the verdicts, the order of the notes or the calls", async () => {
+    const notes = manyNotes(5)
+    const plain = await new SystemOneJudge(sufficiencyFake().systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, notes)
+    const result = await sufficientJudge(
+      sufficiencyFake({ sufficient: () => noul(0.5) }).systemOne,
+      { maxNotesPerCall: 2 }
+    ).judge(QUESTION, notes)
+    expect(result.notes).toEqual(plain.notes)
+    expect(result.calls).toEqual(plain.calls)
+  })
+})
+
+describe("system-one-judge AC14 — with the veto", () => {
+  test("system-one-judge AC14 — the call holds the questions of the veto and the sufficient question", async () => {
+    const { systemOne, requests } = sufficiencyFake({
+      sufficient: () => noul(0.4),
+    })
+    await sufficientJudge(systemOne, { veto: VETO }).judge(
+      QUESTION,
+      manyNotes(2)
+    )
+    expect(Object.keys(requests[0]?.questions ?? {}).sort()).toEqual([
+      "best",
+      "n1",
+      "n2",
+      "sufficient",
+      "x1",
+      "x2",
+    ])
+  })
+
+  test("system-one-judge AC14 — the veto still applies and the judgement carries vetoed and sufficient", async () => {
+    const { systemOne } = sufficiencyFake({
+      sufficient: () => noul(0.4),
+      cross: NONE_HIGH,
+      best: { n1: 0, n2: 0.95, none: 0.05 },
+    })
+    const result = await sufficientJudge(systemOne, { veto: VETO }).judge(
+      QUESTION,
+      manyNotes(2)
+    )
+    expect(vetoedOf(result)).toEqual(["notes/a0.md"])
+    expect(result.notes["notes/a0.md"]).toEqual(VETOED_VERDICT)
+    expect(result.notes["notes/a1.md"]?.answer).toBeCloseTo(0.9, 10)
+    expect(sufficientOf(result)).toBe(0.4)
+  })
+})

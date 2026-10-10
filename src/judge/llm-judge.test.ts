@@ -10,6 +10,9 @@ import { LLMCallError, type LLM, type LLMRequest } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
 import { LLMJudge } from "./llm-judge.ts"
 import { JUDGE_QUESTION } from "./question.ts"
+// A namespace import: `JUDGE_SUFFICIENT_QUESTION` is not exported yet, which
+// fails its own tests, not the whole file.
+import * as questionModule from "./question.ts"
 
 const CALL: ModelCall = {
   model: "fake-llm",
@@ -828,5 +831,237 @@ describe("AC8 — context", () => {
 
     expect(withContext.system).toBe(plain.system)
     expect(withContext.prompt).not.toBe(plain.prompt)
+  })
+})
+
+const SUFFICIENT_QUESTION =
+  "Taken together, do all the notes given, context notes included, state the complete answer to the question, with nothing left to look up in another note?"
+
+/** The question the judge asks, read through the namespace (not exported yet). */
+const sufficientQuestion = () =>
+  (questionModule as unknown as { JUDGE_SUFFICIENT_QUESTION: string })
+    .JUDGE_SUFFICIENT_QUESTION
+
+/** Scripted output of a judge asked for sufficiency: the notes and `sufficient`. */
+function sufficiencyOutput(scores: Record<string, Scores>, sufficient: number) {
+  return { ...judgeOutput(scores), sufficient }
+}
+
+/** A judge asked for sufficiency, over `fakeLLM` scripted with `scripted`. */
+function sufficientJudge(...scripted: unknown[]) {
+  const { llm, calls } = fakeLLM(...scripted)
+  return { judge: new LLMJudge(llm, { sufficiency: true }), calls }
+}
+
+async function sufficientRequest(notes = NOTES) {
+  const { judge, calls } = sufficientJudge(sufficiencyOutput({}, 0.5))
+  await judge.judge(QUESTION, notes)
+  return calls[0] as JsonCall
+}
+
+describe("llm-judge AC9 — the sufficiency question", () => {
+  test("llm-judge AC9 — JUDGE_SUFFICIENT_QUESTION is the exact wording of the spec", () => {
+    expect(sufficientQuestion()).toBe(SUFFICIENT_QUESTION)
+  })
+})
+
+describe("llm-judge AC10 — sufficiency option", () => {
+  test("llm-judge AC10 — the system prompt holds JUDGE_SUFFICIENT_QUESTION word for word and asks for sufficient", async () => {
+    const { request } = await sufficientRequest()
+
+    expect(request.system).toContain(SUFFICIENT_QUESTION)
+    expect(request.system).toContain("sufficient")
+  })
+
+  test("llm-judge AC10 — the system prompt still holds the question and the three descriptions of JUDGE_QUESTION", async () => {
+    const { request } = await sufficientRequest()
+
+    expect(request.system).toContain(JUDGE_QUESTION.instructions)
+    for (const verdict of VERDICTS) {
+      expect(request.system).toContain(JUDGE_QUESTION.criteria[verdict])
+    }
+  })
+
+  test("llm-judge AC10 — the user prompt is the one of a judge without the option", async () => {
+    const plain = await promptFor()
+    const { request } = await sufficientRequest()
+
+    expect(request.prompt).toBe(plain.prompt)
+  })
+
+  test("llm-judge AC10 — without the option the system prompt has no mention of sufficiency", async () => {
+    const { system } = await promptFor()
+
+    expect(system).not.toContain("sufficient")
+    expect(system).not.toContain(SUFFICIENT_QUESTION)
+  })
+
+  test("llm-judge AC10 — sufficiency: false behaves as no option", async () => {
+    const plain = await promptFor()
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+
+    const result = await new LLMJudge(llm, { sufficiency: false }).judge(
+      QUESTION,
+      NOTES
+    )
+
+    expect((calls[0] as JsonCall).request).toEqual(plain)
+    expect("sufficient" in result).toBe(false)
+  })
+
+  test("llm-judge AC10 — the output schema requires a number sufficient", async () => {
+    const { schema } = await sufficientRequest()
+
+    expect(schema.safeParse(sufficiencyOutput({}, 0.4)).success).toBe(true)
+    expect(
+      schema.safeParse(sufficiencyOutput({ n1: { answer: 0.5, none: 0.5 } }, 0))
+        .success
+    ).toBe(true)
+    expect(schema.safeParse(judgeOutput({})).success).toBe(false)
+    expect(schema.safeParse({ notes: [], sufficient: "high" }).success).toBe(
+      false
+    )
+    expect(schema.safeParse({ notes: [], sufficient: null }).success).toBe(
+      false
+    )
+  })
+
+  test("llm-judge AC10 — the schema does not bound sufficient: the judge clamps it", async () => {
+    const { schema } = await sufficientRequest()
+
+    expect(schema.safeParse(sufficiencyOutput({}, 1.7)).success).toBe(true)
+    expect(schema.safeParse(sufficiencyOutput({}, -0.4)).success).toBe(true)
+  })
+
+  test("llm-judge AC10 — an output without sufficient is rejected by the schema, so the LLM's validation fails", async () => {
+    // The fake validates its scripted value with the schema it receives.
+    const { llm } = fakeLLM(judgeOutput({ n1: { answer: 1 } }))
+
+    const caught = await rejection(
+      new LLMJudge(llm, { sufficiency: true }).judge(QUESTION, NOTES)
+    )
+
+    expect(caught).toBeInstanceOf(Error)
+  })
+
+  test("llm-judge AC10 — the output schema without the option is unchanged: no sufficient needed", async () => {
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+    await new LLMJudge(llm).judge(QUESTION, NOTES)
+    const { schema } = calls[0] as JsonCall
+
+    expect(schema.safeParse(judgeOutput({})).success).toBe(true)
+  })
+
+  test("llm-judge AC10 — maxTokens gains exactly 16", async () => {
+    for (const count of [1, 3, 10]) {
+      const plain = await budgetFor(count)
+      const { judge, calls } = sufficientJudge(sufficiencyOutput({}, 0.5))
+
+      await judge.judge(QUESTION, manyNotes(count))
+
+      expect((calls[0] as JsonCall).request.maxTokens).toBe(plain + 16)
+    }
+  })
+
+  test("llm-judge AC10 — the budget still grows by 48 per note with the option", async () => {
+    const budgets: number[] = []
+    for (const count of [2, 3]) {
+      const { judge, calls } = sufficientJudge(sufficiencyOutput({}, 0.5))
+      await judge.judge(QUESTION, manyNotes(count))
+      budgets.push((calls[0] as JsonCall).request.maxTokens)
+    }
+
+    expect((budgets[1] as number) - (budgets[0] as number)).toBe(48)
+  })
+
+  test("llm-judge AC10 — the Judgement carries sufficient as the model gave it", async () => {
+    const { judge } = sufficientJudge(
+      sufficiencyOutput({ n1: { answer: 1 } }, 0.3)
+    )
+
+    const result = await judge.judge(QUESTION, NOTES)
+
+    expect(result).toHaveProperty("sufficient", 0.3)
+  })
+
+  test("llm-judge AC10 — sufficient is clamped to [0, 1]", async () => {
+    const high = await sufficientJudge(sufficiencyOutput({}, 1.7)).judge.judge(
+      QUESTION,
+      NOTES
+    )
+    const low = await sufficientJudge(sufficiencyOutput({}, -0.4)).judge.judge(
+      QUESTION,
+      NOTES
+    )
+
+    expect(high).toHaveProperty("sufficient", 1)
+    expect(low).toHaveProperty("sufficient", 0)
+  })
+
+  test("llm-judge AC10 — a sufficient of 0 is kept, not dropped", async () => {
+    const result = await sufficientJudge(sufficiencyOutput({}, 0)).judge.judge(
+      QUESTION,
+      NOTES
+    )
+
+    expect("sufficient" in result).toBe(true)
+    expect(result).toHaveProperty("sufficient", 0)
+  })
+
+  test("llm-judge AC10 — the verdicts and the call are those of a judge without the option", async () => {
+    const scores = { n1: { answer: 0.5, step: 0.25, none: 0.25 } }
+    const plain = await judged(scores)
+    const result = await sufficientJudge(
+      sufficiencyOutput(scores, 0.8)
+    ).judge.judge(QUESTION, NOTES)
+
+    expect(result.notes).toEqual(plain.notes)
+    expect(result.calls).toEqual([CALL])
+  })
+
+  test("llm-judge AC10 — works with context notes: one call, the verdicts for the notes only", async () => {
+    const { judge, calls } = sufficientJudge(
+      sufficiencyOutput({ n1: { answer: 1 } }, 0.6)
+    )
+
+    const result = await judge.judge(QUESTION, NOTES, CONTEXT)
+
+    expect(calls).toHaveLength(1)
+    expect(Object.keys(result.notes).sort()).toEqual(
+      NOTES.map((note) => note.path).sort()
+    )
+    expect(result).toHaveProperty("sufficient", 0.6)
+    expect((calls[0] as JsonCall).request.prompt).toContain("XRAY-TEXT")
+  })
+
+  test("llm-judge AC10 — without the option the result has no sufficient key, even if the model gave one", async () => {
+    const { llm } = fakeLLM(sufficiencyOutput({}, 0.9))
+
+    const result = await new LLMJudge(llm).judge(QUESTION, NOTES)
+
+    expect("sufficient" in result).toBe(false)
+    expect(Object.keys(result).sort()).toEqual(["calls", "notes"])
+  })
+
+  test("llm-judge AC10 — with no note, makes no call and returns empty results, option or not", async () => {
+    const { judge, calls } = sufficientJudge()
+
+    const result = await judge.judge(QUESTION, [], CONTEXT)
+
+    expect(calls).toHaveLength(0)
+    expect(result).toEqual({ notes: {}, calls: [] })
+  })
+
+  test("llm-judge AC10 — an LLMCallError passes through unchanged with the option", async () => {
+    const error = new LLMCallError("bad JSON from the model", CALL)
+
+    const caught = await rejection(
+      new LLMJudge(failingLLM(error), { sufficiency: true }).judge(
+        QUESTION,
+        NOTES
+      )
+    )
+
+    expect(caught).toBe(error)
   })
 })

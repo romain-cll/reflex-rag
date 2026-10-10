@@ -93,6 +93,16 @@ interface RunSpec {
   stage?: StageProfile
   /** A summary from before the stage and fallback metrics: it has none of their fields. */
   legacy?: boolean
+  /**
+   * The retrieval measures of the summary (Revision 2): cost per question and
+   * latency percentiles without the answerer. Absent from the summaries written
+   * before them, `null` for a run whose records could not give them.
+   */
+  retrieval?: {
+    costUsd: number | null
+    p50: number | null
+    p95: number | null
+  }
 }
 
 const STAGES = ["searchMs", "judgeMs", "fallbackMs", "rewriteMs", "answerMs"]
@@ -176,6 +186,13 @@ function metricsOf(
           stageMeanMs: (spec.stage ?? NO_STAGE).meanMs,
           costByRole: (spec.stage ?? NO_STAGE).costUsd,
         }),
+    ...(spec.legacy || !spec.retrieval
+      ? {}
+      : {
+          meanRetrievalCostUsd: spec.retrieval.costUsd,
+          retrievalP50Ms: spec.retrieval.p50,
+          retrievalP95Ms: spec.retrieval.p95,
+        }),
   }
 }
 
@@ -249,6 +266,7 @@ const A_TEST: RunSpec = {
   costUsd: 0.00025,
   p50: 2100,
   p95: 4000,
+  retrieval: { costUsd: 0.00005, p50: 400, p95: 900 },
   notesInContext: 4.5,
   inputTokens: 1682,
   abstentions: { loop: 0, answerer: 10 },
@@ -310,6 +328,7 @@ const A_TUNING: RunSpec = {
   contextComplete: 0.7,
   precision: 0.4,
   recall: 0.65,
+  retrieval: { costUsd: 0.00006, p50: 410, p95: 950 },
   abstentions: { loop: 0, answerer: 7 },
   overallAbstentions: { loop: 0, answerer: 16 },
   failureSeed: 1,
@@ -356,6 +375,7 @@ const B_TEST: RunSpec = {
   costUsd: 0.0031,
   p50: 5200,
   p95: 9100,
+  retrieval: { costUsd: 0.0011, p50: 2500, p95: 6200 },
   notesInContext: 3.5,
   inputTokens: 1200,
   abstentions: { loop: 5, answerer: 3 },
@@ -401,6 +421,7 @@ const B_TUNING: RunSpec = {
   },
   contextComplete: 0.95,
   precision: 0.65,
+  retrieval: { costUsd: 0.0012, p50: 2600, p95: 6300 },
   abstentions: { loop: 6, answerer: 2 },
   overallAbstentions: { loop: 12, answerer: 15 },
   failureSeed: 4,
@@ -428,6 +449,7 @@ const C_TEST: RunSpec = {
   config: "C",
   commit: "ccc6666",
   failureSeed: 2,
+  retrieval: { costUsd: 0.0006, p50: 1400, p95: 3100 },
   fallback: { noteRate: 0.35, questionRate: 0.6 },
   stage: {
     medianMs: {
@@ -468,6 +490,14 @@ const B_LEGACY: RunSpec = {
   name: "2026-10-07T08-00-00-000Z-B-test",
   commit: "leg0001",
   legacy: true,
+}
+
+/** A run whose records gave no retrieval measure: the summary holds them as null. */
+const B_RETRIEVAL_NULL: RunSpec = {
+  ...B_TEST,
+  name: "2026-10-09T13-00-00-000Z-B-test",
+  commit: "bbb8888",
+  retrieval: { costUsd: null, p50: null, p95: null },
 }
 
 /** The runs of the default selection: the latest of each config and split. */
@@ -831,15 +861,16 @@ describe("AC2 — main table", () => {
       column(main, /^(n|questions?)$/i),
       column(main, /context complete/i),
       column(main, /precision/i),
-      column(main, /cost/i),
-      column(main, /p50/i),
+      column(main, /^retrieval cost/i),
+      column(main, /^retrieval latency p50/i),
+      column(main, /^retrieval latency p95/i),
       column(main, /accuracy/i),
     ]
     for (const index of headline) expect(index).toBeGreaterThanOrEqual(0)
     expect([...headline].sort((a, b) => a - b)).toEqual(headline)
     expect(new Set(headline).size).toBe(headline.length)
     // The cost of the headline is per question, not the total.
-    expect(main.header[column(main, /cost/i)]!).not.toMatch(/total/i)
+    expect(main.header[column(main, /^retrieval cost/i)]!).not.toMatch(/total/i)
     // The first columns are the headline: nothing else slips in between.
     expect(headline[0]).toBe(0)
   })
@@ -851,9 +882,9 @@ describe("AC2 — main table", () => {
       ["recall", /recall/i],
       ["notes in the context", /notes/i],
       ["answerer input tokens", /input tokens/i],
-      ["latency p95", /p95/i],
+      ["latency p95", /^end-to-end latency p95/i],
       ["total cost", /total/i],
-      ["retrieval failures", /retrieval/i],
+      ["retrieval failures", /retrieval failures/i],
       ["answer failures", /answer failures?/i],
       ["abstentions", /abstention/i],
       ["hops", /hops/i],
@@ -925,16 +956,16 @@ describe("AC2 — main table", () => {
       expect(showsRate(row[column(main, /precision/i)]!, spec.precision)).toBe(
         true
       )
-      expect(row[column(main, /p50/i)]!).toMatch(
+      expect(row[column(main, /^end-to-end latency p50/i)]!).toMatch(
         new RegExp(
           `${spec.p50}|${(spec.p50 / 1000).toFixed(1)}|${Math.floor(spec.p50 / 1000)},${String(spec.p50 % 1000).padStart(3, "0")}`
         )
       )
-      expect(row[column(main, /cost/i)]!).toMatch(/\d/)
+      expect(row[column(main, /^end-to-end cost/i)]!).toMatch(/\d/)
     }
     // The cost per question of config A is 0.00025 USD: a few tenths of a
     // thousandth, whatever the number of decimals.
-    const cost = rowOf(main, A_TEST)[column(main, /cost/i)]!
+    const cost = rowOf(main, A_TEST)[column(main, /^end-to-end cost/i)]!
     expect(Number(cost.replace(/[^0-9.]/g, ""))).toBeCloseTo(0.00025, 4)
   })
 
@@ -944,7 +975,9 @@ describe("AC2 — main table", () => {
     expect(showsRate(row[column(main, /recall/i)]!, 0.75)).toBe(true)
     expect(row[column(main, /notes/i)]!).toContain("4.5")
     expect(row[column(main, /input tokens/i)]!).toMatch(/1,?682|1\.7k/)
-    expect(row[column(main, /p95/i)]!).toMatch(/4000|4\.0|4,000/)
+    expect(row[column(main, /^end-to-end latency p95/i)]!).toMatch(
+      /4000|4\.0|4,000/
+    )
   })
 
   test("AC2 — total cost is the cost per question times the questions", () => {
@@ -959,7 +992,7 @@ describe("AC2 — main table", () => {
     for (const spec of LATEST) {
       const row = rowOf(main, spec)
       const { retrieval, answer } = familyCounts(spec)
-      expect(row[column(main, /retrieval/i)]!).toBe(String(retrieval))
+      expect(row[column(main, /retrieval failures/i)]!).toBe(String(retrieval))
       expect(row[column(main, /answer failures?/i)]!).toBe(String(answer))
     }
   })
@@ -1608,5 +1641,167 @@ describe("eval-config-c AC13 — labels with the time when two runs share config
     )
     expect(aGroups).toHaveLength(3)
     for (const cell of aGroups) expect(cell).not.toMatch(/\d\d:\d\d/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Revision 2 — retrieval cost and latency first
+// ---------------------------------------------------------------------------
+
+/** The main table of docs/features/results-table.md, Revision 2, AC7. */
+const REVISION_2_HEADER = [
+  "config",
+  "split",
+  "date",
+  "commit",
+  "questions",
+  "context complete",
+  "context precision",
+  "retrieval cost/question (USD)",
+  "retrieval latency p50 (ms)",
+  "retrieval latency p95 (ms)",
+  "accuracy",
+  "end-to-end cost/question (USD)",
+  "end-to-end latency p50 (ms)",
+  "end-to-end latency p95 (ms)",
+  "fallback note rate",
+  "fallback question rate",
+  "recall",
+  "notes in context",
+  "answerer input tokens",
+  "total cost (USD)",
+  "retrieval failures",
+  "answer failures",
+  "abstentions (correct/n)",
+  "abstentions by the loop",
+  "abstentions by the answerer",
+  "hops",
+  "rewrites",
+  "judge calls",
+]
+
+describe("Revision 2 AC7 — headline columns", () => {
+  const mainOf = (specs: RunSpec[]) =>
+    threeTables(generate(workdir(specs).cwd))[0]
+
+  test("Revision 2 AC7 — the main table has exactly the headline, the end-to-end group, then the other columns in their order", () => {
+    expect(mainOf(WITH_C).header).toEqual(REVISION_2_HEADER)
+  })
+
+  test("Revision 2 AC7 — the p95 of the whole question moves into the end-to-end group: no other latency p95 column", () => {
+    const { header } = mainOf(LATEST)
+    expect(header.filter((cell) => /p95/i.test(cell))).toEqual([
+      "retrieval latency p95 (ms)",
+      "end-to-end latency p95 (ms)",
+    ])
+    expect(header.filter((cell) => /p50/i.test(cell))).toEqual([
+      "retrieval latency p50 (ms)",
+      "end-to-end latency p50 (ms)",
+    ])
+  })
+
+  test("Revision 2 AC7 — each run shows its retrieval cost per question and its retrieval latency p50 and p95", () => {
+    const main = mainOf(WITH_C)
+    for (const spec of WITH_C) {
+      const row = rowOf(main, spec)
+      const { costUsd, p50, p95 } = spec.retrieval!
+      expect(numberIn(row[column(main, /^retrieval cost/i)]!)).toBeCloseTo(
+        costUsd!,
+        7
+      )
+      expect(numberIn(row[column(main, /^retrieval latency p50/i)]!)).toBe(p50!)
+      expect(numberIn(row[column(main, /^retrieval latency p95/i)]!)).toBe(p95!)
+    }
+  })
+
+  test("Revision 2 AC7 — the retrieval measures differ from the end-to-end ones, which keep the whole question's cost and latencies", () => {
+    const main = mainOf(WITH_C)
+    for (const spec of WITH_C) {
+      const row = rowOf(main, spec)
+      expect(numberIn(row[column(main, /^end-to-end cost/i)]!)).toBeCloseTo(
+        spec.costUsd,
+        7
+      )
+      expect(numberIn(row[column(main, /^end-to-end latency p50/i)]!)).toBe(
+        spec.p50
+      )
+      expect(numberIn(row[column(main, /^end-to-end latency p95/i)]!)).toBe(
+        spec.p95
+      )
+    }
+  })
+
+  test("Revision 2 AC7 — a summary without the retrieval measures shows - in those three columns and keeps the end-to-end ones", () => {
+    const main = mainOf([A_TEST, B_LEGACY])
+    const row = rowOf(main, B_LEGACY)
+    for (const pattern of [
+      /^retrieval cost/i,
+      /^retrieval latency p50/i,
+      /^retrieval latency p95/i,
+    ]) {
+      expect(row[column(main, pattern)]!).toBe("-")
+    }
+    expect(numberIn(row[column(main, /^end-to-end latency p50/i)]!)).toBe(
+      B_LEGACY.p50
+    )
+    // The run next to it, which has them, still shows them.
+    expect(
+      numberIn(rowOf(main, A_TEST)[column(main, /^retrieval latency p50/i)]!)
+    ).toBe(A_TEST.retrieval!.p50!)
+  })
+
+  test("Revision 2 AC7 — null retrieval measures show - too", () => {
+    const main = mainOf([B_RETRIEVAL_NULL])
+    const row = rowOf(main, B_RETRIEVAL_NULL)
+    for (const pattern of [
+      /^retrieval cost/i,
+      /^retrieval latency p50/i,
+      /^retrieval latency p95/i,
+    ]) {
+      expect(row[column(main, pattern)]!).toBe("-")
+    }
+  })
+})
+
+describe("Revision 2 AC8 — what retrieval means", () => {
+  /** The lines between the main table and the next heading, without the provenance line. */
+  function noteUnderMainTable(page: string): string {
+    const [main] = threeTables(page)
+    const lines = page.split("\n")
+    const following: string[] = []
+    for (const line of lines.slice(main.end + 1)) {
+      if (line.startsWith("#")) break
+      following.push(line)
+    }
+    return following
+      .filter((line) => line.trim() !== "" && !/^built from/i.test(line))
+      .join("\n")
+  }
+
+  test("Revision 2 AC8 — a line under the main table says that retrieval counts the search, the judge, its fallback and the rewrites", () => {
+    const note = noteUnderMainTable(generate(workdir(LATEST).cwd))
+    for (const word of [
+      /retrieval/i,
+      /search/i,
+      /judge/i,
+      /fallback/i,
+      /rewrit/i,
+    ]) {
+      expect(note).toMatch(word)
+    }
+  })
+
+  test("Revision 2 AC8 — the line says that the answerer is not counted", () => {
+    const note = noteUnderMainTable(generate(workdir(LATEST).cwd))
+    expect(note).toMatch(/answerer/i)
+    expect(note).toMatch(/\b(not|without|excludes?|excluding)\b/i)
+  })
+
+  test("Revision 2 AC8 — the provenance line stays under the main table", () => {
+    const page = generate(workdir(LATEST).cwd)
+    const [main] = threeTables(page)
+    const after = page.split("\n").slice(main.end + 1)
+    const heading = after.findIndex((line) => line.startsWith("#"))
+    expect(after.slice(0, heading).join("\n")).toMatch(/built from/i)
   })
 })

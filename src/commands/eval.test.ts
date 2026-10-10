@@ -471,16 +471,17 @@ describe("eval-config-c AC1 — POLICIES", () => {
     expect(Object.keys(policyModule.POLICIES).sort()).toEqual(["B", "C"])
   })
 
-  test("eval-config-c AC1 — B is DEFAULT_POLICY plus the strategy, in value", () => {
+  test("eval-config-c AC1 — B is DEFAULT_POLICY plus the strategy and the sufficient threshold, in value", () => {
     expect(policyModule.POLICIES.B as unknown).toEqual({
       ...DEFAULT_POLICY,
+      thresholds: { ...DEFAULT_POLICY.thresholds, sufficient: 0.5 },
       strategy: STRATEGY,
     })
   })
 
-  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY, the thresholds answer 0.7, step 0.7 and keep 0.9, and the strategy", () => {
+  test("eval-config-c AC14 — C has the budgets of DEFAULT_POLICY, the thresholds answer 0.7, step 0.7, keep 0.9 and sufficient 0.5, and the strategy", () => {
     expect(policyModule.POLICIES.C as unknown).toEqual({
-      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9, sufficient: 0.5 },
       budgets: DEFAULT_POLICY.budgets,
       strategy: STRATEGY,
     })
@@ -504,7 +505,7 @@ describe("eval-config-c AC1 — POLICIES", () => {
     expect(
       evalCommand.loopPolicy(6, policyModule.POLICIES.C) as unknown
     ).toEqual({
-      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9, sufficient: 0.5 },
       budgets: { maxHops: 2, maxRewrites: 1, explore: 3, maxNotes: 6 },
       strategy: STRATEGY,
     })
@@ -894,10 +895,11 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
       systemOne: "clef",
     })
     expect("fallbackThreshold" in loop).toBe(false)
-    expect(loop.policy.thresholds).toEqual({
+    expect({ ...loop.policy.thresholds }).toEqual({
       answer: 0.7,
       step: 0.7,
       keep: 0.9,
+      sufficient: 0.5,
     })
   })
 
@@ -1124,5 +1126,232 @@ describe("eval-config-c AC11 — roleTagged, failures", () => {
       )
     )
     expect(error).toBe("plain string")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// eval-config-c, revision 6
+// ---------------------------------------------------------------------------
+
+/** `policy` with the sufficient threshold, which `PolicyConfig` does not know yet. */
+function asking(base: PolicyConfig, sufficient = 0.5): PolicyConfig {
+  const sufficiency = { sufficient }
+  return { ...base, thresholds: { ...base.thresholds, ...sufficiency } }
+}
+
+/** The thresholds of a policy as a plain record. */
+function thresholdsOf(config: PolicyConfig): Record<string, number> {
+  return { ...config.thresholds }
+}
+
+describe("eval-config-c AC19 — the settings record the sufficient threshold", () => {
+  test("eval-config-c AC19 — B records thresholds.sufficient 0.5 in its policy", () => {
+    const { loop } = evalCommand.loopSettings("B", SETTINGS)
+    expect(thresholdsOf(loop.policy)["sufficient"]).toBe(0.5)
+  })
+
+  test("eval-config-c AC19 — C records thresholds.sufficient 0.5 next to its keep threshold", () => {
+    const { loop } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    expect(thresholdsOf(loop.policy)).toEqual({
+      answer: 0.7,
+      step: 0.7,
+      keep: 0.9,
+      sufficient: 0.5,
+    })
+  })
+
+  test("eval-config-c AC19 — the policy recorded is the one the run uses, with k", () => {
+    for (const config of ["B", "C"] as const) {
+      const { loop } = evalCommand.loopSettings(config, SETTINGS, JEV)
+      expect(loop.policy).toEqual(
+        evalCommand.loopPolicy(4, policyModule.POLICIES[config])
+      )
+    }
+  })
+
+  test("eval-config-c AC19 — DEFAULT_POLICY still has no sufficient threshold", () => {
+    expect("sufficient" in DEFAULT_POLICY.thresholds).toBe(false)
+    expect("sufficient" in evalCommand.loopPolicy(3).thresholds).toBe(false)
+  })
+})
+
+describe("eval-config-c AC19 — upperBoundCalls sizes the judge asked for sufficiency", () => {
+  const withSufficiency = asking(DEFAULT_POLICY)
+
+  test("eval-config-c AC19 — resolves when the policy asks for sufficiency (the recording LLM accepts the judge's schema)", async () => {
+    const calls = await evalCommand.upperBoundCalls(
+      QUESTION,
+      notes(6, 400),
+      withSufficiency,
+      "llm"
+    )
+    expect(calls).toHaveLength(4 + 1 + 1)
+  })
+
+  test("eval-config-c AC19 — each judge call has 16 more output tokens than without sufficiency", async () => {
+    const candidates = notes(6, 400)
+    const plain = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "code"
+    )
+    const asked = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      withSufficiency,
+      "code"
+    )
+    expect(asked).toHaveLength(plain.length)
+    for (let turn = 0; turn < 4; turn++) {
+      expect(asked[turn]!.outputTokens - plain[turn]!.outputTokens).toBe(16)
+    }
+  })
+
+  test("eval-config-c AC19 — each judge call has a longer prompt than without sufficiency", async () => {
+    const candidates = notes(6, 400)
+    const plain = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "code"
+    )
+    const asked = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      withSufficiency,
+      "code"
+    )
+    for (let turn = 0; turn < 4; turn++) {
+      expect(asked[turn]!.inputTokens).toBeGreaterThan(plain[turn]!.inputTokens)
+    }
+  })
+
+  test("eval-config-c AC19 — the rewriter and the answerer calls are sized as before", async () => {
+    const candidates = notes(6, 400)
+    const plain = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm"
+    )
+    const asked = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      withSufficiency,
+      "llm"
+    )
+    expect(asked.slice(4)).toEqual(plain.slice(4))
+  })
+
+  test("eval-config-c AC19 — the size follows the threshold being set, not its value", async () => {
+    const candidates = notes(5, 300)
+    const half = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      asking(DEFAULT_POLICY, 0.5),
+      "code"
+    )
+    const other = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      asking(DEFAULT_POLICY, 0.3),
+      "code"
+    )
+    expect(other).toEqual(half)
+  })
+
+  test("eval-config-c AC19 — the policy of B sizes its judge with sufficiency, the default policy does not", async () => {
+    const candidates = notes(6, 400)
+    const b = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      evalCommand.loopPolicy(5, policyModule.POLICIES.B),
+      "code"
+    )
+    const plain = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      evalCommand.loopPolicy(5, DEFAULT_POLICY),
+      "code"
+    )
+    expect(b[0]!.outputTokens - plain[0]!.outputTokens).toBe(16)
+  })
+})
+
+describe("eval-config-c AC19 — upperBoundCallsC sizes the system-one request with the sufficient question", () => {
+  const withSufficiency = asking(DEFAULT_POLICY)
+
+  test("eval-config-c AC19 — every system-one call is larger than without sufficiency, by about the question", async () => {
+    const candidates = notes(6, 400)
+    const plain = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "code"
+    )
+    const asked = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      withSufficiency,
+      "code"
+    )
+    const before = systemOneCalls(plain)
+    const after = systemOneCalls(asked)
+    expect(after).toHaveLength(before.length)
+    expect(after).toHaveLength(4)
+    for (let turn = 0; turn < 4; turn++) {
+      // The instructions alone are 150 characters, 38 tokens at 4 per token.
+      expect(
+        after[turn]!.inputTokens - before[turn]!.inputTokens
+      ).toBeGreaterThanOrEqual(38)
+      expect(after[turn]!.outputTokens).toBe(0)
+    }
+  })
+
+  test("eval-config-c AC19 — the number and the order of the calls are those of the policy without sufficiency", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(6, 400),
+      withSufficiency,
+      "llm"
+    )
+    expect(calls).toHaveLength(4 + (4 + 1 + 1))
+    for (const call of calls.slice(0, 4)) expect(call.model).toBe(JEV)
+    for (const call of calls.slice(4)) expect(call.model).toBe(HAIKU)
+  })
+
+  test("eval-config-c AC19 — C's fallback is not asked for sufficiency: its calls are those of the judge without it", async () => {
+    const candidates = notes(6, 400)
+    const asked = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      withSufficiency,
+      "llm"
+    )
+    const fallback = await evalCommand.upperBoundCalls(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "llm"
+    )
+    expect(asked.slice(4)).toEqual(fallback)
+  })
+
+  test("eval-config-c AC19 — without the threshold, the system-one calls are unchanged", async () => {
+    const candidates = notes(6, 400)
+    const first = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      DEFAULT_POLICY,
+      "code"
+    )
+    const second = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      candidates,
+      { ...DEFAULT_POLICY },
+      "code"
+    )
+    expect(second).toEqual(first)
   })
 })

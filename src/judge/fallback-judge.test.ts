@@ -661,3 +661,141 @@ describe("system-one-judge AC10 — fallback scope", () => {
     expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
   })
 })
+
+/** A judge that answers like `inner`, plus the extra fields of its judgement. */
+function withExtra(inner: Judge, extra: object): Judge {
+  return {
+    async judge(question, notes, context) {
+      return { ...(await inner.judge(question, notes, context)), ...extra }
+    },
+  }
+}
+
+/** The `sufficient` of a judgement, whether the type has it yet or not. */
+function sufficientOf(result: object): number | undefined {
+  return (result as { sufficient?: number }).sufficient
+}
+
+describe("system-one-judge AC15 — sufficiency through the fallback", () => {
+  /** a1 and a3 are in the grey zone of PRIMARY_VERDICTS: the fallback runs. */
+  const withFallback = [
+    NOTES[0],
+    NOTES[1],
+    NOTES[2],
+    NOTES[3],
+  ] as NoteForJudge[]
+
+  test("system-one-judge AC15 — the primary's sufficient is returned when the fallback judges notes again", async () => {
+    const primary = withExtra(fakeJudge("primary", PRIMARY_VERDICTS).judge, {
+      sufficient: 0.35,
+    })
+    const fallback = fakeJudge("fallback", FALLBACK_VERDICTS)
+    const result = await new FallbackJudge(primary, fallback.judge, {
+      low: LOW,
+      isKept,
+    }).judge(QUESTION, withFallback)
+    expect(fallback.requests).toHaveLength(1)
+    expect(result.fallback).toEqual(["notes/a1.md", "notes/a3.md"])
+    expect(sufficientOf(result)).toBe(0.35)
+  })
+
+  test("system-one-judge AC15 — the primary's sufficient is returned when no note is judged again", async () => {
+    const primary = withExtra(fakeJudge("primary", PRIMARY_VERDICTS).judge, {
+      sufficient: 0.8,
+    })
+    const fallback = fakeJudge("fallback", FALLBACK_VERDICTS)
+    const result = await new FallbackJudge(primary, fallback.judge, {
+      low: LOW,
+      isKept,
+    }).judge(QUESTION, [NOTES[0], NOTES[2], NOTES[4]] as NoteForJudge[])
+    expect(fallback.requests).toHaveLength(0)
+    expect(sufficientOf(result)).toBe(0.8)
+  })
+
+  test("system-one-judge AC15 — a sufficient of 0 is forwarded, with and without a fallback call", async () => {
+    for (const notes of [
+      withFallback,
+      [NOTES[0], NOTES[2]] as NoteForJudge[],
+    ]) {
+      const primary = withExtra(fakeJudge("primary", PRIMARY_VERDICTS).judge, {
+        sufficient: 0,
+      })
+      const result = await new FallbackJudge(
+        primary,
+        fakeJudge("fallback", FALLBACK_VERDICTS).judge,
+        { low: LOW, isKept }
+      ).judge(QUESTION, notes)
+      expect("sufficient" in result).toBe(true)
+      expect(sufficientOf(result)).toBe(0)
+    }
+  })
+
+  test("system-one-judge AC15 — the nothing-kept scope forwards it too, when the fallback does not run", async () => {
+    const primary = withExtra(fakeJudge("primary", PRIMARY_VERDICTS).judge, {
+      sufficient: 0.6,
+    })
+    const fallback = fakeJudge("fallback", FALLBACK_VERDICTS)
+    const result = await new FallbackJudge(primary, fallback.judge, {
+      low: LOW,
+      isKept,
+      when: "nothing-kept",
+    }).judge(QUESTION, withFallback)
+    expect(fallback.requests).toHaveLength(0)
+    expect(sufficientOf(result)).toBe(0.6)
+  })
+
+  test("system-one-judge AC15 — absent when the primary has none, with and without a fallback call", async () => {
+    for (const notes of [
+      withFallback,
+      [NOTES[0], NOTES[2]] as NoteForJudge[],
+    ]) {
+      const result = await new FallbackJudge(
+        fakeJudge("primary", PRIMARY_VERDICTS).judge,
+        fakeJudge("fallback", FALLBACK_VERDICTS).judge,
+        { low: LOW, isKept }
+      ).judge(QUESTION, notes)
+      expect("sufficient" in result).toBe(false)
+    }
+  })
+
+  test("system-one-judge AC15 — the fallback's own sufficient does not replace the primary's, nor appear when the primary has none", async () => {
+    const asked = await new FallbackJudge(
+      withExtra(fakeJudge("primary", PRIMARY_VERDICTS).judge, {
+        sufficient: 0.3,
+      }),
+      withExtra(fakeJudge("fallback", FALLBACK_VERDICTS).judge, {
+        sufficient: 0.9,
+      }),
+      { low: LOW, isKept }
+    ).judge(QUESTION, withFallback)
+    expect(sufficientOf(asked)).toBe(0.3)
+
+    const unasked = await new FallbackJudge(
+      fakeJudge("primary", PRIMARY_VERDICTS).judge,
+      withExtra(fakeJudge("fallback", FALLBACK_VERDICTS).judge, {
+        sufficient: 0.9,
+      }),
+      { low: LOW, isKept }
+    ).judge(QUESTION, withFallback)
+    expect("sufficient" in unasked).toBe(false)
+  })
+
+  test("system-one-judge AC15 — forwarding it leaves the merge, the fallback list and the stages as they were", async () => {
+    const plain = await setup().judge.judge(QUESTION, withFallback)
+    const primary = withExtra(fakeJudge("primary", PRIMARY_VERDICTS).judge, {
+      sufficient: 0.35,
+    })
+    const result = await new FallbackJudge(
+      primary,
+      fakeJudge("fallback", FALLBACK_VERDICTS).judge,
+      { low: LOW, isKept }
+    ).judge(QUESTION, withFallback)
+    expect(result.notes).toEqual(plain.notes)
+    expect(result.fallback).toEqual(plain.fallback)
+    expect(result.calls).toEqual(plain.calls)
+    expect(Object.keys(result.stages ?? {}).sort()).toEqual([
+      "fallbackMs",
+      "judgeMs",
+    ])
+  })
+})

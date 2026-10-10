@@ -57,6 +57,20 @@ function withConfig(
   }
 }
 
+/**
+ * A configuration whose thresholds are `thresholds` over the default ones,
+ * whatever their names (`sufficient` is not in `PolicyConfig` yet).
+ */
+function withAnyThresholds(
+  thresholds: Record<string, number>,
+  budgets: Partial<PolicyConfig["budgets"]> = {}
+): PolicyConfig {
+  return {
+    thresholds: { ...DEFAULT_POLICY.thresholds, ...thresholds },
+    budgets: { ...DEFAULT_POLICY.budgets, ...budgets },
+  }
+}
+
 function deepFreeze<T>(value: T): T {
   if (typeof value === "object" && value !== null) {
     for (const child of Object.values(value)) deepFreeze(child)
@@ -893,9 +907,10 @@ describe("AC6 — configuration", () => {
     })
   })
 
-  test("AC6 — RULES lists the five rule ids in priority order", () => {
+  test("AC6, decision-policy AC11 — RULES lists the six rule ids in priority order", () => {
     expect([...RULES]).toEqual([
       "follow-steps",
+      "follow-kept",
       "answer",
       "explore",
       "rewrite",
@@ -904,8 +919,13 @@ describe("AC6 — configuration", () => {
   })
 
   test("AC6 — every action names a rule from RULES, and each rule is reachable", () => {
+    const lowSufficiency = { sufficient: 0.1 }
     const states: [LoopState, PolicyConfig][] = [
       [state([note("a.md", { step: 0.9 })]), DEFAULT_POLICY],
+      [
+        { ...state([note("a.md", { answer: 0.9 })]), ...lowSufficiency },
+        withAnyThresholds({ sufficient: 0.5 }),
+      ],
       [state([note("a.md", { answer: 0.9 })]), DEFAULT_POLICY],
       [state([note("a.md", { answer: 0.2 })]), DEFAULT_POLICY],
       [state([]), DEFAULT_POLICY],
@@ -1176,7 +1196,7 @@ describe("decision-policy AC8 — keep threshold (Revision 4)", () => {
   test("decision-policy AC8 — POLICIES.C sets keep 0.9, B and DEFAULT_POLICY leave it unset", () => {
     // `strategy` is not in `PolicyConfig` yet: a variable avoids the literal check.
     const expectedC = {
-      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9, sufficient: 0.5 },
       budgets: DEFAULT_POLICY.budgets,
       strategy: {
         openSteps: "above-best-answer",
@@ -1510,18 +1530,23 @@ describe("decision-policy AC9 — strategy (Revision 5)", () => {
       openSteps: "above-best-answer",
       contextSteps: "linked",
     } as const
-    const expectedB = { ...DEFAULT_POLICY, strategy }
+    const expectedB = {
+      ...DEFAULT_POLICY,
+      thresholds: { ...DEFAULT_POLICY.thresholds, sufficient: 0.5 },
+      strategy,
+    }
     const expectedC = {
-      thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+      thresholds: { answer: 0.7, step: 0.7, keep: 0.9, sufficient: 0.5 },
       budgets: DEFAULT_POLICY.budgets,
       strategy,
     }
     expect(policyModule.POLICIES.B).toEqual(expectedB)
     expect(policyModule.POLICIES.C).toEqual(expectedC)
     expect("strategy" in DEFAULT_POLICY).toBe(false)
-    expect(policyModule.POLICIES.B.thresholds).toEqual(
-      DEFAULT_POLICY.thresholds
-    )
+    expect(policyModule.POLICIES.B.thresholds).toEqual({
+      ...DEFAULT_POLICY.thresholds,
+      sufficient: 0.5,
+    })
     expect(policyModule.POLICIES.B.budgets).toEqual(DEFAULT_POLICY.budgets)
   })
 
@@ -1550,5 +1575,410 @@ describe("decision-policy AC9 — strategy (Revision 5)", () => {
       DEFAULT_POLICY
     )
     expect(action).toEqual(opens(["step.md"]))
+  })
+})
+
+describe("decision-policy AC10–AC12 — follow-kept (Revision 6)", () => {
+  /** The state, with the sufficiency the last judgement reported. */
+  function stateSufficient(
+    notes: JudgedNote[],
+    sufficient: number,
+    overrides: Partial<Omit<LoopState, "notes">> = {}
+  ): LoopState {
+    const reported = { sufficient }
+    return { ...state(notes, overrides), ...reported }
+  }
+
+  /** B-like thresholds (kept at 0.5) that ask for sufficiency at 0.5. */
+  function asking(
+    budgets: Partial<PolicyConfig["budgets"]> = {},
+    threshold = 0.5
+  ): PolicyConfig {
+    return withAnyThresholds({ sufficient: threshold }, budgets)
+  }
+
+  /** C's thresholds, with the keep threshold and sufficiency at 0.5. */
+  function askingWithKeep(): PolicyConfig {
+    return withAnyThresholds({
+      answer: 0.7,
+      step: 0.7,
+      keep: 0.9,
+      sufficient: 0.5,
+    })
+  }
+
+  const opens = (
+    paths: string[],
+    rule: "follow-steps" | "follow-kept" | "explore" = "follow-kept"
+  ): Action => ({ type: "expand", rule, paths })
+
+  const ANSWERED: Action = { type: "answer", rule: "answer" }
+
+  test("decision-policy AC11 — a kept openable note and a sufficiency under the threshold: opens the kept note", () => {
+    const action = decide(
+      stateSufficient([note("a.md", { answer: 0.8, none: 0.2 })], 0.2),
+      asking()
+    )
+    expect(action).toEqual(opens(["a.md"]))
+  })
+
+  test("decision-policy AC11 — a kept note that is a step note is opened too (kept in the sense of isKept)", () => {
+    // The step 0.6 does not beat the best answer 0.9: follow-steps leaves it
+    // to follow-kept.
+    const config: PolicyConfig = {
+      ...asking(),
+      strategy: { openSteps: "above-best-answer" },
+    }
+    const action = decide(
+      stateSufficient(
+        [
+          note("answer.md", { answer: 0.9, none: 0.1 }, { expanded: true }),
+          note("step.md", { step: 0.6, none: 0.4 }),
+        ],
+        0.2
+      ),
+      config
+    )
+    expect(action).toEqual(opens(["step.md"]))
+  })
+
+  test("decision-policy AC11 — no sufficiency in the state: the rule does not apply, answers", () => {
+    const action = decide(
+      state([note("a.md", { answer: 0.8, none: 0.2 })]),
+      asking()
+    )
+    expect(action).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC11 — no sufficient threshold in the configuration: the rule does not apply, whatever the state says", () => {
+    const action = decide(
+      stateSufficient([note("a.md", { answer: 0.8, none: 0.2 })], 0.1),
+      DEFAULT_POLICY
+    )
+    expect(action).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC11 — a sufficiency equal to the threshold does not apply, just under it does", () => {
+    const notes = [note("a.md", { answer: 0.8, none: 0.2 })]
+    expect(decide(stateSufficient(notes, 0.5), asking())).toEqual(ANSWERED)
+    expect(decide(stateSufficient(notes, 0.4999), asking())).toEqual(
+      opens(["a.md"])
+    )
+  })
+
+  test("decision-policy AC11 — a sufficiency above the threshold answers", () => {
+    const action = decide(
+      stateSufficient([note("a.md", { answer: 0.8, none: 0.2 })], 0.9),
+      asking()
+    )
+    expect(action).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC11 — a sufficiency of 0 is a value: the rule applies", () => {
+    const action = decide(
+      stateSufficient([note("a.md", { answer: 0.8, none: 0.2 })], 0),
+      asking()
+    )
+    expect(action).toEqual(opens(["a.md"]))
+  })
+
+  test("decision-policy AC11 — the threshold given is the one used: 0.2 is under 0.5 and not under 0.1", () => {
+    const notes = [note("a.md", { answer: 0.8, none: 0.2 })]
+    expect(decide(stateSufficient(notes, 0.2), asking({}, 0.5))).toEqual(
+      opens(["a.md"])
+    )
+    expect(decide(stateSufficient(notes, 0.2), asking({}, 0.1))).toEqual(
+      ANSWERED
+    )
+  })
+
+  test("decision-policy AC11 — no hop left: answers", () => {
+    const notes = [note("a.md", { answer: 0.8, none: 0.2 })]
+    expect(
+      decide(stateSufficient(notes, 0.2, { hops: MAX_HOPS }), asking())
+    ).toEqual(ANSWERED)
+    expect(
+      decide(stateSufficient(notes, 0.2, { hops: MAX_HOPS - 1 }), asking())
+    ).toEqual(opens(["a.md"]))
+  })
+
+  test("decision-policy AC11 — a kept note already expanded, or without unjudged links, is not openable: answers", () => {
+    expect(
+      decide(
+        stateSufficient(
+          [note("a.md", { answer: 0.8, none: 0.2 }, { expanded: true })],
+          0.2
+        ),
+        asking()
+      )
+    ).toEqual(ANSWERED)
+    expect(
+      decide(
+        stateSufficient(
+          [
+            note(
+              "a.md",
+              { answer: 0.8, none: 0.2 },
+              { hasUnjudgedLinks: false }
+            ),
+          ],
+          0.2
+        ),
+        asking()
+      )
+    ).toEqual(ANSWERED)
+  })
+
+  test("decision-policy AC11 — only the openable kept notes are carried", () => {
+    const action = decide(
+      stateSufficient(
+        [
+          note("expanded.md", { answer: 0.9, none: 0.1 }, { expanded: true }),
+          note("dead-end.md", { answer: 0.85 }, { hasUnjudgedLinks: false }),
+          note("weak.md", { answer: 0.3, step: 0.1, none: 0.6 }),
+          note("open.md", { answer: 0.7, none: 0.3 }),
+        ],
+        0.2
+      ),
+      asking()
+    )
+    expect(action).toEqual(opens(["open.md"]))
+  })
+
+  test("decision-policy AC11 — a note that is not kept is not opened by follow-kept: with nothing kept, explore applies", () => {
+    const action = decide(
+      stateSufficient([note("a.md", { answer: 0.3, none: 0.7 })], 0.1),
+      asking()
+    )
+    expect(action).toEqual(opens(["a.md"], "explore"))
+  })
+
+  test("decision-policy AC11 — with nothing kept and nothing openable, rewrite then abstain are unchanged", () => {
+    const notes = [note("a.md", { answer: 0.3, none: 0.7 }, { expanded: true })]
+    expect(decide(stateSufficient(notes, 0.1), asking())).toEqual({
+      type: "rewrite",
+      rule: "rewrite",
+    })
+    expect(
+      decide(stateSufficient(notes, 0.1, { rewrites: MAX_REWRITES }), asking())
+    ).toEqual({ type: "abstain", rule: "abstain" })
+  })
+
+  test("decision-policy AC11 — the paths go by decreasing answer + step, not by answer alone", () => {
+    const action = decide(
+      stateSufficient(
+        [
+          note("a.md", { answer: 0.6, step: 0.1, none: 0.3 }),
+          note("b.md", { answer: 0.8, none: 0.2 }),
+          note("c.md", { answer: 0.5, step: 0.45, none: 0.05 }),
+        ],
+        0.2
+      ),
+      asking()
+    )
+    // Sums: a 0.7, b 0.8, c 0.95; the answers alone would put b first.
+    expect(action).toEqual(opens(["c.md", "b.md", "a.md"]))
+  })
+
+  test("decision-policy AC11 — ties go by order of judgement", () => {
+    const action = decide(
+      stateSufficient(
+        [
+          note("z.md", { answer: 0.6, step: 0.1, none: 0.3 }),
+          note("a.md", { answer: 0.9, none: 0.1 }),
+          note("m.md", { answer: 0.6, step: 0.1, none: 0.3 }),
+          note("b.md", { answer: 0.6, step: 0.1, none: 0.3 }),
+        ],
+        0.2
+      ),
+      asking()
+    )
+    expect(action).toEqual(opens(["a.md", "z.md", "m.md", "b.md"]))
+  })
+
+  test("decision-policy AC11 — at most the explore budget, the best first", () => {
+    const notes = [
+      note("a.md", { answer: 0.6, none: 0.4 }),
+      note("b.md", { answer: 0.9, none: 0.1 }),
+      note("c.md", { answer: 0.7, none: 0.3 }),
+      note("d.md", { answer: 0.8, none: 0.2 }),
+    ]
+    expect(decide(stateSufficient(notes, 0.2), asking({ explore: 2 }))).toEqual(
+      opens(["b.md", "d.md"])
+    )
+    expect(decide(stateSufficient(notes, 0.2), asking({ explore: 1 }))).toEqual(
+      opens(["b.md"])
+    )
+    expect(decide(stateSufficient(notes, 0.2), asking({ explore: 9 }))).toEqual(
+      opens(["b.md", "d.md", "c.md", "a.md"])
+    )
+  })
+
+  test("decision-policy AC11 — follow-steps wins over follow-kept", () => {
+    const action = decide(
+      stateSufficient(
+        [
+          note("answer.md", { answer: 0.9, none: 0.1 }),
+          note("step.md", { step: 0.8, none: 0.2 }),
+        ],
+        0.2
+      ),
+      asking()
+    )
+    expect(action).toEqual(opens(["step.md"], "follow-steps"))
+  })
+
+  test("decision-policy AC11 — follow-kept wins over answer", () => {
+    const notes = [note("a.md", { answer: 0.95, none: 0.05 })]
+    expect(decide(stateSufficient(notes, 0.2), asking())).toMatchObject({
+      type: "expand",
+      rule: "follow-kept",
+    })
+    expect(decide(state(notes), asking())).toMatchObject({
+      type: "answer",
+      rule: "answer",
+    })
+  })
+
+  test("decision-policy AC11 — when follow-steps opens nothing (the step is under the best answer), follow-kept opens the kept notes, step notes included", () => {
+    // The case of the q-013 family: the step is under the best answer.
+    const config: PolicyConfig = {
+      ...withAnyThresholds({ answer: 0.7, step: 0.7, sufficient: 0.5 }),
+      strategy: { openSteps: "above-best-answer" },
+    }
+    const action = decide(
+      stateSufficient(
+        [
+          note("answer.md", { answer: 0.86, none: 0.14 }),
+          note("step.md", { step: 0.8, none: 0.2 }),
+        ],
+        0.2
+      ),
+      config
+    )
+    expect(action).toEqual(opens(["answer.md", "step.md"]))
+  })
+
+  test("decision-policy AC11 — kept in the sense of the keep threshold: answer 0.62 + step 0.33 is opened, 0.5 + 0.3 is not", () => {
+    const config = askingWithKeep()
+    const action = decide(
+      stateSufficient(
+        [
+          note("weak.md", { answer: 0.5, step: 0.3, none: 0.2 }),
+          note("split.md", { answer: 0.62, step: 0.33, none: 0.05 }),
+        ],
+        0.2
+      ),
+      config
+    )
+    expect(action).toEqual(opens(["split.md"]))
+  })
+
+  test("decision-policy AC11 — with the keep threshold and no note kept by it, follow-kept does not apply: explore does", () => {
+    const action = decide(
+      stateSufficient(
+        [note("weak.md", { answer: 0.5, step: 0.3, none: 0.2 })],
+        0.2
+      ),
+      askingWithKeep()
+    )
+    expect(action).toEqual(opens(["weak.md"], "explore"))
+  })
+
+  test("decision-policy AC11 — with the keep threshold, a note with answer 0.8 alone is not kept, so it is not opened by follow-kept", () => {
+    const action = decide(
+      stateSufficient([note("a.md", { answer: 0.8, none: 0.2 })], 0.2),
+      askingWithKeep()
+    )
+    expect(action).toEqual(opens(["a.md"], "explore"))
+  })
+
+  test("decision-policy AC12 — POLICIES.C opens the intermediate note judged answer 0.62 / step 0.33 while the sufficiency is 0.2", () => {
+    const action = decide(
+      stateSufficient(
+        [
+          note("handoff.md", { answer: 0.62, step: 0.33, none: 0.05 }),
+          note("elsewhere.md", { step: 0.4, none: 0.6 }),
+        ],
+        0.2
+      ),
+      policyModule.POLICIES.C
+    )
+    expect(action).toEqual(opens(["handoff.md"]))
+  })
+
+  test("decision-policy AC12 — POLICIES.B and POLICIES.C open a kept note at a sufficiency of 0.49 and answer at 0.5", () => {
+    for (const config of [policyModule.POLICIES.B, policyModule.POLICIES.C]) {
+      const notes = [note("a.md", { answer: 0.95, none: 0.05 })]
+      expect(decide(stateSufficient(notes, 0.49), config)).toEqual(
+        opens(["a.md"])
+      )
+      expect(decide(stateSufficient(notes, 0.5), config)).toEqual(ANSWERED)
+    }
+  })
+
+  test("decision-policy AC12 — POLICIES.B and POLICIES.C set the sufficient threshold to 0.5, DEFAULT_POLICY leaves it unset", () => {
+    const thresholds = (config: PolicyConfig): object => config.thresholds
+    expect(thresholds(policyModule.POLICIES.B)).toHaveProperty(
+      "sufficient",
+      0.5
+    )
+    expect(thresholds(policyModule.POLICIES.C)).toHaveProperty(
+      "sufficient",
+      0.5
+    )
+    expect("sufficient" in DEFAULT_POLICY.thresholds).toBe(false)
+  })
+
+  test("decision-policy AC12 — the sufficient threshold changes nothing else in the configuration of B and C", () => {
+    const withoutSufficient = (config: PolicyConfig) =>
+      Object.fromEntries(
+        Object.entries(config.thresholds).filter(
+          ([key]) => key !== "sufficient"
+        )
+      )
+    expect(withoutSufficient(policyModule.POLICIES.B)).toEqual({
+      answer: 0.5,
+      step: 0.5,
+    })
+    expect(withoutSufficient(policyModule.POLICIES.C)).toEqual({
+      answer: 0.7,
+      step: 0.7,
+      keep: 0.9,
+    })
+    expect(DEFAULT_POLICY.thresholds).toEqual({ answer: 0.5, step: 0.5 })
+  })
+
+  test("decision-policy AC10 — a state without sufficiency decides as before, with any configuration", () => {
+    const states = [
+      state([note("a.md", { step: 0.9 })]),
+      state([note("a.md", { answer: 0.9 })]),
+      state([note("a.md", { answer: 0.2 })]),
+      state([]),
+      state([], { rewrites: MAX_REWRITES }),
+    ]
+    for (const s of states) {
+      expect(decide(s, asking())).toEqual(decide(s, DEFAULT_POLICY))
+    }
+  })
+
+  test("decision-policy AC11 — decide does not modify frozen inputs and is deterministic", () => {
+    const s = deepFreeze(
+      stateSufficient(
+        [
+          note("a.md", { answer: 0.6, step: 0.1, none: 0.3 }),
+          note("b.md", { answer: 0.9, none: 0.1 }),
+        ],
+        0.2
+      )
+    )
+    const config = deepFreeze(structuredClone(asking()))
+    const configBefore = structuredClone(config)
+    const first = decide(s, config)
+    expect(first).toEqual(opens(["b.md", "a.md"]))
+    expect(decide(s, config)).toEqual(first)
+    expect(config).toEqual(configBefore)
+    expect(s.notes.map((n) => n.path)).toEqual(["a.md", "b.md"])
+    expect(s).toHaveProperty("sufficient", 0.2)
   })
 })

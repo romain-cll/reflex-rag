@@ -3229,3 +3229,461 @@ describe("AC16 (revision 4) — progress", () => {
     expect(calls).toBe(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Revision 5 — the retrieval brick measured alone
+// ---------------------------------------------------------------------------
+
+function retrievalMsOf(record: unknown): number {
+  return plain(record).retrievalMs as number
+}
+
+describe("AC17 (revision 5) — retrieval time", () => {
+  test("AC17 — retrievalMs is a finite number on every record", async () => {
+    const { records } = await runWith([makeQuestion(1), makeQuestion(2)]).result
+    for (const record of records) {
+      expect(typeof retrievalMsOf(record)).toBe("number")
+      expect(Number.isFinite(retrievalMsOf(record))).toBe(true)
+      expect(retrievalMsOf(record)).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  test("AC17 — retrievalMs is at least the time retrieve took, and less than latencyMs when the answer takes time", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        { ...goodStep(question), retrieveDelayMs: 40, answerDelayMs: 60 },
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    const record = records[0]!
+    expect(retrievalMsOf(record)).toBeGreaterThanOrEqual(35)
+    expect(retrievalMsOf(record)).toBeLessThan(1000)
+    expect(record.latencyMs - retrievalMsOf(record)).toBeGreaterThanOrEqual(50)
+  })
+
+  test("AC17 — retrievalMs never exceeds latencyMs", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [question.id, { ...goodStep(question), retrieveDelayMs: 40 }],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    expect(retrievalMsOf(records[0])).toBeGreaterThanOrEqual(35)
+    expect(retrievalMsOf(records[0])).toBeLessThanOrEqual(records[0]!.latencyMs)
+  })
+
+  test("AC17 — retrievalMs is the wall-clock time of retrieve, not the sum of the stages it reports", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          ...goodStep(question),
+          loop: loopOf("sufficient", 1, 1),
+          // 1000 ms of stages reported by a retrieve that took about 30 ms.
+          stages: {
+            searchMs: 100,
+            judgeMs: 400,
+            fallbackMs: 300,
+            rewriteMs: 200,
+          },
+          retrieveDelayMs: 30,
+        },
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    expect(retrievalMsOf(records[0])).toBeGreaterThanOrEqual(25)
+    expect(retrievalMsOf(records[0])).toBeLessThan(900)
+  })
+
+  test("AC17 — retrievalMs stops at the end of retrieve, also when the answer returns no call", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          ...goodStep(question),
+          loop: loopOf("abstain-nothing-relevant", 0, 0, "abstain"),
+          answerCall: null,
+          retrieveDelayMs: 30,
+          answerDelayMs: 60,
+        },
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "B",
+      overrides,
+    }).result
+    expect(retrievalMsOf(records[0])).toBeGreaterThanOrEqual(25)
+    expect(
+      records[0]!.latencyMs - retrievalMsOf(records[0])
+    ).toBeGreaterThanOrEqual(50)
+  })
+
+  test("AC17 — a loop error has the time up to the error as retrievalMs", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: [],
+          output: answered("unused"),
+          retrieveDelayMs: 40,
+          loopError: { message: "judge failed", calls: [], steps: [] },
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], {
+      config: "C",
+      overrides,
+    }).result
+    expect(plain(records[0]).error).toBe("judge failed")
+    expect(retrievalMsOf(records[0])).toBeGreaterThanOrEqual(35)
+    expect(retrievalMsOf(records[0])).toBeLessThan(1000)
+    expect(retrievalMsOf(records[0])).toBeLessThanOrEqual(records[0]!.latencyMs)
+  })
+
+  test("AC17 — an answer error keeps the retrieval time apart from the time of the failed answer", async () => {
+    const question = makeQuestion(1)
+    const overrides = new Map([
+      [
+        question.id,
+        {
+          notes: question.sources,
+          output: answered("unused"),
+          answerError: { message: "answer failed" },
+          retrieveDelayMs: 40,
+          answerDelayMs: 60,
+        } satisfies Step,
+      ],
+    ])
+    const { records } = await runWith([question], { overrides }).result
+    expect(plain(records[0]).error).toBe("answer failed")
+    expect(retrievalMsOf(records[0])).toBeGreaterThanOrEqual(35)
+    expect(
+      records[0]!.latencyMs - retrievalMsOf(records[0])
+    ).toBeGreaterThanOrEqual(50)
+  })
+
+  test("AC17 — the trace line of a record holds its retrievalMs", async () => {
+    const question = makeQuestion(1)
+    const { result, runsDir } = runWith([question])
+    const { records } = await result
+    const lines = readFileSync(join(readRunDir(runsDir), "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+    const traced = JSON.parse(lines[1]!) as Record<string, unknown>
+    expect(typeof traced.retrievalMs).toBe("number")
+    expect(traced.retrievalMs).toBe(retrievalMsOf(records[0]))
+  })
+})
+
+describe("AC18 (revision 5) — retrieval measures", () => {
+  /** Retrieval cost 1 USD: the judge and the fallback at 0.50 each; the answer costs 0.60 more. */
+  const judgeAndFallback = [
+    roleCall("judge", HAIKU, 0, MILLION),
+    roleCall("fallback", HAIKU, 0, MILLION),
+  ]
+  const answerCall = roleCall("answer", HAIKU, MILLION, MILLION)
+
+  const costRecords = [
+    // Retrieval cost 1.
+    makeRecord(1, {
+      category: "simple",
+      calls: [...judgeAndFallback, answerCall],
+    }),
+    // 2: the rewriter, at 2 USD per million input tokens.
+    makeRecord(2, {
+      category: "temporal",
+      calls: [roleCall("rewrite", "claude-sonnet-5-5", MILLION, 0), answerCall],
+    }),
+    // 0.5.
+    makeRecord(3, {
+      category: "temporal",
+      calls: [roleCall("judge", HAIKU, 0, MILLION), answerCall],
+    }),
+    // 0.5.
+    makeRecord(4, {
+      category: "simple",
+      calls: [roleCall("judge", HAIKU, 0, MILLION), answerCall],
+    }),
+  ]
+
+  test("AC18 — meanRetrievalCostUsd is the mean per question of the cost of the calls that are not the answer, per category and overall", () => {
+    const { overall, byCategory } = summarize(costRecords)
+    expect(plain(overall).meanRetrievalCostUsd).toBeCloseTo(1, 9)
+    expect(plain(byCategory.simple).meanRetrievalCostUsd).toBeCloseTo(0.75, 9)
+    expect(plain(byCategory.temporal).meanRetrievalCostUsd).toBeCloseTo(1.25, 9)
+  })
+
+  test("AC18 — the answer calls are left out: a question whose only call is the answer costs 0 to retrieve, not null", () => {
+    const records = [
+      makeRecord(1, { calls: [...judgeAndFallback, answerCall] }),
+      makeRecord(2, { calls: [answerCall] }),
+    ]
+    expect(plain(summarize(records).overall).meanRetrievalCostUsd).toBeCloseTo(
+      0.5,
+      9
+    )
+    expect(
+      plain(summarize([makeRecord(1, { calls: [answerCall] })]).overall)
+        .meanRetrievalCostUsd
+    ).toBe(0)
+  })
+
+  test("AC18 — meanRetrievalCostUsd is null when a call has no role, as in the traces written before roles", () => {
+    const old = makeRecord(5, {
+      category: "temporal",
+      calls: [call(HAIKU, MILLION, 0, 10), answerCall],
+    })
+    const { overall, byCategory } = summarize([...costRecords, old])
+    expect(plain(overall).meanRetrievalCostUsd).toBeNull()
+    expect(plain(byCategory.temporal).meanRetrievalCostUsd).toBeNull()
+    // The category whose records all have roles keeps its mean.
+    expect(plain(byCategory.simple).meanRetrievalCostUsd).toBeCloseTo(0.75, 9)
+  })
+
+  test("AC18 — the default hand-built record, whose call has no role, gives a null retrieval cost", () => {
+    const { overall } = summarize([makeRecord(1), makeRecord(2)])
+    expect(plain(overall).meanRetrievalCostUsd).toBeNull()
+  })
+
+  /** Retrieval times 100, 200, ..., 2100 ms in a scrambled order; latencies are 5 s more. */
+  const retrievalTimes = Array.from({ length: 21 }, (_, i) => (i + 1) * 100)
+  const scrambled = [
+    ...retrievalTimes.filter((_, i) => i % 2 === 1).reverse(),
+    ...retrievalTimes.filter((_, i) => i % 2 === 0),
+  ]
+
+  test("AC18 — retrievalP50Ms and retrievalP95Ms are nearest-rank percentiles of retrievalMs, not of latencyMs", () => {
+    const records = scrambled.map((retrievalMs, i) =>
+      makeRecord(i + 1, { retrievalMs, latencyMs: retrievalMs + 5000 })
+    )
+    const { overall, byCategory } = summarize(records)
+    expect(plain(overall).retrievalP50Ms).toBe(1100)
+    expect(plain(overall).retrievalP95Ms).toBe(2000)
+    expect(plain(byCategory.simple).retrievalP50Ms).toBe(1100)
+    expect(plain(byCategory.simple).retrievalP95Ms).toBe(2000)
+  })
+
+  test("AC18 — the retrieval percentiles are computed per category", () => {
+    const records = [
+      makeRecord(1, { category: "simple", retrievalMs: 100, latencyMs: 900 }),
+      makeRecord(2, {
+        category: "temporal",
+        retrievalMs: 9000,
+        latencyMs: 9500,
+      }),
+    ]
+    const { overall, byCategory } = summarize(records)
+    expect(plain(byCategory.simple).retrievalP50Ms).toBe(100)
+    expect(plain(byCategory.simple).retrievalP95Ms).toBe(100)
+    expect(plain(byCategory.temporal).retrievalP50Ms).toBe(9000)
+    expect(plain(byCategory.temporal).retrievalP95Ms).toBe(9000)
+    expect(plain(overall).retrievalP50Ms).toBe(100)
+    expect(plain(overall).retrievalP95Ms).toBe(9000)
+  })
+
+  test("AC18 — a record without retrievalMs but with stages counts latencyMs minus answerMs", () => {
+    const old = makeRecord(1, {
+      latencyMs: 1000,
+      stages: { ...zeroStages(), searchMs: 50, judgeMs: 350, answerMs: 400 },
+    })
+    const alone = plain(summarize([old]).overall)
+    expect(alone.retrievalP50Ms).toBe(600)
+    expect(alone.retrievalP95Ms).toBe(600)
+
+    const records = [
+      makeRecord(2, { retrievalMs: 200, latencyMs: 700 }),
+      makeRecord(3, {
+        latencyMs: 1000,
+        stages: { ...zeroStages(), answerMs: 400 },
+      }),
+    ]
+    // Sorted 200, 600: rank 1 for the median, rank 2 for p95.
+    const { overall } = summarize(records)
+    expect(plain(overall).retrievalP50Ms).toBe(200)
+    expect(plain(overall).retrievalP95Ms).toBe(600)
+  })
+
+  test("AC18 — a record with neither retrievalMs nor stages is left out of the percentiles", () => {
+    const neither = makeRecord(1, { latencyMs: 9999, stages: undefined })
+    const withTime = makeRecord(2, { retrievalMs: 200, latencyMs: 700 })
+    const { overall } = summarize([neither, withTime])
+    expect(plain(overall).retrievalP50Ms).toBe(200)
+    expect(plain(overall).retrievalP95Ms).toBe(200)
+  })
+
+  test("AC18 — the retrieval percentiles and cost are null for records from before retrievalMs, stages and roles", () => {
+    const records = [
+      makeRecord(1, { latencyMs: 800, stages: undefined }),
+      makeRecord(2, {
+        category: "temporal",
+        latencyMs: 1200,
+        stages: undefined,
+      }),
+    ]
+    const { overall, byCategory } = summarize(records)
+    for (const metrics of [overall, byCategory.simple, byCategory.temporal]) {
+      expect(plain(metrics).retrievalP50Ms).toBeNull()
+      expect(plain(metrics).retrievalP95Ms).toBeNull()
+      expect(plain(metrics).meanRetrievalCostUsd).toBeNull()
+    }
+  })
+
+  test("AC18 — the retrieval percentiles are null when there is no record", () => {
+    const { overall } = summarize([])
+    expect(plain(overall).retrievalP50Ms).toBeNull()
+    expect(plain(overall).retrievalP95Ms).toBeNull()
+  })
+
+  describe("in a run", () => {
+    const questions = [makeQuestion(1), makeQuestion(2)]
+    const answerStep = roleCall("answer", HAIKU, MILLION, MILLION)
+
+    /** Retrieval cost 0.5 for q-001 and 2.5 for q-002: a mean of 1.5. */
+    function roledOverrides(): Map<string, Step> {
+      const [first, second] = questions as [Question, Question]
+      return new Map<string, Step>([
+        [
+          first.id,
+          {
+            ...goodStep(first),
+            retrievalCalls: [roleCall("judge", HAIKU, 0, MILLION)],
+            answerCall: answerStep,
+            retrieveDelayMs: 30,
+            answerDelayMs: 40,
+          },
+        ],
+        [
+          second.id,
+          {
+            ...goodStep(second),
+            retrievalCalls: [
+              roleCall("judge", HAIKU, 0, MILLION),
+              roleCall("rewrite", "claude-sonnet-5-5", MILLION, 0),
+            ],
+            answerCall: answerStep,
+            retrieveDelayMs: 30,
+            answerDelayMs: 40,
+          },
+        ],
+      ])
+    }
+
+    test("AC18 — runEval summarizes the retrieval cost and times of its records, and writes them in summary.json", async () => {
+      const { result, runsDir } = runWith(questions, {
+        overrides: roledOverrides(),
+      })
+      const { summary } = await result
+      const overall = plain(summary.overall)
+      expect(overall.meanRetrievalCostUsd).toBeCloseTo(1.5, 9)
+      expect(overall.retrievalP50Ms as number).toBeGreaterThanOrEqual(25)
+      expect(overall.retrievalP95Ms as number).toBeGreaterThanOrEqual(25)
+      // The answerer's 40 ms are in the end-to-end latency only.
+      expect(summary.overall.latencyP50Ms as number).toBeGreaterThanOrEqual(
+        (overall.retrievalP50Ms as number) + 35
+      )
+      const written = JSON.parse(
+        readFileSync(join(readRunDir(runsDir), "summary.json"), "utf8")
+      ) as { overall: Record<string, number> }
+      expect(written.overall.meanRetrievalCostUsd).toBeCloseTo(1.5, 9)
+      expect(written.overall.retrievalP50Ms).toBe(
+        overall.retrievalP50Ms as number
+      )
+      expect(written.overall.retrievalP95Ms).toBe(
+        overall.retrievalP95Ms as number
+      )
+    })
+
+    interface ReportTable {
+      header: string[]
+      rows: Map<string, string[]>
+    }
+
+    function reportTables(report: string): ReportTable[] {
+      const tables: ReportTable[] = []
+      let current: string[][] = []
+      const flush = () => {
+        if (current.length > 0) {
+          const [header, , ...body] = current as [
+            string[],
+            string[],
+            ...string[][],
+          ]
+          tables.push({
+            header,
+            rows: new Map(body.map((cells) => [cells[0]!, cells])),
+          })
+        }
+        current = []
+      }
+      for (const line of report.split("\n")) {
+        if (!line.startsWith("|")) {
+          flush()
+          continue
+        }
+        current.push(
+          line
+            .replace(/^\||\|$/g, "")
+            .split("|")
+            .map((cell) => cell.trim())
+        )
+      }
+      flush()
+      return tables
+    }
+
+    function reportCell(report: string, column: string, label: string): string {
+      const table = reportTables(report).find((t) => t.header.includes(column))
+      expect({ column, found: table !== undefined }).toEqual({
+        column,
+        found: true,
+      })
+      const row = table!.rows.get(label)
+      expect(row).toBeDefined()
+      return row![table!.header.indexOf(column)]!
+    }
+
+    async function reportOf(overrides?: Map<string, Step>): Promise<string> {
+      const { result, runsDir } = runWith(questions, { overrides })
+      await result
+      return readFileSync(join(readRunDir(runsDir), "report.md"), "utf8")
+    }
+
+    test("AC18 — report.md shows the retrieval cost and the retrieval p50 and p95 next to the end-to-end ones", async () => {
+      const report = await reportOf(roledOverrides())
+      for (const label of ["simple", "overall"]) {
+        expect(
+          reportCell(report, "retrieval cost/question (USD)", label)
+        ).toMatch(/^\d/)
+        expect(reportCell(report, "retrieval p50 (ms)", label)).toMatch(/^\d/)
+        expect(reportCell(report, "retrieval p95 (ms)", label)).toMatch(/^\d/)
+      }
+      expect(
+        Number(reportCell(report, "retrieval cost/question (USD)", "overall"))
+      ).toBeCloseTo(1.5, 5)
+      expect(
+        Number(reportCell(report, "retrieval p50 (ms)", "overall"))
+      ).toBeLessThan(Number(reportCell(report, "p50 (ms)", "overall")))
+      // The end-to-end columns are still there, for the whole question.
+      expect(reportCell(report, "cost/question (USD)", "overall")).toMatch(
+        /^\d/
+      )
+      expect(reportCell(report, "p95 (ms)", "overall")).toMatch(/^\d/)
+    })
+
+    test("AC18 — report.md shows - for a retrieval cost that the missing roles make unknown", async () => {
+      // goodStep's answer call has no role.
+      const report = await reportOf()
+      expect(
+        reportCell(report, "retrieval cost/question (USD)", "overall")
+      ).toBe("-")
+      expect(reportCell(report, "retrieval p50 (ms)", "overall")).toMatch(/^\d/)
+    })
+  })
+})

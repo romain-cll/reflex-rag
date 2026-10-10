@@ -167,7 +167,12 @@ interface Scenario {
   /** Milliseconds each fake waits before answering. */
   delays?: { retrieve?: number; judge?: number; rewriter?: number }
   /** Extra fields of the nth judgement (from 0): fallback paths, stages. */
-  judgements?: Array<Pick<Judgement, "fallback" | "stages" | "vetoed">>
+  judgements?: Array<
+    Pick<Judgement, "fallback" | "stages" | "vetoed"> & {
+      /** What the judge reports of the sufficiency of the notes. */
+      sufficient?: number
+    }
+  >
 }
 
 function wait(ms: number | undefined): Promise<void> {
@@ -2336,5 +2341,349 @@ describe("AC18 — vetoed in the trace", () => {
     })
     expect(result.steps.map((s) => s.kind)).toEqual(["search", "rewrite"])
     expect(result.steps.map((s) => s.vetoed)).toEqual([["a.md"], []])
+  })
+})
+
+/** The policy of C as the thresholds and the strategy of Revision 4 to 6 set it. */
+const C_LIKE = policyWithStrategy(
+  { openSteps: "above-best-answer", contextSteps: "linked" },
+  {},
+  { answer: 0.7, step: 0.7, keep: 0.9 }
+)
+
+describe("retrieval-loop AC17 — answer notes", () => {
+  test("retrieval-loop AC17 — a kept note with answer 0.62 / step 0.33 next to an answer note 0.9: both in the context, ranked by answer (C, linked steps)", async () => {
+    const { result } = await run({
+      policy: C_LIKE,
+      world: worldOf([], { extra: ["k", "a"] }),
+      search: { [QUESTION]: hits("k", "a") },
+      verdicts: {
+        "k.md": { answer: 0.62, step: 0.33, none: 0.05 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(result.outcome).toEqual({ type: "answer", rule: "answer" })
+    expect(contextPaths(result)).toEqual(["a.md", "k.md"])
+    expect(result.kept).toEqual(["a.md", "k.md"])
+  })
+
+  test("retrieval-loop AC17 — a kept note whose answer equals its step counts as an answer note", async () => {
+    const { result } = await run({
+      policy: C_LIKE,
+      world: worldOf([], { extra: ["k", "a"] }),
+      search: { [QUESTION]: hits("k", "a") },
+      verdicts: {
+        "k.md": { answer: 0.47, step: 0.47, none: 0.06 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "k.md"])
+  })
+
+  test("retrieval-loop AC17 — a kept note whose step is above its answer, and under the step threshold, stays out next to an answer note", async () => {
+    const { result } = await run({
+      policy: C_LIKE,
+      world: worldOf([], { extra: ["k", "a"] }),
+      search: { [QUESTION]: hits("k", "a") },
+      verdicts: {
+        "k.md": { answer: 0.4, step: 0.55, none: 0.05 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md"])
+  })
+
+  test("retrieval-loop AC17 — answer notes are ranked by decreasing answer, whichever way they qualify", async () => {
+    const { result } = await run({
+      policy: C_LIKE,
+      world: worldOf([], { extra: ["k1", "k2", "a"] }),
+      search: { [QUESTION]: hits("k1", "k2", "a") },
+      verdicts: {
+        "k1.md": { answer: 0.55, step: 0.4, none: 0.05 },
+        "k2.md": { answer: 0.65, step: 0.3, none: 0.05 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "k2.md", "k1.md"])
+  })
+
+  test("retrieval-loop AC17 — an answer note by AC17 is followed by its ancestors, and comes before the free step notes", async () => {
+    // p (step 0.95) opens k (answer 0.62, step 0.33): k is the answer note,
+    // p its ancestor. Without AC17 no note is an answer note and p comes first.
+    const { result } = await run({
+      policy: C_LIKE,
+      world: worldOf([["p", "k"]]),
+      search: { [QUESTION]: hits("p") },
+      verdicts: {
+        "p.md": { step: 0.95, none: 0.05 },
+        "k.md": { answer: 0.62, step: 0.33, none: 0.05 },
+      },
+    })
+    expect(result.steps[1]!.parents).toEqual({ "k.md": "p.md" })
+    expect(contextPaths(result)).toEqual(["k.md", "p.md"])
+  })
+
+  test("retrieval-loop AC17 — with contextSteps all, the answer notes by AC17 come before the other kept notes", async () => {
+    // s is a step note linked to nothing (step 0.85); k is an answer note by
+    // AC17. All-steps order: answer notes, then the other kept notes by step.
+    const { result } = await run({
+      policy: policyWithStrategy(
+        { contextSteps: "all" },
+        {},
+        {
+          answer: 0.7,
+          step: 0.7,
+          keep: 0.9,
+        }
+      ),
+      world: worldOf([], { extra: ["s", "k", "a"] }),
+      search: { [QUESTION]: hits("s", "k", "a") },
+      verdicts: {
+        "s.md": { answer: 0.1, step: 0.85, none: 0.05 },
+        "k.md": { answer: 0.62, step: 0.33, none: 0.05 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "k.md", "s.md"])
+  })
+
+  test("retrieval-loop AC17 — step notes are unchanged: a step note linked to the answer note follows it, one linked to nothing is left out", async () => {
+    const { result } = await run({
+      policy: C_LIKE,
+      world: worldOf([["s", "a"]], { extra: ["f"] }),
+      search: { [QUESTION]: hits("f", "s", "a") },
+      verdicts: {
+        "f.md": { answer: 0.1, step: 0.85, none: 0.05 },
+        "s.md": { answer: 0.1, step: 0.8, none: 0.1 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md", "s.md"])
+  })
+
+  test("retrieval-loop AC17 — B's thresholds: a step-kept note with a lower answer is not an answer note, the context is as before", async () => {
+    const { result } = await run({
+      policy: policyWithStrategy({ contextSteps: "linked" }),
+      world: worldOf([], { extra: ["f", "a"] }),
+      search: { [QUESTION]: hits("f", "a") },
+      verdicts: {
+        "f.md": { answer: 0.3, step: 0.6, none: 0.1 },
+        "a.md": { answer: 0.9, none: 0.1 },
+      },
+    })
+    expect(contextPaths(result)).toEqual(["a.md"])
+  })
+})
+
+/** The policy of the loop tests asking for sufficiency at 0.5. */
+function policyAsking(
+  budgets: Partial<PolicyConfig["budgets"]> = {},
+  thresholds: Partial<PolicyConfig["thresholds"]> = {}
+): PolicyConfig {
+  const base = policyWith(budgets, thresholds)
+  const sufficiency = { sufficient: 0.5 }
+  return { ...base, thresholds: { ...base.thresholds, ...sufficiency } }
+}
+
+/** The `sufficient` of a step, whether the type of steps has it yet or not. */
+function sufficientOf(step: object): number | undefined {
+  return (step as { sufficient?: number }).sufficient
+}
+
+describe("retrieval-loop AC18 — sufficiency", () => {
+  test("retrieval-loop AC18 — a kept note with unjudged links is opened by follow-kept when the judge reports sufficient 0.2, then its target is judged and the loop answers", async () => {
+    const { result, judgeCalls } = await run({
+      policy: policyAsking(),
+      world: worldOf([["a", "t"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { answer: 0.6, none: 0.4 },
+        "t.md": { answer: 0.9, none: 0.1 },
+      },
+      judgements: [{ sufficient: 0.2 }],
+    })
+    expect(result.steps.map((s) => s.action)).toEqual([
+      { type: "expand", rule: "follow-kept", paths: ["a.md"] },
+      { type: "answer", rule: "answer" },
+    ])
+    expect(result.steps[1]!.kind).toBe("expand")
+    expect(result.steps[1]!.expanded).toEqual(["a.md"])
+    expect(result.steps[1]!.parents).toEqual({ "t.md": "a.md" })
+    expect(judgeCalls).toHaveLength(2)
+    expect(paths(judgeCalls[1]!.notes)).toEqual(["t.md"])
+    expect(result.hops).toBe(1)
+    expect(contextPaths(result)).toEqual(["t.md", "a.md"])
+  })
+
+  test("retrieval-loop AC18 — a judge that never reports sufficiency never triggers follow-kept: answers at once, steps carry no sufficient", async () => {
+    const { result } = await run({
+      policy: policyAsking(),
+      world: worldOf([["a", "t"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.6, none: 0.4 } },
+    })
+    expect(result.steps.map((s) => s.action)).toEqual([
+      { type: "answer", rule: "answer" },
+    ])
+    expect(result.hops).toBe(0)
+    for (const step of result.steps) {
+      expect("sufficient" in step).toBe(false)
+    }
+  })
+
+  test("retrieval-loop AC18 — a sufficiency at the threshold or above answers", async () => {
+    for (const sufficient of [0.5, 0.95]) {
+      const { result } = await run({
+        policy: policyAsking(),
+        world: worldOf([["a", "t"]]),
+        search: { [QUESTION]: hits("a") },
+        verdicts: { "a.md": { answer: 0.6, none: 0.4 } },
+        judgements: [{ sufficient }],
+      })
+      expect(result.steps.map((s) => s.action.rule)).toEqual(["answer"])
+      expect(result.hops).toBe(0)
+    }
+  })
+
+  test("retrieval-loop AC18 — a sufficiency of 0 is a value: it is recorded and follow-kept applies", async () => {
+    const { result } = await run({
+      policy: policyAsking(),
+      world: worldOf([["a", "t"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.6, none: 0.4 } },
+      judgements: [{ sufficient: 0 }],
+    })
+    expect(sufficientOf(result.steps[0]!)).toBe(0)
+    expect(result.steps[0]!.action).toEqual({
+      type: "expand",
+      rule: "follow-kept",
+      paths: ["a.md"],
+    })
+  })
+
+  test("retrieval-loop AC18 — a policy without a sufficient threshold ignores the value, the step still records it", async () => {
+    const { result } = await run({
+      policy: policyWith(),
+      world: worldOf([["a", "t"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { answer: 0.6, none: 0.4 } },
+      judgements: [{ sufficient: 0.1 }],
+    })
+    expect(result.steps.map((s) => s.action.rule)).toEqual(["answer"])
+    expect(sufficientOf(result.steps[0]!)).toBe(0.1)
+  })
+
+  test("retrieval-loop AC18 — each step records the sufficiency its own judgement reported, and none when it reported none", async () => {
+    const { result } = await run({
+      policy: policyAsking({ explore: 1 }),
+      world: worldOf([
+        ["a", "c"],
+        ["b", "d"],
+      ]),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: {
+        "a.md": { answer: 0.8, none: 0.2 },
+        "b.md": { answer: 0.7, none: 0.3 },
+      },
+      judgements: [{ sufficient: 0.2 }, {}, {}],
+    })
+    expect(result.steps.map((s) => s.kind)).toEqual([
+      "search",
+      "expand",
+      "expand",
+    ])
+    expect(sufficientOf(result.steps[0]!)).toBe(0.2)
+    expect("sufficient" in result.steps[1]!).toBe(false)
+    expect("sufficient" in result.steps[2]!).toBe(false)
+  })
+
+  test("retrieval-loop AC18 — decide gets the sufficiency of the last judgement that reported one: a later judgement without one keeps the earlier value", async () => {
+    // Turn 1: a and b kept, sufficient 0.2, explore 1: opens a (0.8 > 0.7).
+    // Turn 2 judges c with no sufficiency: the 0.2 still holds, b is opened.
+    // Turn 3 judges d; the hops are spent, the loop answers.
+    const { result, judgeCalls } = await run({
+      policy: policyAsking({ explore: 1 }),
+      world: worldOf([
+        ["a", "c"],
+        ["b", "d"],
+      ]),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: {
+        "a.md": { answer: 0.8, none: 0.2 },
+        "b.md": { answer: 0.7, none: 0.3 },
+      },
+      judgements: [{ sufficient: 0.2 }, {}, {}],
+    })
+    expect(result.steps.map((s) => s.action)).toEqual([
+      { type: "expand", rule: "follow-kept", paths: ["a.md"] },
+      { type: "expand", rule: "follow-kept", paths: ["b.md"] },
+      { type: "answer", rule: "answer" },
+    ])
+    expect(judgeCalls).toHaveLength(3)
+    expect(result.hops).toBe(2)
+  })
+
+  test("retrieval-loop AC18 — a later judgement that reports a value replaces the earlier one", async () => {
+    // Turn 1 reports 0.2 and a is opened; turn 2 reports 0.8: b stays unopened.
+    const { result } = await run({
+      policy: policyAsking({ explore: 1 }),
+      world: worldOf([
+        ["a", "c"],
+        ["b", "d"],
+      ]),
+      search: { [QUESTION]: hits("a", "b") },
+      verdicts: {
+        "a.md": { answer: 0.8, none: 0.2 },
+        "b.md": { answer: 0.7, none: 0.3 },
+      },
+      judgements: [{ sufficient: 0.2 }, { sufficient: 0.8 }],
+    })
+    expect(result.steps.map((s) => s.action)).toEqual([
+      { type: "expand", rule: "follow-kept", paths: ["a.md"] },
+      { type: "answer", rule: "answer" },
+    ])
+    expect(result.steps.map(sufficientOf)).toEqual([0.2, 0.8])
+    expect(result.hops).toBe(1)
+  })
+
+  test("retrieval-loop AC18 — a low value reported on a rewrite turn applies to the notes found by it", async () => {
+    // Nothing is kept on the first search: explore opens a, which leads to
+    // nothing, then a rewrite finds the kept note k and its judgement says 0.2.
+    const { result } = await run({
+      policy: policyAsking({ maxHops: 3 }),
+      world: worldOf([
+        ["a", "t"],
+        ["k", "u"],
+      ]),
+      search: { [QUESTION]: hits("a"), "rewritten 1": hits("k") },
+      verdicts: { "k.md": { answer: 0.9, none: 0.1 } },
+      judgements: [
+        { sufficient: 0.9 },
+        { sufficient: 0.9 },
+        { sufficient: 0.2 },
+      ],
+    })
+    expect(result.steps.map((s) => s.kind)).toEqual([
+      "search",
+      "expand",
+      "rewrite",
+      "expand",
+    ])
+    expect(result.steps[2]!.action).toEqual({
+      type: "expand",
+      rule: "follow-kept",
+      paths: ["k.md"],
+    })
+  })
+
+  test("retrieval-loop AC18 — an abstaining loop records the sufficiency of its turns too", async () => {
+    const { result } = await run({
+      policy: policyAsking({ maxRewrites: 0 }),
+      world: worldOf([], { extra: ["a"] }),
+      search: { [QUESTION]: hits("a") },
+      judgements: [{ sufficient: 0.3 }],
+    })
+    expect(result.outcome.type).toBe("abstain")
+    expect(sufficientOf(result.steps[0]!)).toBe(0.3)
   })
 })
