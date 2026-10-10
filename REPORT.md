@@ -407,7 +407,49 @@ These are single runs, so a 2-answer gap is noise. Some commits bundle several c
 | The note naming the person was kept but never opened, so the person's page stayed unjudged (q-013, q-023, q-026)                          | the judge says whether the answer is complete; the policy opens the kept notes while it is not (decision-policy, Revision 6)                                  | C `ce00e69` → `a339538` |    85.4% → 89.6% | 68.6% → 71.0% | 52 → 54/60 |                   31 → 32 |
 | The Haiku fallback ran in half the questions, mostly after the answer was found (section 4)                                               | fallback only while no answer note is kept (system-one-judge, Revision 6)                                                                                     | C `a339538` → `0ba47d7` |    89.6% → 93.8% | 71.0% → 72.0% | 54 → 57/60 |                    32 → 2 |
 
-The full path, with its dead ends, is in the spec revisions of `docs/features/` and in `docs/experiments/README.md`.
+### What did not work
+
+**The judge's verdicts were cut off by its own thinking.**
+
+- **Symptom**: the first B run on the tuning split (`runs/_superseded/2026-10-09T14-37-20-166Z-B-tuning`, commit `bbe74a3`) lost 18 of its 60 questions to `loop_error`, all with "Anthropic output truncated (stop_reason max_tokens)", and answered 30/60.
+- **Cause**: Haiku 5.5 thinks adaptively even at effort `low`, and its thinking tokens count against `max_tokens`, so the JSON verdicts were cut off.
+- **Fix**: every Anthropic call now gets 4,096 tokens of headroom on top of its visible budget (answerer spec, AC7; commit `341aac8`). The next run had no loop error and answered 44/60.
+- **Why it matters**: this was a harness failure, not a model failure. It showed up as such only because the failure taxonomy counts loop errors apart from wrong answers.
+
+**The brief's judge: scoring links from their sentence.**
+
+- **Design**: the brief asked the judge four closed questions per turn: a relevance score per chunk, then sufficiency, what is missing, and a score per link from the sentence around it.
+- **Trial**: a first trial on Clef-flash (`docs/experiments/trial.ts`, `notes.ts`) showed that a judge recognises a note holding the answer, but not a note that leads to it. A link scored from its title and sentence is a bet on a note the judge cannot see.
+- **Change**: the judge now gives one verdict per whole note, and following a link means judging the target note itself (llm-judge spec, Revision 2).
+- **Second dead end**: judging notes one at a time then failed on multi-hop questions. The page holding the answer never names the account the question asks about, and Jev classified it `none` (0.73–0.95). With all the notes of the turn in one call, Jev classified the same pages `answer` (0.61–0.94), with a third fewer input tokens (`docs/experiments/batched.ts`).
+
+**Two earlier tries at taming the fallback.** The fix of section 4 was the third attempt.
+
+| Attempt | Run                                      | Rule                                                                                         | What happened                                                                                                                                                       |
+| ------- | ---------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | `runs/2026-10-09T17-38-44-205Z-C-tuning` | a note went to Haiku when its highest probability fell between 0.6 and Jev's keep thresholds | Haiku judged 196 of the 1,816 notes again, in 50 of the 60 questions. It kept 19, 3 of them sources: about 30% of C's cost and 1.8 s per question for those 3 notes |
+| 2       | `runs/2026-10-09T19-07-57-804Z-C-tuning` | the fallback ran only when Jev kept nothing                                                  | it never ran (0/60 questions). Jev keeps at least one note in almost every turn, so this was in effect "no fallback"                                                |
+
+The second attempt was tested against the grey-zone rule at the same commit (`runs/2026-10-09T19-07-56-479Z-C-tuning`):
+
+| Rule                       | Questions with a fallback | End-to-end p50 | Context complete | Accuracy |
+| -------------------------- | ------------------------: | -------------: | ---------------: | -------: |
+| grey zone                  |                     47/60 |         4.15 s |            87.5% |    52/60 |
+| only when Jev kept nothing |                      0/60 |         2.49 s |            81.3% |    49/60 |
+
+The latency halved, but quality dropped: at that stage, C still needed some of Haiku's rescues. The question to ask was not whether Jev had kept anything, but whether it had found the answer.
+
+**Questions on the notes taken together, instead of one verdict per note.**
+
+- **Problem**: judged one by one, a note about another entity can look like an answer (q-016: the former account owner's page, `answer` 0.93).
+- **Tried**: two questions on all the notes at once (`docs/experiments/v1v2.ts`):
+  - the same question asked about each note in the light of the others;
+  - a single choice of the note that states the answer.
+- **Result**: each fixed q-016, and each alone lost the contradictions: 2/9 and 0/9 kept, because Jev keeps only one of two diverging notes.
+- **Kept**: used together, only as a veto over the per-note verdicts. In the first-turn replay, this raised precision from 0.63 to 0.67 with all 9 contradictions kept (system-one-judge spec, Revision 4).
+- **On the test split**: the veto still costs C two contradictions, q-102 and q-108 (section 3). The risk the replay had ruled out came back on questions it had not seen.
+
+The full path is in the spec revisions of `docs/features/` and in `docs/experiments/README.md`.
 
 ## 7. Limits and next steps
 

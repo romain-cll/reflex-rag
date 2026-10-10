@@ -1,0 +1,246 @@
+{
+  "overall": {
+    "n": 60,
+    "accuracy": 0.5,
+    "meanRecall": 0.5208333333333334,
+    "contextCompleteRate": 0.4583333333333333,
+    "meanPrecision": 0.7419354838709677,
+    "meanNotesInContext": 0.8,
+    "latencyP50Ms": 7117.987000000023,
+    "latencyP95Ms": 13845.880750000011,
+    "meanCostUsd": 0.002060308333333334,
+    "meanInputTokens": 1372.6451612903227,
+    "failures": {
+      "loop_error": 18,
+      "context_budget": 0,
+      "judge_rejected": 11,
+      "not_followed": 0,
+      "retrieval_miss": 0,
+      "answer_error": 0,
+      "false_abstention": 0,
+      "wrong_version": 1,
+      "missed_contradiction": 0,
+      "unsupported_claim": 0,
+      "wrong_answer": 0
+    },
+    "failuresByFamily": {
+      "retrieval": 29,
+      "answer": 1
+    },
+    "abstentions": {
+      "loop": 11,
+      "answerer": 4
+    },
+    "meanHops": 0.5666666666666667,
+    "meanRewrites": 0.18333333333333332,
+    "meanJudgeCalls": 1.7833333333333334,
+    "finalRules": {
+      "answer": 31,
+      "abstain": 11,
+      "loop_error": 18
+    }
+  },
+  "byCategory": {
+    "simple": {
+      "n": 12,
+      "accuracy": 0.9166666666666666,
+      "meanRecall": 0.9166666666666666,
+      "contextCompleteRate": 0.9166666666666666,
+      "meanPrecision": 0.9090909090909091,
+      "meanNotesInContext": 1.0833333333333333,
+      "latencyP50Ms": 6502.7694999999985,
+      "latencyP95Ms": 11078.283584000004,
+      "meanCostUsd": 0.0019470500000000005,
+      "meanInputTokens": 1211.6363636363637,
+      "failures": {
+        "loop_error": 0,
+        "context_budget": 0,
+        "judge_rejected": 1,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 1,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 1,
+        "answerer": 0
+      },
+      "meanHops": 0.5,
+      "meanRewrites": 0.08333333333333333,
+      "meanJudgeCalls": 1.5833333333333333,
+      "finalRules": {
+        "answer": 11,
+        "abstain": 1
+      }
+    },
+    "multi_hop": {
+      "n": 15,
+      "accuracy": 0,
+      "meanRecall": 0.13333333333333333,
+      "contextCompleteRate": 0,
+      "meanPrecision": 0.6666666666666666,
+      "meanNotesInContext": 0.4,
+      "latencyP50Ms": 7753.588833000002,
+      "latencyP95Ms": 13267.504084,
+      "meanCostUsd": 0.0019991733333333335,
+      "meanInputTokens": 1067.8333333333333,
+      "failures": {
+        "loop_error": 8,
+        "context_budget": 0,
+        "judge_rejected": 7,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 15,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 1,
+        "answerer": 4
+      },
+      "meanHops": 0.4666666666666667,
+      "meanRewrites": 0.06666666666666667,
+      "meanJudgeCalls": 1.6666666666666667,
+      "finalRules": {
+        "loop_error": 8,
+        "answer": 6,
+        "abstain": 1
+      }
+    },
+    "temporal": {
+      "n": 12,
+      "accuracy": 0.5833333333333334,
+      "meanRecall": 0.6666666666666666,
+      "contextCompleteRate": 0.6666666666666666,
+      "meanPrecision": 0.4444444444444444,
+      "meanNotesInContext": 1.6666666666666667,
+      "latencyP50Ms": 5914.508083000022,
+      "latencyP95Ms": 8113.45195800002,
+      "meanCostUsd": 0.001827766666666667,
+      "meanInputTokens": 1632.2222222222222,
+      "failures": {
+        "loop_error": 3,
+        "context_budget": 0,
+        "judge_rejected": 1,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 1,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 4,
+        "answer": 1
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.16666666666666666,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.1666666666666667,
+      "finalRules": {
+        "loop_error": 3,
+        "answer": 9
+      }
+    },
+    "contradiction": {
+      "n": 9,
+      "accuracy": 0.3333333333333333,
+      "meanRecall": 0.4444444444444444,
+      "contextCompleteRate": 0.3333333333333333,
+      "meanPrecision": 1,
+      "meanNotesInContext": 1,
+      "latencyP50Ms": 7522.305166999984,
+      "latencyP95Ms": 12174.149250000017,
+      "meanCostUsd": 0.0019486444444444448,
+      "meanInputTokens": 1625.4,
+      "failures": {
+        "loop_error": 4,
+        "context_budget": 0,
+        "judge_rejected": 2,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 6,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 0,
+        "answerer": 0
+      },
+      "meanHops": 0.1111111111111111,
+      "meanRewrites": 0,
+      "meanJudgeCalls": 1.1111111111111112,
+      "finalRules": {
+        "loop_error": 4,
+        "answer": 5
+      }
+    },
+    "no_answer": {
+      "n": 12,
+      "accuracy": 0.75,
+      "meanRecall": null,
+      "contextCompleteRate": null,
+      "meanPrecision": null,
+      "meanNotesInContext": 0,
+      "latencyP50Ms": 12112.512208,
+      "latencyP95Ms": 18580.440709000046,
+      "meanCostUsd": 0.002566275,
+      "meanInputTokens": null,
+      "failures": {
+        "loop_error": 3,
+        "context_budget": 0,
+        "judge_rejected": 0,
+        "not_followed": 0,
+        "retrieval_miss": 0,
+        "answer_error": 0,
+        "false_abstention": 0,
+        "wrong_version": 0,
+        "missed_contradiction": 0,
+        "unsupported_claim": 0,
+        "wrong_answer": 0
+      },
+      "failuresByFamily": {
+        "retrieval": 3,
+        "answer": 0
+      },
+      "abstentions": {
+        "loop": 9,
+        "answerer": 0
+      },
+      "meanHops": 1.5,
+      "meanRewrites": 0.75,
+      "meanJudgeCalls": 3.25,
+      "finalRules": {
+        "abstain": 9,
+        "loop_error": 3
+      }
+    }
+  }
+}
