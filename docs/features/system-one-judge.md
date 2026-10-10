@@ -33,6 +33,11 @@ Judged one by one, a note about another entity than the question's can look like
 - **AC12 — veto questions**: `src/judge/question.ts` exports `JUDGE_CROSS_QUESTION` — `instructions(alias)`: "Read all the notes in the state. Taking into account what the other notes say, what does note <alias> give for answering the question?"; `criteria(alias)`: answer "Note <alias> states the answer, and no other note shows that this information is outdated or superseded.", step "Note <alias> does not state the answer, but it identifies something the answer depends on, or links to a note likely to hold it.", none "Note <alias> does not help: it is off topic, about another entity than the one the question asks about, or outdated according to other notes." — and `JUDGE_BEST_QUESTION`: "According to all the notes, which note states the answer to the question as it stands?".
 - **AC13 — veto**: `SystemOneJudge` takes an optional `veto: { none, best }`. When set, each batch call also holds, for each scored note `nK`, a question `xK` (choice, `JUDGE_CROSS_QUESTION` for `nK`) and one question `best` (choice whose options are the batch's aliases, each described "Note nK", plus `none`: "No note states the answer."). A note is **vetoed** when its `xK` probability of `none` is ≥ `veto.none` and its `best` probability is < `veto.best`: its verdict becomes `{ answer: 0, step: 0, none: 1 }`. The `Judgement` gains `vetoed`, the vetoed paths in input order. Without `veto`, the call is unchanged. Config C uses `{ none: 0.7, best: 0.02 }`.
 
+## Revision 5 — is the answer complete?
+
+- **AC14 — sufficiency**: `SystemOneJudge` takes an option `sufficiency: boolean` (default `false`). When set, each batch call also holds a question `sufficient: { type: "noul", instructions: JUDGE_SUFFICIENT_QUESTION }` (docs/features/llm-judge.md, AC9). The `Judgement` gains `sufficient`, the highest `noul` among the batches, clamped to [0, 1]; a batch whose answer is missing or not a `noul` is ignored; with no valid answer, `sufficient` is absent. Without the option, the call is unchanged.
+- **AC15 — through the fallback**: `FallbackJudge` returns the primary's `sufficient` when it has one, with or without a fallback call.
+
 ## Technical plan
 
 - `src/core/judge.ts` (modified): optional `fallback` and `stages` on `Judgement`.

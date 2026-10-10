@@ -45,6 +45,13 @@ The same replay: keeping only the step notes that link to an answer note raised 
 
 - **AC16 — linked steps**: with the policy's `contextSteps: "linked"`, the context holds the answer notes (kept, `answer` ≥ the answer threshold), each followed by its ancestors and by the kept step notes that link to it (AC11); the other kept notes are added only when no kept note is an answer note. With `"all"` (default), AC11 applies unchanged.
 
+## Revision 7 — answer notes and sufficiency
+
+In the same run, q-024 lost its intermediate note after the loop had kept it: `answer` 0.68 and `step` 0.29 make a kept note in C (`answer + step` ≥ 0.9) that is neither an answer note (`answer` ≥ 0.7) nor a step note (`step` ≥ 0.7), and `contextSteps: "linked"` drops such notes once an answer note exists. A replay of the context assembly on that trace (`docs/experiments/dominant.ts`, no model call) with a kept note counted as an answer note when its `answer` reaches its `step`: context complete 41/48 → 42/48 (q-024), precision 0.686 → 0.692; counting every such note as a step note instead gave 42/48 and 0.634; B's context is unchanged by either.
+
+- **AC17 — answer notes**: in the context assembly (AC11, AC16), an answer note is a kept note whose `answer` probability is ≥ the answer threshold **or** ≥ its `step` probability. Step notes are unchanged.
+- **AC18 — sufficiency**: the loop passes `decide` the `sufficient` value of the last judgement that reported one (docs/features/decision-policy.md, AC10); each step records `sufficient`, the value the judgement of that turn reported, when it reported one.
+
 ## Technical plan
 
 Files:

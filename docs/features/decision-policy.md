@@ -34,6 +34,14 @@ A replay of the first turn of every tuning question (Jev, `runs/2026-10-09T19-07
 
 - **AC9 — strategy**: `PolicyConfig.strategy` is optional: `{ openSteps?: "always" | "above-best-answer"; contextSteps?: "all" | "linked" }`, defaults `"always"` and `"all"` (the behaviour so far). With `openSteps: "above-best-answer"`, `follow-steps` opens only the openable notes whose `step` is ≥ the step threshold **and** greater than the highest `answer` probability among the judged notes. `contextSteps` is used by the loop (docs/features/retrieval-loop.md, AC16). `POLICIES.B` and `POLICIES.C` set `{ openSteps: "above-best-answer", contextSteps: "linked" }`; `DEFAULT_POLICY` leaves `strategy` unset.
 
+## Revision 6 — open the kept notes while the answer is incomplete
+
+In C's run at commit ce00e69 (`runs/2026-10-09T22-06-41-730Z-C-tuning`), 3 multi-hop questions (q-013, q-023, q-026) lost the note holding the answer: Jev judged the intermediate note (an account handoff naming a person) `answer` 0.60–0.68 and `step` 0.27–0.32, the policy kept it, but `follow-steps` did not open it, its `step` being below the best `answer`; the person's page stayed in the frontier. The judge now also says whether the notes of its call, taken together, state the complete answer (docs/features/llm-judge.md, Revision 4; docs/features/system-one-judge.md, Revision 5), in the same call.
+
+- **AC10 — sufficiency in the state**: `LoopState` gains `sufficient?: number`, the probability the last judgement reporting one gave that the notes state the complete answer.
+- **AC11 — `follow-kept`**: a rule between `follow-steps` and `answer`. It applies when `thresholds.sufficient` is set, `state.sufficient` is defined and below it, hops remain and some kept note is openable; the action `expand` carries the openable kept notes, ranked by decreasing `answer` + `step` (ties by order of judgement), at most the explore budget. `RULES` becomes `follow-steps`, `follow-kept`, `answer`, `explore`, `rewrite`, `abstain`.
+- **AC12 — configuration**: `thresholds.sufficient` is optional; `POLICIES.B` and `POLICIES.C` set it to 0.5; `DEFAULT_POLICY` leaves it unset.
+
 ## Technical plan
 
 Files:

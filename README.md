@@ -12,13 +12,13 @@ A negative or mixed result is a valid outcome, as long as it is explained. State
 
 ## Result
 
-| Config            | Judge in the loop              | Context complete | Cost / question | Latency p50 | Accuracy |
-| ----------------- | ------------------------------ | ---------------: | --------------: | ----------: | -------: |
-| A: simple RAG     | none                           |                  |                 |             |          |
-| B: retrieval loop | LLM (Claude Haiku 5.5)         |                  |                 |             |          |
-| C: retrieval loop | system one (Jev), LLM fallback |                  |                 |             |          |
+| Config            | Judge in the loop              | Context complete | Retrieval cost / question | Retrieval latency p50 | Accuracy |
+| ----------------- | ------------------------------ | ---------------: | ------------------------: | --------------------: | -------: |
+| A: simple RAG     | none                           |                  |                           |                       |          |
+| B: retrieval loop | LLM (Claude Haiku 5.5)         |                  |                           |                       |          |
+| C: retrieval loop | system one (Jev), LLM fallback |                  |                           |                       |          |
 
-Test split, same questions and same answerer for the three configs. _Context complete_ is the share of questions whose final context holds every expected source. _Accuracy_ is end-to-end and comes last on purpose: the layer under test returns context, not answers.
+Test split, same questions and same answerer for the three configs. _Context complete_ is the share of questions whose final context holds every expected source. _Retrieval cost_ and _retrieval latency_ are those of the layer under test (search, judge, LLM fallback, query rewrites), without the answerer, which is the same for the three configs; the end-to-end figures are in `docs/results/RESULTS.md`. _Accuracy_ is end-to-end and comes last on purpose: the layer under test returns context, not answers.
 
 ## What is in the repo
 

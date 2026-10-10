@@ -26,6 +26,13 @@ A turn that opens links judges only the link targets; a note judged alone may lo
 
 - **AC8 — context**: `judge(question, notes, context?)` takes optional `context` notes (`NoteForJudge[]`), shown to the model but not scored: the result holds verdicts for `notes` only. `LLMJudge` lists them in the user prompt before the notes to score, under a heading saying that they were already kept and must not be scored, each with its path, date, links and text and without an alias. With no note to score, no call is made, whatever the context.
 
+## Revision 4 — is the answer complete?
+
+The policy needs to know whether the notes found so far state the whole answer or only point to it (docs/features/decision-policy.md, Revision 6), in the same call.
+
+- **AC9 — the shared question**: `src/judge/question.ts` exports `JUDGE_SUFFICIENT_QUESTION`: "Taken together, do all the notes given, context notes included, state the complete answer to the question, with nothing left to look up in another note?"
+- **AC10 — option**: `new LLMJudge(llm, { sufficiency: true })`. The system prompt then adds a paragraph asking for `sufficient`, the probability from 0 to 1 of a yes to `JUDGE_SUFFICIENT_QUESTION` word for word; the output schema gains a required number `sufficient`; `maxTokens` gains 16. The `Judgement` gains `sufficient`, the value clamped to [0, 1]. Without the option (default), the prompt, the schema, the budget and the result are unchanged.
+
 ## Technical plan
 
 Files:

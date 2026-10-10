@@ -35,6 +35,13 @@ The retrieval brick now returns notes, not chunks (docs/features/retrieval-loop.
 
 - **AC16 — progress**: `runEval` takes an optional `onProgress(record, done, total)`, called after each question once its record is written, with the number of questions done and the number to do. `reflex eval` uses it to print one line per question on stderr: `[12/60] q-013 multi_hop correct 5.2 s 0.0021 USD` (`wrong (<failure>)` instead of `correct`), so that a long run shows where it is.
 
+## Revision 5 — the retrieval brick measured alone
+
+The project measures the retrieval brick (search, judge, fallback, rewrites) coupled to an LLM or to a system one; the answerer is one more brick, the same model and prompt for every config. Counting it in the cost and the latency hides the difference under test: on the tuning split, C costs 43% less than B with the answerer counted and 47% less without it, and its latency p50 is 2 times lower with it and 2.4 times lower without it (3.7 s against 7.4 s, 2.3 s against 5.5 s). The end-to-end measures stay, as secondary ones.
+
+- **AC17 — retrieval time**: each record gets `retrievalMs`, the wall-clock time from the start of the question to the end of `retrieve` (to its error for a loop error).
+- **AC18 — retrieval measures**: per category and overall, `meanRetrievalCostUsd` (mean per question of the cost of the calls whose role is not `answer`; `null` when a call of the records has no role, as in the traces written before roles), `retrievalP50Ms` and `retrievalP95Ms` (nearest-rank percentiles of `retrievalMs`; a record without it but with `stages` counts `latencyMs − stages.answerMs`; `null` when no record has either). The run's `report.md` shows them next to the end-to-end cost and latency. `scripts/regrade-run.ts` recomputes them from the trace.
+
 ## Technical plan
 
 Files:

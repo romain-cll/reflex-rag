@@ -35,6 +35,10 @@ Phase 4. `reflex eval --config C` runs the questions through the retrieval loop 
 
 - **AC18 — settings**: B and C runs record the policy with its `strategy`; C runs also record `veto` in `loop`. The loop's steps record the `vetoed` paths of each turn (empty when none).
 
+## Revision 6 — sufficiency
+
+- **AC19 — judges asked for sufficiency**: when the policy of the config sets `thresholds.sufficient` (docs/features/decision-policy.md, AC12), B's judge is `LLMJudge(llm, { sufficiency: true })` and C's primary judge `SystemOneJudge(systemOne, { veto, sufficiency: true })`; C's fallback is not asked. `upperBoundCalls` and `upperBoundCallsC` size their judges the same way. The settings record the policy with its `sufficient` threshold.
+
 ## Technical plan
 
 - `src/commands/eval.ts`, `src/cli.ts` (modified): config C wiring, the options, role tagging, stage timing of retrieval and answer.

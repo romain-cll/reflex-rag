@@ -11,6 +11,13 @@ The single page that compares every run: one row per run (config × split), ever
 - **AC5 — provenance**: under each table, the run directories it was built from; the page states that it is generated and must not be edited by hand.
 - **AC6 — no model call**: the script reads only the runs' `trace.jsonl` settings line and `summary.json`.
 
+## Revision 2 — retrieval cost and latency first
+
+The headline cost and latency become those of the retrieval brick, without the answerer (docs/features/eval-run.md, Revision 5). This revision supersedes the order of AC2.
+
+- **AC7 — headline columns**: config, split, date, commit; number of questions; context complete rate; context precision; retrieval cost per question; retrieval latency p50; retrieval latency p95; accuracy as `correct/n` and percentage. Then the end-to-end measures, with the answerer: cost per question, latency p50 and latency p95, each header starting with `end-to-end`; then the other columns of AC2 and the fallback rates, in their current order. A run whose summary has no retrieval measure (written before them) shows `-` in those columns.
+- **AC8 — what retrieval means**: a line under the main table says that the retrieval measures count the search, the judge, its fallback and the rewrites, and not the answerer, which is the same for every config.
+
 ## Technical plan
 
 - `scripts/results-table.ts` (new). Reads `FAILURES` (families, levers) and `CATEGORIES` from `src/eval/` and `evals/schema.ts`.
