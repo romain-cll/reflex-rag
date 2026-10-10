@@ -2,7 +2,7 @@
 
 Agent harnesses spend LLM calls on yes/no decisions inside their retrieval loops. I measured whether a small decision model can make those calls instead, at equal quality, for less cost and latency. Here are the bench, the result, and the fix the traces pointed to.
 
-**Status:** the final runs on the test split are in (commit `c9e4a6e`, three runs per config). The grader agreed with a hand check on 20 of 20 answers. Pending: the write-up. The table below is filled from traced runs only.
+**Status:** the final runs on the test split are in (commit `c9e4a6e`, three runs per config), and the grader agreed with a hand check on 20 of 20 answers. The full write-up is [`REPORT.md`](REPORT.md): the result, the failures by layer, and the fix the traces pointed to, measured before and after. The table below is filled from traced runs only.
 
 ## Hypothesis
 
@@ -19,7 +19,7 @@ A negative or mixed result is a valid outcome, as long as it is explained. State
 | C: retrieval loop  | system one (Jev)                                   |            86.8% |                  $0.00085 |                0.68 s | 51.7/60 (86%) |
 | C+: retrieval loop | system one (Jev), LLM fallback while no answer yet |            88.9% |                  $0.00086 |                0.70 s | 53.3/60 (89%) |
 
-Test split (60 questions never used for tuning), same questions and same answerer for every config; mean of three runs, whose ranges are in `docs/results/RESULTS.md` (accuracy varies by up to 3 answers between runs of a config, so a gap of one or two answers is noise). _Context complete_ is the share of questions whose final context holds every expected source. _Retrieval cost_ and _retrieval latency_ are those of the layer under test (search, judge, LLM fallback, query rewrites), without the answerer, which is the same for every config; the end-to-end figures are in `docs/results/RESULTS.md`. _Accuracy_ is end-to-end and comes last on purpose: the layer under test returns context, not answers. It is graded by Claude Sonnet 5.5, whose verdicts I checked by hand on 20 answers drawn from these runs, 10 graded correct and 10 wrong: I agreed with all 20 (`docs/results/grader-check.md`).
+Test split (60 questions never used for tuning), same questions and same answerer for every config; mean of three runs, whose ranges are in `docs/results/RESULTS.md` (accuracy varies by up to 3 answers between runs of a config, so a gap of one or two answers is noise). _Context complete_ is the share of questions whose final context holds every expected source. _Retrieval cost_ and _retrieval latency_ are those of the layer under test (search, judge, LLM fallback, query rewrites), without the answerer, which is the same for every config; the end-to-end figures are in `docs/results/RESULTS.md`. _Accuracy_ is end-to-end and comes last on purpose: the layer under test returns context, not answers. It is graded by code, without a model: the answer's status and value are matched against the expected values of the truth file, and an outdated value makes it wrong (`src/eval/grade.ts`). I checked its verdicts by hand on 20 answers drawn from these runs, 10 graded correct and 10 wrong, and agreed with all 20 (`docs/results/grader-check.md`).
 
 ## What is in the repo
 
