@@ -347,9 +347,9 @@ function withRange(
   values: number[],
   format: (value: number) => string
 ): string {
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  return min === max ? mean : `${mean} [${format(min)}–${format(max)}]`
+  const min = format(Math.min(...values))
+  const max = format(Math.max(...values))
+  return min === max ? mean : `${mean} [${min}–${max}]`
 }
 
 /** The mean over the runs of a measure, with its range; `-` if no run has it. */
