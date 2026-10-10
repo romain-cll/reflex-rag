@@ -112,7 +112,7 @@ interface RunSpec {
   loopSettings?: {
     maxHops?: number
     fallbackLow?: number | null
-    fallbackWhen?: "uncertain" | "nothing-kept"
+    fallbackWhen?: "uncertain" | "nothing-kept" | "no-answer"
   }
 }
 
@@ -2151,5 +2151,115 @@ describe("Revision 3 AC10 — labels with the fallback", () => {
       "C test fallback 0.85",
       "C tuning fallback 0.85",
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Revision 4 — every fallback scope in the fallback text
+// ---------------------------------------------------------------------------
+
+const C_FALLBACK_08_NO_ANSWER = sweepRun(
+  "2026-10-10T10-00-00-000Z",
+  "ccc7777",
+  { fallbackLow: 0.8, fallbackWhen: "no-answer" },
+  5
+)
+
+describe("Revision 4 AC11 — the scope in the fallback text", () => {
+  const sweep = [
+    C_FALLBACK_08,
+    C_FALLBACK_08_NOTHING_KEPT,
+    C_FALLBACK_08_NO_ANSWER,
+    C_FALLBACK_NONE,
+  ]
+  const tablesOf = (specs: RunSpec[]) => {
+    const { cwd, runs } = workdir(specs)
+    const page = generate(cwd, runs)
+    const [main, categories, failures] = threeTables(page)
+    return {
+      main,
+      stage: stageTable(page),
+      labels: failureLabels(failures, specs.length),
+      groups: categoryLabels(categories),
+    }
+  }
+
+  test("Revision 4 AC11 — the fallback column reads 0.8 no-answer for a no-answer scope", () => {
+    const { main } = tablesOf([C_FALLBACK_08_NO_ANSWER])
+    expect(fallbackCells(main)).toEqual(["0.8 no-answer"])
+  })
+
+  test("Revision 4 AC11 — each scope has its own text: 0.8 (uncertain), 0.8 nothing-kept, 0.8 no-answer", () => {
+    const { main, stage } = tablesOf(sweep)
+    const expected = ["0.8", "0.8 nothing-kept", "0.8 no-answer", "none"].sort()
+    expect(fallbackCells(main)).toEqual(expected)
+    expect(fallbackCells(stage)).toEqual(expected)
+  })
+
+  test("Revision 4 AC11 — each row shows the fallback text of its own run", () => {
+    const { main } = tablesOf(sweep)
+    const fallback = column(main, /^fallback$/i)
+    for (const [spec, cell] of [
+      [C_FALLBACK_08, "0.8"],
+      [C_FALLBACK_08_NOTHING_KEPT, "0.8 nothing-kept"],
+      [C_FALLBACK_08_NO_ANSWER, "0.8 no-answer"],
+      [C_FALLBACK_NONE, "none"],
+    ] as const) {
+      expect(rowOf(main, spec)[fallback]!).toBe(cell)
+    }
+  })
+
+  test("Revision 4 AC11 — the label of the run carries it after the split, in the failure and category tables", () => {
+    const { labels, groups } = tablesOf([C_FALLBACK_08_NO_ANSWER])
+    expect(labels).toEqual(["C tuning fallback 0.8 no-answer"])
+    expect(groups).toEqual(["C tuning fallback 0.8 no-answer"])
+  })
+
+  test("Revision 4 AC11 — the three scopes of the same threshold get three distinct labels, without commit or time", () => {
+    const { labels, groups } = tablesOf(sweep)
+    const expected = [
+      "C tuning fallback 0.8",
+      "C tuning fallback 0.8 nothing-kept",
+      "C tuning fallback 0.8 no-answer",
+      "C tuning fallback none",
+    ].sort()
+    expect([...labels].sort()).toEqual(expected)
+    expect([...groups].sort()).toEqual(expected)
+  })
+
+  test("Revision 4 AC11 — two runs of the same no-answer fallback get the commit after the fallback text", () => {
+    const otherCommit: RunSpec = {
+      ...C_FALLBACK_08_NO_ANSWER,
+      name: "2026-10-10T11-00-00-000Z-C-tuning",
+      commit: "ccc8888",
+      failureSeed: 3,
+    }
+    const { labels } = tablesOf([C_FALLBACK_08_NO_ANSWER, otherCommit])
+    expect([...labels].sort()).toEqual([
+      "C tuning fallback 0.8 no-answer ccc7777",
+      "C tuning fallback 0.8 no-answer ccc8888",
+    ])
+  })
+
+  test("Revision 4 AC11 — uncertain still adds nothing, and nothing-kept is unchanged", () => {
+    const { main, labels } = tablesOf([
+      C_FALLBACK_08,
+      C_FALLBACK_08_NOTHING_KEPT,
+    ])
+    expect(fallbackCells(main)).toEqual(["0.8", "0.8 nothing-kept"])
+    expect([...labels].sort()).toEqual([
+      "C tuning fallback 0.8",
+      "C tuning fallback 0.8 nothing-kept",
+    ])
+  })
+
+  test("Revision 4 AC11 — a no-answer scope without a threshold adds nothing: the cell stays empty", () => {
+    const withScopeOnly: RunSpec = {
+      ...B_TEST,
+      loopSettings: { fallbackWhen: "no-answer" },
+    }
+    const { main } = tablesOf([withScopeOnly, C_FALLBACK_085])
+    const fallback = column(main, /^fallback$/i)
+    expect(rowOf(main, withScopeOnly)[fallback]!).toBe("")
   })
 })

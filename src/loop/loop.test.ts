@@ -1883,6 +1883,8 @@ describe("AC15 — context of the judge", () => {
       date: "2025-01-01",
       text: "intro of a\n\n## Owner\nowner of a",
       links: ["b.md", "c.md"],
+      // The verdict the note was kept with (retrieval-loop AC19).
+      verdict: verdict({ step: 0.9 }),
     })
   })
 
@@ -2004,6 +2006,125 @@ describe("AC15 — context of the judge", () => {
       expect(paths(contextOf(call))).toContain("a.md")
       expect(paths(contextOf(call))).not.toContain("c.md")
     }
+  })
+})
+
+describe("retrieval-loop AC19 — verdicts in the context", () => {
+  /** A context note as the fake judge recorded it: the NoteForJudge and its verdict. */
+  type Recorded = NoteForJudge & { verdict?: Record<Verdict, number> }
+  const contextOf = (call: {
+    context: NoteForJudge[] | undefined
+  }): Recorded[] => call.context ?? []
+  const verdictsByPath = (notes: Recorded[]) =>
+    Object.fromEntries(notes.map((note) => [note.path, note.verdict]))
+
+  test("retrieval-loop AC19 — each context note carries the verdict it was kept with, step and answer", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]], { extra: ["e", "f"] }),
+      search: { [QUESTION]: hits("f", "a", "e") },
+      verdicts: {
+        "a.md": { step: 0.9 },
+        "e.md": { answer: 0.75, step: 0.125, none: 0.125 },
+      },
+    })
+    expect(paths(contextOf(judgeCalls[1]!))).toEqual(["a.md", "e.md"])
+    expect(verdictsByPath(contextOf(judgeCalls[1]!))).toEqual({
+      "a.md": verdict({ step: 0.9 }),
+      "e.md": verdict({ answer: 0.75, step: 0.125, none: 0.125 }),
+    })
+  })
+
+  test("retrieval-loop AC19 — a note kept by the sum of answer and step carries its split verdict", async () => {
+    const split = verdict({ answer: 0.5, step: 0.4375, none: 0.0625 })
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]]),
+      policy: policyWith({}, { answer: 0.7, step: 0.7, keep: 0.9 }),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": split },
+    })
+    expect(verdictsByPath(contextOf(judgeCalls[1]!))).toEqual({
+      "a.md": split,
+    })
+  })
+
+  test("retrieval-loop AC19 — the context grows turn after turn, each note with its own verdict", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["b", "c"],
+      ]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { step: 0.875, none: 0.125 },
+        "b.md": { step: 0.75, answer: 0.125, none: 0.125 },
+        "c.md": { answer: 0.9 },
+      },
+    })
+    expect(judgeCalls).toHaveLength(3)
+    expect(contextOf(judgeCalls[0]!)).toEqual([])
+    expect(verdictsByPath(contextOf(judgeCalls[1]!))).toEqual({
+      "a.md": verdict({ step: 0.875, none: 0.125 }),
+    })
+    expect(verdictsByPath(contextOf(judgeCalls[2]!))).toEqual({
+      "a.md": verdict({ step: 0.875, none: 0.125 }),
+      "b.md": verdict({ step: 0.75, answer: 0.125, none: 0.125 }),
+    })
+  })
+
+  test("retrieval-loop AC19 — the verdict of a context note is the one the trace holds in judged", async () => {
+    const { judgeCalls, result } = await run({
+      world: worldOf([
+        ["a", "b"],
+        ["b", "c"],
+      ]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: {
+        "a.md": { step: 0.9 },
+        "b.md": { step: 0.9 },
+        "c.md": { answer: 0.9 },
+      },
+    })
+    for (const call of judgeCalls) {
+      for (const note of contextOf(call)) {
+        expect(note.verdict).toEqual(result.judged[note.path])
+      }
+    }
+  })
+
+  test("retrieval-loop AC19 — the notes to score carry no verdict", async () => {
+    const { judgeCalls } = await run({
+      world: worldOf([["a", "x"]], { extra: ["e"] }),
+      search: { [QUESTION]: hits("a", "e") },
+      verdicts: { "a.md": { step: 0.9 }, "e.md": { answer: 0.9 } },
+    })
+    for (const call of judgeCalls) {
+      for (const note of call.notes) expect("verdict" in note).toBe(false)
+    }
+  })
+
+  test("retrieval-loop AC19 — a context note keeps its path, date, text and links next to the verdict", async () => {
+    const { judgeCalls } = await run({
+      world: SECTIONS,
+      search: { [QUESTION]: ["a1"] },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    const [a] = contextOf(judgeCalls[1]!)
+    expect(a!.path).toBe("a.md")
+    expect(a!.date).toBe("2025-01-01")
+    expect(a!.text).toBe("intro of a\n\n## Owner\nowner of a")
+    expect(sorted(a!.links)).toEqual(["b.md", "c.md"])
+    expect(a!.verdict).toEqual(verdict({ step: 0.9 }))
+  })
+
+  test("retrieval-loop AC19 — the context assembly is unchanged: the answer note and its ancestor, ranked as before", async () => {
+    // b is an answer note (0.9), reached from the step note a: the context
+    // holds b then its ancestor a, as without verdicts in the judge context.
+    const { result } = await run({
+      world: worldOf([["a", "b"]]),
+      search: { [QUESTION]: hits("a") },
+      verdicts: { "a.md": { step: 0.9 }, "b.md": { answer: 0.9 } },
+    })
+    expect(contextPaths(result)).toEqual(["b.md", "a.md"])
   })
 })
 

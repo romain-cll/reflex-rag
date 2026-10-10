@@ -677,7 +677,7 @@ describe("eval-config-c AC2 — config C options", () => {
     })
   }
 
-  for (const when of ["uncertain", "nothing-kept"]) {
+  for (const when of ["uncertain", "nothing-kept", "no-answer"]) {
     test(`eval-config-c AC17 — --fallback-when ${when} is accepted: it goes on to the file checks`, () => {
       const cwd = makeTempDir("reflex-cli-eval-c-fallback-when-ok-")
       const { stdout, stderr, exitCode } = runEvalWithEnv(
@@ -758,6 +758,7 @@ describe("eval-config-c AC2 — the options of config C are rejected for A and B
       ["--fallback", "0.6"],
       ["--fallback-when", "uncertain"],
       ["--fallback-when", "nothing-kept"],
+      ["--fallback-when", "no-answer"],
     ] as const) {
       test(`eval-config-c AC2 — ${option} ${value} with --config ${config} is rejected, naming the option and the config`, () => {
         const cwd = makeTempDir("reflex-cli-eval-c-only-")
@@ -918,7 +919,7 @@ describe("eval-config-c AC20 — --fallback none", () => {
     expect(exitCode).toBe(1)
   })
 
-  for (const when of ["uncertain", "nothing-kept"]) {
+  for (const when of ["uncertain", "nothing-kept", "no-answer"]) {
     test(`eval-config-c AC20 — --fallback none with --fallback-when ${when} is a one-line error naming both options, before any file check`, () => {
       const { stdout, stderr, exitCode } = runEvalWithEnv(
         makeTempDir("reflex-cli-eval-c-none-when-"),
@@ -997,6 +998,25 @@ describe("eval-config-c AC20 — --fallback none", () => {
       expect(exitCode).toBe(1)
     })
   }
+
+  test("eval-config-c AC22 — a number is accepted next to --fallback-when no-answer, in either order", () => {
+    for (const args of [
+      ["--fallback", "0.85", "--fallback-when", "no-answer"],
+      ["--fallback-when", "no-answer", "--fallback", "0.85"],
+    ]) {
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        makeTempDir("reflex-cli-eval-c-number-no-answer-"),
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        ...args
+      )
+      expect(stderr).toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toContain("--fallback")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    }
+  })
 
   test("eval-config-c AC20 — a number is still accepted next to --fallback-when (only none conflicts)", () => {
     const { stderr, exitCode } = runEvalWithEnv(

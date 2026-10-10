@@ -927,6 +927,35 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
     expect(recorded.fallbackWhen).toBe("nothing-kept")
   })
 
+  test("eval-config-c AC22 — a no-answer scope is recorded as fallbackWhen next to fallbackLow, and the fallback model stays", () => {
+    const { models, loop } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, fallback: 0.8, fallbackWhen: "no-answer" },
+      JEV
+    )
+    const recorded = loop as unknown as {
+      fallbackLow: number
+      fallbackWhen: string
+    }
+    expect(recorded.fallbackLow).toBe(0.8)
+    expect(recorded.fallbackWhen).toBe("no-answer")
+    expect(models.fallback).toBe(HAIKU)
+  })
+
+  test("eval-config-c AC22 — B records no fallbackWhen, nor C without fallback, whatever the scope", () => {
+    const b = evalCommand.loopSettings("B", {
+      ...SETTINGS,
+      fallbackWhen: "no-answer",
+    })
+    expect("fallbackWhen" in b.loop).toBe(false)
+    const noFallback = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, fallback: null, fallbackWhen: "no-answer" },
+      JEV
+    )
+    expect("fallbackWhen" in noFallback.loop).toBe(false)
+  })
+
   test("eval-config-c AC17 — B records no fallbackWhen, whatever the settings hold", () => {
     const { loop } = evalCommand.loopSettings("B", {
       ...SETTINGS,

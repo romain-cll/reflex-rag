@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { Judge, NoteForJudge } from "../core/judge.ts"
+import type { Judge, NoteForJudge, Verdict } from "../core/judge.ts"
 import type {
   SystemOne,
   SystemOneAnswer,
@@ -13,6 +13,9 @@ import * as questionModule from "./question.ts"
 import { SystemOneJudge } from "./system-one-judge.ts"
 
 const QUESTION = "Who leads the Atlas project?"
+
+/** A context note with the verdict it was kept with (`ContextNote` of src/core/judge.ts, AC16). */
+type ContextNote = NoteForJudge & { verdict?: Record<Verdict, number> }
 
 /** `count` notes `notes/a0.md`, `notes/a1.md`, … */
 function manyNotes(count: number, prefix = "a"): NoteForJudge[] {
@@ -1287,5 +1290,86 @@ describe("system-one-judge AC14 — with the veto", () => {
     expect(result.notes["notes/a0.md"]).toEqual(VETOED_VERDICT)
     expect(result.notes["notes/a1.md"]?.answer).toBeCloseTo(0.9, 10)
     expect(sufficientOf(result)).toBe(0.4)
+  })
+})
+
+describe("system-one-judge AC16 — the verdict of a context note stays out of the state", () => {
+  const context = manyNotes(2, "c")
+  const withVerdicts: ContextNote[] = [
+    {
+      ...(context[0] as NoteForJudge),
+      verdict: { answer: 0.8125, step: 0.1875, none: 0 },
+    },
+    {
+      ...(context[1] as NoteForJudge),
+      verdict: { answer: 0.0625, step: 0.9375, none: 0 },
+    },
+  ]
+
+  test("system-one-judge AC16 — the context in the state is k1..kJ with path, date, links and text only", async () => {
+    const notes = manyNotes(2)
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne).judge(QUESTION, notes, withVerdicts)
+    expect(requests[0]?.state).toStrictEqual({
+      question: QUESTION,
+      context: {
+        k1: noteInState(context[0] as NoteForJudge),
+        k2: noteInState(context[1] as NoteForJudge),
+      },
+      notes: {
+        n1: noteInState(notes[0] as NoteForJudge),
+        n2: noteInState(notes[1] as NoteForJudge),
+      },
+    })
+  })
+
+  test("system-one-judge AC16 — the whole request is the same with and without verdicts, with the veto and the sufficiency", async () => {
+    const options = {
+      veto: { none: 0.7, best: 0.02 },
+      sufficiency: true,
+    }
+    const plain = fakeSystemOne()
+    await new SystemOneJudge(plain.systemOne, options).judge(
+      QUESTION,
+      manyNotes(2),
+      context
+    )
+    const verdicts = fakeSystemOne()
+    await new SystemOneJudge(verdicts.systemOne, options).judge(
+      QUESTION,
+      manyNotes(2),
+      withVerdicts
+    )
+    expect(verdicts.requests).toStrictEqual(plain.requests)
+  })
+
+  test("system-one-judge AC16 — none of the verdict values reaches the model", async () => {
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne).judge(
+      QUESTION,
+      manyNotes(2),
+      withVerdicts
+    )
+    const sent = JSON.stringify(requests)
+    for (const value of ["0.8125", "0.1875", "0.0625", "0.9375", "verdict"]) {
+      expect(sent).not.toContain(value)
+    }
+  })
+
+  test("system-one-judge AC16 — the same context, verdicts included, is in every batch, and only the scored notes get a verdict", async () => {
+    const { systemOne, requests } = fakeSystemOne()
+    const result = await new SystemOneJudge(systemOne, {
+      maxNotesPerCall: 2,
+    }).judge(QUESTION, manyNotes(4), withVerdicts)
+    expect(requests).toHaveLength(2)
+    for (const request of requests) {
+      expect((request.state as StateOfRequest).context).toStrictEqual({
+        k1: noteInState(context[0] as NoteForJudge),
+        k2: noteInState(context[1] as NoteForJudge),
+      })
+    }
+    expect(Object.keys(result.notes)).toEqual(
+      manyNotes(4).map((note) => note.path)
+    )
   })
 })

@@ -1982,3 +1982,107 @@ describe("decision-policy AC10–AC12 — follow-kept (Revision 6)", () => {
     expect(s).toHaveProperty("sufficient", 0.2)
   })
 })
+
+describe("decision-policy AC13 — isAnswerNote (Revision 7)", () => {
+  type Verdicts = Record<Verdict, number>
+  type IsAnswerNote = (verdict: Verdicts, config: PolicyConfig) => boolean
+
+  /** `isAnswerNote` read through the namespace, typed by the spec (not exported yet). */
+  const isAnswerNote = (
+    policyModule as unknown as { isAnswerNote: IsAnswerNote }
+  ).isAnswerNote
+
+  const verdict = (answer: number, step: number): Verdicts => ({
+    answer,
+    step,
+    none: 1 - answer - step,
+  })
+
+  const C = policyModule.POLICIES.C
+  const B = policyModule.POLICIES.B
+
+  test("decision-policy AC13 — config C: a kept note whose answer reaches the answer threshold is an answer note", () => {
+    expect(isAnswerNote(verdict(0.75, 0.25), C)).toBe(true)
+    expect(isAnswerNote(verdict(0.9375, 0), C)).toBe(true)
+  })
+
+  test("decision-policy AC13 — config C: a kept note whose answer reaches its step is an answer note, under the answer threshold (0.5 + 0.4375)", () => {
+    expect(isAnswerNote(verdict(0.5, 0.4375), C)).toBe(true)
+  })
+
+  test("decision-policy AC13 — config C: answer equal to step counts (0.5 / 0.5)", () => {
+    expect(isAnswerNote(verdict(0.5, 0.5), C)).toBe(true)
+  })
+
+  test("decision-policy AC13 — config C: a note kept with a step above its answer, under the answer threshold, is not an answer note", () => {
+    expect(isAnswerNote(verdict(0.4375, 0.5625), C)).toBe(false)
+    expect(isAnswerNote(verdict(0.46875, 0.5), C)).toBe(false)
+    expect(isAnswerNote(verdict(0.25, 0.75), C)).toBe(false)
+  })
+
+  test("decision-policy AC13 — config C: a note that is not kept is not an answer note, even when its answer is above its step (0.5 / 0.3, sum 0.8 under keep 0.9)", () => {
+    expect(isAnswerNote(verdict(0.5, 0.3), C)).toBe(false)
+    expect(isAnswerNote(verdict(0.5, 0.3125), C)).toBe(false)
+    expect(isAnswerNote(verdict(0.625, 0), C)).toBe(false)
+  })
+
+  test("decision-policy AC13 — config C: a note with no answer and no step is not an answer note, though 0 ≥ 0", () => {
+    expect(isAnswerNote({ answer: 0, step: 0, none: 1 }, C)).toBe(false)
+  })
+
+  test("decision-policy AC13 — config B: answer at the threshold, or at its step, with the note kept", () => {
+    expect(isAnswerNote(verdict(0.5, 0.25), B)).toBe(true)
+    expect(isAnswerNote(verdict(0.5, 0.5), B)).toBe(true)
+    expect(isAnswerNote(verdict(0.75, 0), B)).toBe(true)
+  })
+
+  test("decision-policy AC13 — config B: a note kept by its step, with a lower answer, is not an answer note", () => {
+    expect(isAnswerNote(verdict(0.25, 0.5), B)).toBe(false)
+    expect(isAnswerNote(verdict(0.4375, 0.5), B)).toBe(false)
+    expect(isAnswerNote(verdict(0, 0.75), B)).toBe(false)
+  })
+
+  test("decision-policy AC13 — config B: a note under both thresholds is not kept, so not an answer note, whatever the order of its probabilities", () => {
+    expect(isAnswerNote(verdict(0.4375, 0.25), B)).toBe(false)
+    expect(isAnswerNote(verdict(0.4375, 0.4375), B)).toBe(false)
+    expect(isAnswerNote({ answer: 0, step: 0, none: 1 }, B)).toBe(false)
+  })
+
+  test("decision-policy AC13 — an answer under its step still counts when it reaches the answer threshold", () => {
+    const config = withConfig({ answer: 0.25, step: 0.5 })
+    expect(isAnswerNote(verdict(0.25, 0.5), config)).toBe(true)
+    expect(isAnswerNote(verdict(0.1875, 0.5), config)).toBe(false)
+  })
+
+  test("decision-policy AC13 — the keep threshold is met at exactly keep, not just under", () => {
+    const config = withConfig({ answer: 0.75, step: 0.75, keep: 0.875 })
+    expect(isAnswerNote(verdict(0.5, 0.375), config)).toBe(true)
+    expect(isAnswerNote(verdict(0.5, 0.3125), config)).toBe(false)
+    // Kept at exactly keep, but the step is above the answer.
+    expect(isAnswerNote(verdict(0.375, 0.5), config)).toBe(false)
+  })
+
+  test("decision-policy AC13 — for every verdict, answer note = kept and (answer ≥ answer threshold or answer ≥ step), for B and C", () => {
+    const eighths = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => n / 8)
+    for (const config of [B, C, DEFAULT_POLICY]) {
+      for (const answer of eighths) {
+        for (const step of eighths) {
+          if (answer + step > 1) continue
+          const v = verdict(answer, step)
+          const expected =
+            policyModule.isKept(v, config) &&
+            (answer >= config.thresholds.answer || answer >= step)
+          expect(isAnswerNote(v, config)).toBe(expected)
+        }
+      }
+    }
+  })
+
+  test("decision-policy AC13 — does not modify its inputs", () => {
+    const v = deepFreeze(verdict(0.5, 0.4375))
+    const config = deepFreeze(structuredClone(C))
+    expect(isAnswerNote(v, config)).toBe(true)
+    expect(v).toEqual(verdict(0.5, 0.4375))
+    expect(config).toEqual(C)
+  })
+})

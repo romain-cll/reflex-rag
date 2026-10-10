@@ -73,6 +73,9 @@ function judgeOutput(scores: Record<string, Scores>) {
 
 const QUESTION = "Who leads the Atlas project?"
 
+/** A context note with the verdict it was kept with (`ContextNote` of src/core/judge.ts, AC16). */
+type ContextNote = NoteForJudge & { verdict?: Record<Verdict, number> }
+
 const NOTES: NoteForJudge[] = [
   {
     path: "people/alice.md",
@@ -1063,5 +1066,52 @@ describe("llm-judge AC10 — sufficiency option", () => {
     )
 
     expect(caught).toBe(error)
+  })
+})
+
+describe("system-one-judge AC16 — the verdict of a context note stays out of the prompt (LLM judge)", () => {
+  const WITH_VERDICTS: ContextNote[] = CONTEXT.map((note, index) => ({
+    ...note,
+    verdict:
+      index === 0
+        ? { answer: 0.8125, step: 0.1875, none: 0 }
+        : { answer: 0.0625, step: 0.9375, none: 0 },
+  }))
+
+  test("system-one-judge AC16 — the request is the same with and without verdicts on the context notes", async () => {
+    const plain = await contextRequest(CONTEXT)
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+    await new LLMJudge(llm).judge(QUESTION, NOTES, WITH_VERDICTS)
+    expect((calls[0] as JsonCall).request).toEqual(plain)
+  })
+
+  test("system-one-judge AC16 — none of the verdict values or the word verdict reaches the model", async () => {
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+    await new LLMJudge(llm).judge(QUESTION, NOTES, WITH_VERDICTS)
+    const sent = JSON.stringify((calls[0] as JsonCall).request)
+    for (const value of ["0.8125", "0.1875", "0.0625", "0.9375"]) {
+      expect(sent).not.toContain(value)
+    }
+    expect((calls[0] as JsonCall).request.prompt).not.toMatch(/verdict/i)
+  })
+
+  test("system-one-judge AC16 — the context notes with verdicts are still shown with their path, date, links and text", async () => {
+    const { llm, calls } = fakeLLM(judgeOutput({}))
+    await new LLMJudge(llm).judge(QUESTION, NOTES, WITH_VERDICTS)
+    const { prompt } = (calls[0] as JsonCall).request
+    for (const note of CONTEXT) {
+      expect(prompt).toContain(note.path)
+      expect(prompt).toContain(note.text)
+    }
+    expect(prompt).toContain("2025-05-20")
+    expect(prompt).toContain("clients/zeta.md")
+  })
+
+  test("system-one-judge AC16 — the result holds verdicts for the notes to score only", async () => {
+    const { llm } = fakeLLM(
+      judgeOutput({ n1: { answer: 1 }, n2: { step: 1 }, n3: { none: 1 } })
+    )
+    const result = await new LLMJudge(llm).judge(QUESTION, NOTES, WITH_VERDICTS)
+    expect(Object.keys(result.notes)).toEqual(NOTES.map((note) => note.path))
   })
 })

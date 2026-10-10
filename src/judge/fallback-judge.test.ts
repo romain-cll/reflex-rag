@@ -6,6 +6,9 @@ import { FallbackJudge } from "./fallback-judge.ts"
 
 const QUESTION = "Who leads the Atlas project?"
 
+/** A context note with the verdict it was kept with (`ContextNote` of src/core/judge.ts, AC16). */
+type ContextNote = NoteForJudge & { verdict?: Record<Verdict, number> }
+
 function makeNotes(count: number, prefix: string): NoteForJudge[] {
   return Array.from({ length: count }, (_, index) => ({
     path: `notes/${prefix}${index}.md`,
@@ -797,5 +800,321 @@ describe("system-one-judge AC15 — sufficiency through the fallback", () => {
       "fallbackMs",
       "judgeMs",
     ])
+  })
+})
+
+/** A stand-in for the policy of config C: an answer note is a kept note whose answer is at least 0.6. */
+function isAnswer(verdict: Verdicts): boolean {
+  return verdict.answer >= 0.6
+}
+
+/** The context note at `index` of CONTEXT, with the verdict it was kept with. */
+function kept(index: number, verdict?: Verdicts): ContextNote {
+  const note = CONTEXT[index] as NoteForJudge
+  return verdict === undefined ? note : { ...note, verdict }
+}
+
+describe("system-one-judge AC17 — scope no-answer", () => {
+  const grey: Record<string, Verdicts> = {
+    "notes/a0.md": GREY_ANSWER,
+    "notes/a1.md": GREY_STEP,
+    "notes/a2.md": NONE,
+  }
+  const noAnswer = { low: LOW, when: "no-answer", isAnswer } as const
+
+  test("system-one-judge AC17 — nothing kept, no context: the fallback judges the uncertain notes", async () => {
+    const { requests, result } = await run(grey, noAnswer)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+  })
+
+  test("system-one-judge AC17 — a context note whose verdict is an answer: no fallback call, the result is the primary's", async () => {
+    const { requests, result } = await run(grey, noAnswer, [
+      kept(0, KEPT_ANSWER),
+    ])
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+    expect(result.stages?.fallbackMs).toBe(0)
+    expect(result.notes).toEqual(grey)
+    expect(result.calls.map((call) => call.role)).toEqual([
+      "judge",
+      "judge",
+      "judge",
+    ])
+  })
+
+  test("system-one-judge AC17 — one answer note among several context notes is enough", async () => {
+    const { requests, result } = await run(grey, noAnswer, [
+      kept(0, KEPT_STEP),
+      kept(1, KEPT_ANSWER),
+    ])
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+  })
+
+  test("system-one-judge AC17 — context notes kept as step notes only: the fallback runs, with the context as it was given", async () => {
+    const context = [kept(0, KEPT_STEP), kept(1, GREY_STEP)]
+    const { requests, result } = await run(grey, noAnswer, context)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(requests[0]?.context).toEqual(context)
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+  })
+
+  test("system-one-judge AC17 — a context note without a verdict does not count as an answer: the fallback runs although the context is not empty", async () => {
+    const { requests, result } = await run(grey, noAnswer, [kept(0), kept(1)])
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+  })
+
+  test("system-one-judge AC17 — a context note without a verdict next to one with a step verdict: the fallback runs", async () => {
+    const { requests } = await run(grey, noAnswer, [
+      kept(0),
+      kept(1, KEPT_STEP),
+    ])
+    expect(requests).toHaveLength(1)
+  })
+
+  test("system-one-judge AC17 — an answer note the primary kept in this call: no fallback call", async () => {
+    const withKept: Record<string, Verdicts> = {
+      "notes/a0.md": KEPT_ANSWER,
+      "notes/a1.md": GREY_ANSWER,
+      "notes/a2.md": NONE,
+    }
+    const { requests, result } = await run(withKept, noAnswer)
+    expect(requests).toHaveLength(0)
+    expect(result.fallback).toEqual([])
+    expect(result.stages?.fallbackMs).toBe(0)
+    expect(result.notes).toEqual(withKept)
+  })
+
+  test("system-one-judge AC17 — a note the primary kept as a step only: the fallback runs, and reads it as context", async () => {
+    const withStep: Record<string, Verdicts> = {
+      "notes/a0.md": KEPT_STEP,
+      "notes/a1.md": GREY_ANSWER,
+      "notes/a2.md": NONE,
+    }
+    const { requests, result } = await run(withStep, noAnswer)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(1))
+    expect(requests[0]?.context).toEqual(pick(0))
+    expect(result.fallback).toEqual(["notes/a1.md"])
+  })
+
+  test("system-one-judge AC17 — the context of the fallback is the call's context, with its verdicts, followed by the kept notes", async () => {
+    const withStep: Record<string, Verdicts> = {
+      "notes/a0.md": KEPT_STEP,
+      "notes/a1.md": GREY_ANSWER,
+    }
+    const context = [kept(0, KEPT_STEP)]
+    const { requests } = await run(withStep, noAnswer, context)
+    expect(requests[0]?.context).toEqual([...context, ...pick(0)])
+  })
+
+  test("system-one-judge AC17 — the primary receives the context it was given, verdicts included", async () => {
+    const context = [kept(0, KEPT_STEP)]
+    const primary = fakeJudge("primary", grey)
+    const judge = new FallbackJudge(
+      primary.judge,
+      fakeJudge("fallback", grey).judge,
+      { isKept, ...noAnswer }
+    )
+    await judge.judge(QUESTION, pick(0, 1, 2), context)
+    expect(primary.requests[0]?.context).toEqual(context)
+  })
+
+  test("system-one-judge AC17 — only the notes the primary kept count, not the uncertain ones: a grey note that isAnswer accepts does not stop the fallback", async () => {
+    // GREY_ANSWER is not kept by isKept (answer 0.5 < 0.6) but this isAnswer accepts it.
+    const { requests } = await run(grey, {
+      low: LOW,
+      when: "no-answer",
+      isAnswer: (verdict: Verdicts) => verdict.answer >= 0.5,
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+  })
+
+  test("system-one-judge AC17 — isAnswer decides, not isKept: a kept note it refuses does not stop the fallback", async () => {
+    const withKept: Record<string, Verdicts> = {
+      "notes/a0.md": KEPT_ANSWER,
+      "notes/a1.md": GREY_ANSWER,
+    }
+    const { requests } = await run(withKept, {
+      low: LOW,
+      when: "no-answer",
+      isAnswer: () => false,
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(1))
+  })
+
+  test("system-one-judge AC17 — isAnswer is called with the verdict of a context note and with the verdict of a kept note of the call", async () => {
+    const seen: Verdicts[] = []
+    const withStep: Record<string, Verdicts> = {
+      "notes/a0.md": KEPT_STEP,
+      "notes/a1.md": GREY_ANSWER,
+    }
+    await run(
+      withStep,
+      {
+        low: LOW,
+        when: "no-answer",
+        isAnswer: (verdict: Verdicts) => {
+          seen.push(verdict)
+          return false
+        },
+      },
+      [kept(0, KEPT_ANSWER)]
+    )
+    expect(seen).toContainEqual(KEPT_ANSWER)
+    expect(seen).toContainEqual(KEPT_STEP)
+  })
+
+  test("system-one-judge AC17 — no uncertain note: no fallback call, whether an answer was found or not", async () => {
+    const clear: Record<string, Verdicts> = {
+      "notes/a0.md": NONE,
+      "notes/a1.md": KEPT_STEP,
+    }
+    const noContext = await run(clear, noAnswer)
+    expect(noContext.requests).toHaveLength(0)
+    expect(noContext.result.fallback).toEqual([])
+    const stepContext = await run(clear, noAnswer, [kept(0, KEPT_STEP)])
+    expect(stepContext.requests).toHaveLength(0)
+    expect(stepContext.result.fallback).toEqual([])
+  })
+
+  test("system-one-judge AC17 — the uncertain notes are defined as before: the grey zone from low, on the score", async () => {
+    const verdicts: Record<string, Verdicts> = {
+      "notes/a0.md": { answer: 0.5, step: 0.25, none: 0.25 },
+      "notes/a1.md": { answer: 0.25, step: 0.25, none: 0.5 },
+    }
+    const { requests, result } = await run(
+      verdicts,
+      {
+        low: 0.75,
+        isKept: keptBySum,
+        score: sumScore,
+        when: "no-answer",
+        isAnswer,
+      },
+      [kept(0, KEPT_STEP)]
+    )
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0))
+    expect(result.fallback).toEqual(["notes/a0.md"])
+  })
+
+  test("system-one-judge AC17 — fallback run: the verdicts replace the primary ones, calls are tagged, stages measure the fallback", async () => {
+    const primary = fakeJudge("primary", {
+      "notes/a1.md": GREY_ANSWER,
+      "notes/a3.md": GREY_STEP,
+    })
+    const fallback = fakeJudge("fallback", FALLBACK_VERDICTS, { delayMs: 30 })
+    const judge = new FallbackJudge(primary.judge, fallback.judge, {
+      isKept,
+      ...noAnswer,
+    })
+    const result = await judge.judge(QUESTION, pick(1, 3), [kept(0, KEPT_STEP)])
+    expect(result.notes).toEqual(FALLBACK_VERDICTS)
+    expect(result.calls.map((call) => call.role)).toEqual([
+      "judge",
+      "judge",
+      "fallback",
+      "fallback",
+    ])
+    expect(result.stages?.fallbackMs).toBeGreaterThanOrEqual(20)
+  })
+
+  test("system-one-judge AC17 — not called: sufficient and vetoed of the primary are forwarded, the stages are as without fallback", async () => {
+    const primary = withExtra(fakeJudge("primary", grey).judge, {
+      sufficient: 0.6,
+      vetoed: ["notes/a2.md"],
+    })
+    const fallback = fakeJudge("fallback", grey)
+    const result = await new FallbackJudge(primary, fallback.judge, {
+      isKept,
+      ...noAnswer,
+    }).judge(QUESTION, pick(0, 1, 2), [kept(0, KEPT_ANSWER)])
+    expect(fallback.requests).toHaveLength(0)
+    expect(sufficientOf(result)).toBe(0.6)
+    expect(result.vetoed).toEqual(["notes/a2.md"])
+    expect(result.fallback).toEqual([])
+    expect(result.stages?.fallbackMs).toBe(0)
+    expect(result.stages?.judgeMs).toBeGreaterThanOrEqual(0)
+  })
+
+  test("system-one-judge AC17 — called: sufficient and vetoed of the primary are forwarded too", async () => {
+    const primary = withExtra(fakeJudge("primary", grey).judge, {
+      sufficient: 0.3,
+      vetoed: ["notes/a2.md"],
+    })
+    const result = await new FallbackJudge(
+      primary,
+      fakeJudge("fallback", grey).judge,
+      { isKept, ...noAnswer }
+    ).judge(QUESTION, pick(0, 1, 2))
+    expect(result.fallback).toEqual(["notes/a0.md", "notes/a1.md"])
+    expect(sufficientOf(result)).toBe(0.3)
+    expect(result.vetoed).toEqual(["notes/a2.md"])
+  })
+
+  test("system-one-judge AC17 — a fallback error propagates carrying the primary calls", async () => {
+    const primary = fakeJudge("primary", grey)
+    const fallback = fakeJudge("fallback", grey, {
+      error: new Error("fallback down"),
+    })
+    const judge = new FallbackJudge(primary.judge, fallback.judge, {
+      isKept,
+      ...noAnswer,
+    })
+    const error = await rejection(
+      judge.judge(QUESTION, pick(0, 1, 2), [kept(0, KEPT_STEP)])
+    )
+    expect(error.message).toContain("fallback down")
+    expect(error.calls).toEqual(
+      pick(0, 1, 2).map((note) => callOf("primary", note.path))
+    )
+  })
+
+  test("system-one-judge AC17 — the other scopes ignore isAnswer: uncertain still judges again although an answer is in the context", async () => {
+    let called = 0
+    const { requests } = await run(
+      grey,
+      {
+        low: LOW,
+        when: "uncertain",
+        isAnswer: () => {
+          called += 1
+          return true
+        },
+      },
+      [kept(0, KEPT_ANSWER)]
+    )
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.notes).toEqual(pick(0, 1))
+    expect(called).toBe(0)
+  })
+
+  test("system-one-judge AC17 — the other scopes ignore isAnswer: nothing-kept runs on an empty context and nothing kept whatever isAnswer says", async () => {
+    let called = 0
+    const isAnswerCounting = () => {
+      called += 1
+      return true
+    }
+    const { requests } = await run(grey, {
+      low: LOW,
+      when: "nothing-kept",
+      isAnswer: isAnswerCounting,
+    })
+    expect(requests).toHaveLength(1)
+    const withContext = await run(
+      grey,
+      { low: LOW, when: "nothing-kept", isAnswer: () => false },
+      [kept(0, KEPT_STEP)]
+    )
+    expect(withContext.requests).toHaveLength(0)
+    expect(called).toBe(0)
   })
 })
