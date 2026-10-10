@@ -16,6 +16,7 @@ import {
   JUDGE_BEST_QUESTION,
   JUDGE_CROSS_QUESTION,
   JUDGE_QUESTION,
+  JUDGE_SUFFICIENT_QUESTION,
 } from "./question.ts"
 
 const DEFAULT_MAX_NOTES_PER_CALL = 40
@@ -30,6 +31,12 @@ export interface SystemOneJudgeOptions {
    * than `best` to the note.
    */
   veto?: { none: number; best: number }
+  /**
+   * Adds to each call a question on whether all the notes state the complete
+   * answer (`JUDGE_SUFFICIENT_QUESTION`): the `sufficient` of the judgement is
+   * the highest answer among the batches.
+   */
+  sufficiency?: boolean
 }
 
 const NONE_VERDICT: Record<Verdict, number> = { answer: 0, step: 0, none: 1 }
@@ -38,17 +45,21 @@ interface BatchResult {
   verdicts: Record<Verdict, number>[]
   /** Whether the note of each position was vetoed. */
   vetoed: boolean[]
+  /** The answer to the sufficiency question, when it came as a `noul`. */
+  sufficient?: number
 }
 
 /**
  * Asks `JUDGE_QUESTION` of the system one, one question per note, all the
  * notes of a batch sharing one state and one call. The kept notes given as
  * context are in the state, without a question. With the `veto` option, the
- * same call also holds the questions of the veto.
+ * same call also holds the questions of the veto, and with `sufficiency`, the
+ * question of sufficiency.
  */
 export class SystemOneJudge implements Judge {
   private readonly maxNotesPerCall: number
   private readonly veto: SystemOneJudgeOptions["veto"]
+  private readonly sufficiency: boolean
 
   constructor(
     private readonly systemOne: SystemOne,
@@ -56,6 +67,7 @@ export class SystemOneJudge implements Judge {
   ) {
     this.maxNotesPerCall = options.maxNotesPerCall ?? DEFAULT_MAX_NOTES_PER_CALL
     this.veto = options.veto
+    this.sufficiency = options.sufficiency ?? false
   }
 
   async judge(
@@ -72,7 +84,13 @@ export class SystemOneJudge implements Judge {
     const outcomes = await Promise.allSettled(
       batches.map(async (batch, index) => {
         const { answers, call } = await this.systemOne.decide(
-          requestOf(question, batch, context, this.veto !== undefined)
+          requestOf(
+            question,
+            batch,
+            context,
+            this.veto !== undefined,
+            this.sufficiency
+          )
         )
         calls[index] = { ...call, role: "judge" }
         const vetoed = batch.map((_, position) =>
@@ -85,6 +103,7 @@ export class SystemOneJudge implements Judge {
               : verdictsOf(answers[alias("n", position)])
           ),
           vetoed,
+          ...sufficientOf(answers["sufficient"]),
         }
       })
     )
@@ -97,6 +116,7 @@ export class SystemOneJudge implements Judge {
     }
     const inOrder = results.flatMap(({ verdicts }) => verdicts)
     const vetoed = results.flatMap((result) => result.vetoed)
+    const sufficients = results.flatMap(({ sufficient }) => sufficient ?? [])
     return {
       notes: Object.fromEntries(
         notes.map((note, position) => [note.path, inOrder[position]!])
@@ -109,6 +129,9 @@ export class SystemOneJudge implements Judge {
               .filter((_, position) => vetoed[position])
               .map((note) => note.path),
           }),
+      ...(sufficients.length === 0
+        ? {}
+        : { sufficient: Math.max(...sufficients) }),
     }
   }
 
@@ -138,13 +161,15 @@ function alias(prefix: "n" | "k" | "x", index: number): string {
 
 /**
  * The request for one batch: the notes are `n1…`, the context notes `k1…`;
- * with `veto`, the questions `x1…` and `best` come with the questions `n1…`.
+ * with `veto`, the questions `x1…` and `best` come with the questions `n1…`,
+ * and with `sufficiency`, the question `sufficient`.
  */
 function requestOf(
   question: string,
   batch: NoteForJudge[],
   context: NoteForJudge[],
-  veto: boolean
+  veto: boolean,
+  sufficiency: boolean
 ): SystemOneRequest {
   const inState = (prefix: "n" | "k", group: NoteForJudge[]) =>
     Object.fromEntries(
@@ -174,6 +199,14 @@ function requestOf(
         })
       ),
       ...(veto ? vetoQuestions(batch.length) : {}),
+      ...(sufficiency
+        ? {
+            sufficient: {
+              type: "noul",
+              instructions: JUDGE_SUFFICIENT_QUESTION,
+            },
+          }
+        : {}),
     },
   }
 }
@@ -201,6 +234,15 @@ function vetoQuestions(size: number): SystemOneRequest["questions"] {
       },
     },
   }
+}
+
+/** The `sufficient` of a batch, clamped to [0, 1], when the answer is a `noul`. */
+function sufficientOf(
+  answer: SystemOneAnswer | undefined
+): { sufficient: number } | Record<string, never> {
+  return answer?.type === "noul"
+    ? { sufficient: Math.min(1, Math.max(0, answer.noul)) }
+    : {}
 }
 
 /** Clamps the probabilities and scales them to sum to 1 (`none` when all are 0). */

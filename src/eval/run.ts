@@ -86,6 +86,11 @@ export interface RunRecord extends ContextMeasures {
   costUsd: number
   /** Absent from the traces written before config C. */
   stages?: Stages
+  /**
+   * Wall-clock time from the start of the question to the end of `retrieve`
+   * (to its error for a loop error). Absent from the traces written before it.
+   */
+  retrievalMs?: number
 }
 
 export interface Metrics {
@@ -100,6 +105,14 @@ export interface Metrics {
   latencyP50Ms: number | null
   latencyP95Ms: number | null
   meanCostUsd: number | null
+  /**
+   * The retrieval brick alone, without the answerer: mean cost per question
+   * (`null` when a call has no role) and percentiles of the retrieval time
+   * (`null` when no record has one).
+   */
+  meanRetrievalCostUsd: number | null
+  retrievalP50Ms: number | null
+  retrievalP95Ms: number | null
   /** Input tokens of the answer call, i.e. the context size. */
   meanInputTokens: number | null
   failures: Record<Failure, number>
@@ -258,14 +271,16 @@ async function evaluate(
     retrieved = await retrieve(question.question, k)
   } catch (error) {
     if (!isLoopError(error)) throw error
+    const failedAt = performance.now()
     return {
       ...recordOf(
         question,
         [],
         error.calls,
-        performance.now() - startedAt,
+        failedAt - startedAt,
         zeroStages()
       ),
+      retrievalMs: failedAt - startedAt,
       output: null,
       error: error.message,
       loop: {
@@ -299,6 +314,7 @@ async function evaluate(
     : retrievalCalls
   const record = {
     ...recordOf(question, contextNotes, calls, latencyMs, stages),
+    retrievalMs: retrievedAt - startedAt,
     ...(loop ? { loop } : {}),
   }
   if (attempt.output === null) {
@@ -391,6 +407,7 @@ function metricsOf(records: RunRecord[]): Metrics {
     ])
   ) as Record<Failure, number>
   const latencies = records.map((record) => record.latencyMs)
+  const retrievalTimes = records.flatMap(retrievalMsOf)
   return {
     n: records.length,
     accuracy: mean(records.map((record) => (record.grade.correct ? 1 : 0))),
@@ -403,6 +420,9 @@ function metricsOf(records: RunRecord[]): Metrics {
     latencyP50Ms: percentile(latencies, 0.5),
     latencyP95Ms: percentile(latencies, 0.95),
     meanCostUsd: mean(records.map((record) => record.costUsd)),
+    meanRetrievalCostUsd: meanRetrievalCostOf(records),
+    retrievalP50Ms: percentile(retrievalTimes, 0.5),
+    retrievalP95Ms: percentile(retrievalTimes, 0.95),
     meanInputTokens: mean(
       records.flatMap((record) =>
         hasAnswerCall(record) ? [record.calls.at(-1)!.inputTokens] : []
@@ -427,6 +447,28 @@ function metricsOf(records: RunRecord[]): Metrics {
     callsByRole: perRole(records, (calls) => calls.length),
     ...fallbackRatesOf(records),
   }
+}
+
+/**
+ * The retrieval time of a record: its own, else what the answer left of the
+ * latency; none for a record with neither.
+ */
+function retrievalMsOf(record: RunRecord): number[] {
+  if (record.retrievalMs !== undefined) return [record.retrievalMs]
+  return record.stages ? [record.latencyMs - record.stages.answerMs] : []
+}
+
+/** `null` when a call has no role, as in the traces written before roles. */
+function meanRetrievalCostOf(records: RunRecord[]): number | null {
+  const calls = records.flatMap((record) => record.calls)
+  if (calls.some((call) => call.role === undefined)) return null
+  return mean(
+    records.map((record) =>
+      sum(
+        record.calls.filter((call) => call.role !== "answer").map(callCostUsd)
+      )
+    )
+  )
 }
 
 function stageStat(
@@ -580,6 +622,9 @@ const COLUMNS: Column[] = [
   ["context complete", (m) => percent(m.contextCompleteRate)],
   ["precision", (m) => percent(m.meanPrecision)],
   ["notes in context", (m) => fixed(m.meanNotesInContext, 2)],
+  ["retrieval cost/question (USD)", (m) => fixed(m.meanRetrievalCostUsd, 5)],
+  ["retrieval p50 (ms)", (m) => fixed(m.retrievalP50Ms, 0)],
+  ["retrieval p95 (ms)", (m) => fixed(m.retrievalP95Ms, 0)],
   ["p50 (ms)", (m) => fixed(m.latencyP50Ms, 0)],
   ["p95 (ms)", (m) => fixed(m.latencyP95Ms, 0)],
   ["cost/question (USD)", (m) => fixed(m.meanCostUsd, 5)],

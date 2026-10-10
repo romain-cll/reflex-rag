@@ -11,6 +11,11 @@ export interface PolicyConfig {
      * by the two thresholds above, which keep their other uses.
      */
     keep?: number
+    /**
+     * When set, `follow-kept` opens the kept notes while the sufficiency the
+     * judge reported is below it.
+     */
+    sufficient?: number
   }
   budgets: {
     maxHops: number
@@ -52,10 +57,14 @@ export const DEFAULT_POLICY: PolicyConfig = {
  * clear-cut than B's.
  */
 export const POLICIES: Record<"B" | "C", PolicyConfig> = {
-  B: { ...DEFAULT_POLICY, strategy: STRATEGY },
+  B: {
+    ...DEFAULT_POLICY,
+    thresholds: { ...DEFAULT_POLICY.thresholds, sufficient: 0.5 },
+    strategy: STRATEGY,
+  },
   C: {
     ...DEFAULT_POLICY,
-    thresholds: { answer: 0.7, step: 0.7, keep: 0.9 },
+    thresholds: { answer: 0.7, step: 0.7, keep: 0.9, sufficient: 0.5 },
     strategy: STRATEGY,
   },
 }
@@ -75,11 +84,17 @@ export interface LoopState {
   notes: JudgedNote[]
   hops: number
   rewrites: number
+  /**
+   * The probability, from the last judgement that reported one, that the
+   * notes state the complete answer.
+   */
+  sufficient?: number
 }
 
 /** The rules in priority order: the first that applies wins. */
 export const RULES = [
   "follow-steps",
+  "follow-kept",
   "answer",
   "explore",
   "rewrite",
@@ -149,6 +164,26 @@ const followSteps: RuleFn = (state, config) => {
   return { type: "expand", rule: "follow-steps", paths }
 }
 
+const followKept: RuleFn = (state, config) => {
+  const { sufficient } = config.thresholds
+  if (
+    sufficient === undefined ||
+    state.sufficient === undefined ||
+    state.sufficient >= sufficient ||
+    !hopsLeft(state, config)
+  ) {
+    return undefined
+  }
+  const kept = state.notes.filter(
+    (note) => isKept(note.verdict, config) && isOpenable(note)
+  )
+  if (kept.length === 0) return undefined
+  const paths = ranked(kept, (note) => note.verdict.answer + note.verdict.step)
+    .slice(0, config.budgets.explore)
+    .map((note) => note.path)
+  return { type: "expand", rule: "follow-kept", paths }
+}
+
 const answer: RuleFn = (state, config) =>
   state.notes.some((note) => isKept(note.verdict, config))
     ? { type: "answer", rule: "answer" }
@@ -173,6 +208,7 @@ const abstain: RuleFn = () => ({ type: "abstain", rule: "abstain" })
 
 const RULE_FNS: readonly RuleFn[] = [
   followSteps,
+  followKept,
   answer,
   explore,
   rewrite,

@@ -37,3 +37,7 @@ export const JUDGE_CROSS_QUESTION: {
 /** The question of the veto that picks one note among the notes of the state. */
 export const JUDGE_BEST_QUESTION =
   "According to all the notes, which note states the answer to the question as it stands?"
+
+/** The question of sufficiency, asked of all the notes of a call, word for word. */
+export const JUDGE_SUFFICIENT_QUESTION =
+  "Taken together, do all the notes given, context notes included, state the complete answer to the question, with nothing left to look up in another note?"

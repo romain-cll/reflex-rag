@@ -26,7 +26,7 @@ export interface FallbackJudgeOptions {
 /**
  * Judges with `primary`, then judges again with `fallback`, in one call, the
  * notes that `primary` nearly kept. The fallback reads the notes `primary`
- * kept as context.
+ * kept as context. The sufficiency is the primary's: the fallback is not asked.
  */
 export class FallbackJudge implements Judge {
   constructor(
@@ -85,6 +85,9 @@ export class FallbackJudge implements Judge {
       calls: [...first.calls, ...second.calls.map(asFallback)],
       fallback: uncertain.map((note) => note.path),
       ...(first.vetoed === undefined ? {} : { vetoed: first.vetoed }),
+      ...(first.sufficient === undefined
+        ? {}
+        : { sufficient: first.sufficient }),
       stages: { judgeMs, fallbackMs },
     }
   }

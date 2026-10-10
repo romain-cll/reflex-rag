@@ -45,6 +45,8 @@ export interface LoopStep {
   fallback: string[]
   /** The notes the judge vetoed this turn. */
   vetoed: string[]
+  /** The probability the judgement of this turn gave that the notes state the complete answer, when it gave one. */
+  sufficient?: number
   action: Action
 }
 
@@ -130,6 +132,8 @@ class Loop {
   }
   private hops = 0
   private rewrites = 0
+  /** From the last judgement that reported one. */
+  private sufficient: number | undefined
 
   constructor(
     private readonly question: string,
@@ -223,7 +227,10 @@ class Loop {
     paths: string[],
     parents: Map<string, string>
   ): Promise<
-    Pick<Turn, "judged" | "parents" | "kept" | "fallback" | "vetoed">
+    Pick<
+      Turn,
+      "judged" | "parents" | "kept" | "fallback" | "vetoed" | "sufficient"
+    >
   > {
     const notes = paths.map((path) => this.noteForJudge(path))
     const context = [...this.judged.values()]
@@ -240,6 +247,8 @@ class Loop {
     this.stages.judgeMs += stages.judgeMs
     this.stages.fallbackMs += stages.fallbackMs
     this.calls.push(...judgement.calls)
+    if (judgement.sufficient !== undefined)
+      this.sufficient = judgement.sufficient
     const judged: Record<string, Verdicts> = {}
     for (const note of notes) {
       const verdicts = judgement.notes[note.path] ?? {
@@ -263,6 +272,9 @@ class Loop {
       ),
       fallback: judgement.fallback ?? [],
       vetoed: judgement.vetoed ?? [],
+      ...(judgement.sufficient === undefined
+        ? {}
+        : { sufficient: judgement.sufficient }),
     }
   }
 
@@ -291,6 +303,9 @@ class Loop {
         })),
         hops: this.hops,
         rewrites: this.rewrites,
+        ...(this.sufficient === undefined
+          ? {}
+          : { sufficient: this.sufficient }),
       },
       this.deps.policy
     )
@@ -332,8 +347,8 @@ class Loop {
   }
 
   /**
-   * The context order, among the kept notes: each answer note, most probable
-   * first, followed by its ancestors and the step notes that link to it; then
+   * The context order, among the kept notes: each answer note (`answer` at
+   * the answer threshold or at its `step`), most probable first, followed by its ancestors and the step notes that link to it; then
    * the other kept notes, by decreasing step. With `contextSteps: "linked"`,
    * the other kept notes are added only when there is no answer note.
    */
@@ -344,7 +359,9 @@ class Loop {
     )
     const answers = ranked(
       entries.filter(
-        ({ verdicts }) => verdicts.answer >= policy.thresholds.answer
+        ({ verdicts }) =>
+          verdicts.answer >= policy.thresholds.answer ||
+          verdicts.answer >= verdicts.step
       ),
       ({ verdicts }) => verdicts.answer
     )

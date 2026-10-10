@@ -327,9 +327,15 @@ function pipelineB(
     embedder,
     settings,
     llm,
-    new RoleTaggedJudge(new LLMJudge(llm))
+    new RoleTaggedJudge(
+      new LLMJudge(llm, { sufficiency: asksSufficiency(POLICIES.B) })
+    )
   )
 }
+
+/** Whether the judges are asked if the notes state the complete answer: when the policy has a threshold for it. */
+const asksSufficiency = (policy: PolicyConfig) =>
+  policy.thresholds.sufficient !== undefined
 
 /** The veto of C's system-one judge (docs/features/system-one-judge.md, AC13). */
 const C_VETO = { none: 0.7, best: 0.02 }
@@ -353,7 +359,10 @@ function pipelineC(
     settings,
     llm,
     new FallbackJudge(
-      new SystemOneJudge(systemOne, { veto: C_VETO }),
+      new SystemOneJudge(systemOne, {
+        veto: C_VETO,
+        sufficiency: asksSufficiency(POLICIES.C),
+      }),
       new RoleTaggedJudge(new LLMJudge(llm)),
       {
         low: settings.fallback,
@@ -642,6 +651,7 @@ function recordingLLM(requests: LLMRequest[]): LLM {
     answer: "",
     citations: [],
     notes: [],
+    sufficient: 0,
   }
   return {
     model: ANSWERER_MODEL,
@@ -798,7 +808,9 @@ export async function upperBoundCalls(
 ): Promise<ModelCall[]> {
   const requests: LLMRequest[] = []
   const recorder = recordingLLM(requests)
-  const judge = new LLMJudge(recorder)
+  const judge = new LLMJudge(recorder, {
+    sufficiency: asksSufficiency(policy),
+  })
   const longest = [...candidates]
     .sort((a, b) => b.text.length - a.text.length)
     .slice(0, policy.budgets.maxNotes)
@@ -830,7 +842,8 @@ export async function upperBoundCalls(
  * first, one per possible turn, each sized as one batch holding all the
  * candidate notes, as the request the system-one judge builds; then the calls
  * of `upperBoundCalls`, the worst case of the fallback, the rewriter and the
- * answerer. A system-one call has no output, which is free.
+ * answerer. A system-one call has no output, which is free. The fallback is
+ * not asked for sufficiency, so its calls are sized without it.
  */
 export async function upperBoundCallsC(
   question: string,
@@ -839,6 +852,7 @@ export async function upperBoundCallsC(
   rewriter: RewriterKind,
   systemOneModel: string = JEV_MODEL
 ): Promise<ModelCall[]> {
+  const { sufficient, ...thresholds } = policy.thresholds
   const requests: SystemOneRequest[] = []
   const recorder: SystemOne = {
     model: systemOneModel,
@@ -850,6 +864,7 @@ export async function upperBoundCallsC(
   await new SystemOneJudge(recorder, {
     maxNotesPerCall: Infinity,
     veto: C_VETO,
+    sufficiency: sufficient !== undefined,
   }).judge(question, candidates)
   const turns = 1 + policy.budgets.maxHops + policy.budgets.maxRewrites
   const turnCalls = requests.map((request): ModelCall => ({
@@ -860,7 +875,12 @@ export async function upperBoundCallsC(
   }))
   return [
     ...Array.from({ length: turns }, () => turnCalls).flat(),
-    ...(await upperBoundCalls(question, candidates, policy, rewriter)),
+    ...(await upperBoundCalls(
+      question,
+      candidates,
+      { ...policy, thresholds },
+      rewriter
+    )),
   ]
 }
 

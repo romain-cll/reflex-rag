@@ -26,6 +26,11 @@ export interface Judgement {
   vetoed?: string[]
   /** Wall-clock time of a fallback judge's primary and fallback phases. */
   stages?: { judgeMs: number; fallbackMs: number }
+  /**
+   * The probability, from 0 to 1, that the notes of the call, context
+   * included, state the complete answer; absent when the judge was not asked.
+   */
+  sufficient?: number
 }
 
 /**

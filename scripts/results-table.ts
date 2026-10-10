@@ -45,7 +45,11 @@ const MetricsSchema = z.looseObject({
   meanNotesInContext: z.number().nullable(),
   failuresByFamily: z.object({ retrieval: z.number(), answer: z.number() }),
   abstentions: z.object({ loop: z.number(), answerer: z.number() }),
-  // Absent from the summaries written before config C.
+  // Absent from the summaries written before the retrieval measures (and
+  // before config C, for the fallback and stage ones).
+  meanRetrievalCostUsd: z.number().nullable().optional(),
+  retrievalP50Ms: z.number().nullable().optional(),
+  retrievalP95Ms: z.number().nullable().optional(),
   fallbackNoteRate: z.number().nullable().optional(),
   fallbackQuestionRate: z.number().nullable().optional(),
   stageMedianMs: z.record(z.string(), z.number().nullable()).optional(),
@@ -139,8 +143,9 @@ function percent(value: number | null): string {
   return value === null ? "-" : `${(value * 100).toFixed(1)}%`
 }
 
-function fixed(value: number | null, digits: number): string {
-  return value === null ? "-" : value.toFixed(digits)
+/** Also `-` for a measure absent from the summaries written before it. */
+function fixed(value: number | null | undefined, digits: number): string {
+  return value == null ? "-" : value.toFixed(digits)
 }
 
 /** Loop measures are empty for a run without a loop. */
@@ -159,7 +164,10 @@ function correctOverN({ accuracy, n }: Metrics): string {
 
 type Column = [header: string, cell: (run: Run) => string]
 
-/** The headline columns first, then the others (docs/features/results-table.md, AC2). */
+/**
+ * The headline columns, the end-to-end ones, then the others
+ * (docs/features/results-table.md, AC2 and Revision 2, AC7).
+ */
 const MAIN_COLUMNS: Column[] = [
   ["config", (r) => r.config],
   ["split", (r) => r.split],
@@ -168,8 +176,12 @@ const MAIN_COLUMNS: Column[] = [
   ["questions", (r) => String(r.overall.n)],
   ["context complete", (r) => percent(r.overall.contextCompleteRate)],
   ["context precision", (r) => percent(r.overall.meanPrecision)],
-  ["cost/question (USD)", (r) => fixed(r.overall.meanCostUsd, 5)],
-  ["latency p50 (ms)", (r) => fixed(r.overall.latencyP50Ms, 0)],
+  [
+    "retrieval cost/question (USD)",
+    (r) => fixed(r.overall.meanRetrievalCostUsd, 5),
+  ],
+  ["retrieval latency p50 (ms)", (r) => fixed(r.overall.retrievalP50Ms, 0)],
+  ["retrieval latency p95 (ms)", (r) => fixed(r.overall.retrievalP95Ms, 0)],
   [
     "accuracy",
     (r) =>
@@ -177,6 +189,9 @@ const MAIN_COLUMNS: Column[] = [
         ? "-"
         : `${correctOverN(r.overall)} (${percent(r.overall.accuracy)})`,
   ],
+  ["end-to-end cost/question (USD)", (r) => fixed(r.overall.meanCostUsd, 5)],
+  ["end-to-end latency p50 (ms)", (r) => fixed(r.overall.latencyP50Ms, 0)],
+  ["end-to-end latency p95 (ms)", (r) => fixed(r.overall.latencyP95Ms, 0)],
   ["fallback note rate", (r) => loopPercent(r.overall.fallbackNoteRate)],
   [
     "fallback question rate",
@@ -185,7 +200,6 @@ const MAIN_COLUMNS: Column[] = [
   ["recall", (r) => percent(r.overall.meanRecall)],
   ["notes in context", (r) => fixed(r.overall.meanNotesInContext, 1)],
   ["answerer input tokens", (r) => fixed(r.overall.meanInputTokens, 0)],
-  ["latency p95 (ms)", (r) => fixed(r.overall.latencyP95Ms, 0)],
   [
     "total cost (USD)",
     (r) =>
@@ -225,6 +239,10 @@ function table(header: string[], rows: string[][]): string {
     "\n"
   )
 }
+
+/** What the retrieval columns of the main table count. */
+const RETRIEVAL_NOTE =
+  "The retrieval measures count the search, the judge, its fallback and the rewrites, without the answerer, which is the same for every config."
 
 /** The folders the table above was built from. */
 function provenance(runs: Run[]): string {
@@ -338,6 +356,8 @@ function renderPage(runs: Run[]): string {
     "## Runs",
     "",
     mainTable(runs),
+    "",
+    RETRIEVAL_NOTE,
     "",
     provenance(runs),
     "",
