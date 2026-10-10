@@ -26,6 +26,13 @@ const SettingsSchema = z.looseObject({
   config: z.string(),
   split: z.enum(SPLITS),
   gitCommit: z.string(),
+  // Absent for the configs without a fallback, and `null` for C without one.
+  loop: z
+    .looseObject({
+      fallbackLow: z.number().nullable().optional(),
+      fallbackWhen: z.string().optional(),
+    })
+    .optional(),
 })
 
 const MetricsSchema = z.looseObject({
@@ -74,6 +81,8 @@ interface Run {
   config: string
   split: string
   commit: string
+  /** The grey zone of the fallback as shown, empty for a run without one. */
+  fallback: string
   overall: Metrics
   byCategory: Record<string, Metrics | undefined>
 }
@@ -87,6 +96,13 @@ function fail(message: string): number {
 function readSettings(dir: string): unknown {
   const trace = readFileSync(join(dir, "trace.jsonl"), "utf8")
   return JSON.parse(trace.split("\n")[0]!)
+}
+
+/** `0.85`, `none` without fallback, plus the scope when it is `nothing-kept`. */
+function fallbackOf(loop: z.infer<typeof SettingsSchema>["loop"]): string {
+  if (loop?.fallbackLow === undefined) return ""
+  const low = loop.fallbackLow === null ? "none" : String(loop.fallbackLow)
+  return loop.fallbackWhen === "nothing-kept" ? `${low} nothing-kept` : low
 }
 
 function readRun(dir: string): Run {
@@ -107,6 +123,7 @@ function readRun(dir: string): Run {
       config: settings.config,
       split: settings.split,
       commit: settings.gitCommit,
+      fallback: fallbackOf(settings.loop),
       overall: summary.overall,
       byCategory: summary.byCategory,
     }
@@ -173,6 +190,7 @@ const MAIN_COLUMNS: Column[] = [
   ["split", (r) => r.split],
   ["date", (r) => r.date],
   ["commit", (r) => r.commit],
+  ["fallback", (r) => r.fallback],
   ["questions", (r) => String(r.overall.n)],
   ["context complete", (r) => percent(r.overall.contextCompleteRate)],
   ["context precision", (r) => percent(r.overall.meanPrecision)],
@@ -250,8 +268,9 @@ function provenance(runs: Run[]): string {
 }
 
 /**
- * Config and split, plus the commit when another run shares them, plus the
- * time when another run also shares the commit.
+ * Config and split, plus the fallback of a run that has one, plus the commit
+ * when another run shares them, plus the time when another run also shares the
+ * commit.
  */
 function labelOf(runs: Run[]): (run: Run) => string {
   return (run) => {
@@ -259,9 +278,12 @@ function labelOf(runs: Run[]): (run: Run) => string {
       (other) =>
         other !== run &&
         other.config === run.config &&
-        other.split === run.split
+        other.split === run.split &&
+        other.fallback === run.fallback
     )
-    const label = `${run.config} ${run.split}`
+    const label = `${run.config} ${run.split}${
+      run.fallback === "" ? "" : ` fallback ${run.fallback}`
+    }`
     if (sharing.length === 0) return label
     const withCommit = `${label} ${run.commit}`
     return sharing.some((other) => other.commit === run.commit)
@@ -277,6 +299,7 @@ const STAGE_COLUMNS: Column[] = [
   ["config", (r) => r.config],
   ["split", (r) => r.split],
   ["commit", (r) => r.commit],
+  ["fallback", (r) => r.fallback],
   ...(
     [
       ["median", "stageMedianMs"],
