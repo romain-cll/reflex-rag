@@ -103,6 +103,17 @@ interface RunSpec {
     p50: number | null
     p95: number | null
   }
+  /**
+   * The `loop` part of the settings line (Revision 3): absent from the settings
+   * of a run without a loop. `fallbackLow` is absent for A and B, a threshold
+   * for C, `null` for C without fallback; `fallbackWhen` is only recorded with
+   * a threshold.
+   */
+  loopSettings?: {
+    maxHops?: number
+    fallbackLow?: number | null
+    fallbackWhen?: "uncertain" | "nothing-kept"
+  }
 }
 
 const STAGES = ["searchMs", "judgeMs", "fallbackMs", "rewriteMs", "answerMs"]
@@ -235,6 +246,7 @@ function writeRun(parent: string, spec: RunSpec): string {
     prices: {},
     thresholds: {},
     index: { vault: "/vaults/larkspur", notes: 202, chunks: 1534, links: 611 },
+    ...(spec.loopSettings ? { loop: spec.loopSettings } : {}),
   }
   writeFileSync(
     join(dir, "trace.jsonl"),
@@ -1654,6 +1666,7 @@ const REVISION_2_HEADER = [
   "split",
   "date",
   "commit",
+  "fallback",
   "questions",
   "context complete",
   "context precision",
@@ -1803,5 +1816,340 @@ describe("Revision 2 AC8 — what retrieval means", () => {
     const after = page.split("\n").slice(main.end + 1)
     const heading = after.findIndex((line) => line.startsWith("#"))
     expect(after.slice(0, heading).join("\n")).toMatch(/built from/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Revision 3 — the fallback of each run
+// ---------------------------------------------------------------------------
+
+/** Config C on the tuning split, as the threshold sweep runs it. */
+function sweepRun(
+  name: string,
+  commit: string,
+  loopSettings: NonNullable<RunSpec["loopSettings"]> | undefined,
+  failureSeed: number
+): RunSpec {
+  return {
+    ...C_TEST,
+    name: `${name}-C-tuning`,
+    split: "tuning",
+    commit,
+    loopSettings,
+    failureSeed,
+    // Tells the rows of the main table apart: the other measures are C_TEST's.
+    precision: 0.5 + failureSeed / 100,
+  }
+}
+
+/** Two runs of the sweep at the same commit and in the same minute. */
+const C_FALLBACK_085 = sweepRun(
+  "2026-10-10T09-00-12-000Z",
+  "ccc7777",
+  { fallbackLow: 0.85 },
+  1
+)
+const C_FALLBACK_NONE = sweepRun(
+  "2026-10-10T09-00-47-000Z",
+  "ccc7777",
+  { fallbackLow: null },
+  3
+)
+const C_FALLBACK_08_NOTHING_KEPT = sweepRun(
+  "2026-10-10T09-30-00-000Z",
+  "ccc7777",
+  { fallbackLow: 0.8, fallbackWhen: "nothing-kept" },
+  4
+)
+const C_FALLBACK_08 = sweepRun(
+  "2026-10-10T09-40-00-000Z",
+  "ccc7777",
+  { fallbackLow: 0.8, fallbackWhen: "uncertain" },
+  2
+)
+
+/** A and B with settings that have no `fallbackLow`: no `loop` part, or one without it. */
+const A_NO_LOOP_SETTINGS: RunSpec = { ...A_TEST, loopSettings: undefined }
+const B_LOOP_WITHOUT_FALLBACK: RunSpec = {
+  ...B_TEST,
+  loopSettings: { maxHops: 3 },
+}
+
+/** The cells of the `fallback` column of a table, sorted. */
+function fallbackCells(table: Table): string[] {
+  const index = column(table, /^fallback$/i)
+  expect(index).toBeGreaterThanOrEqual(0)
+  return table.rows.map((row) => row[index]!).sort()
+}
+
+/** The labels of the runs in the header of the failure table, in the order of its columns. */
+function failureLabels(table: Table, runs: number): string[] {
+  return table.header.slice(-runs)
+}
+
+/** The labels of the column groups of the per-category table, without the measure names. */
+function categoryLabels(table: Table): string[] {
+  return table.header
+    .slice(1)
+    .filter((_, index) => index % 3 === 0)
+    .map((cell) => cell.replace(/ context complete$/, ""))
+}
+
+describe("Revision 3 AC9 — fallback column", () => {
+  const sweep = [
+    C_FALLBACK_085,
+    C_FALLBACK_NONE,
+    C_FALLBACK_08_NOTHING_KEPT,
+    C_FALLBACK_08,
+  ]
+  const pageOf = (specs: RunSpec[]) => {
+    const { cwd, runs } = workdir(specs)
+    return generate(cwd, runs)
+  }
+
+  test("Revision 3 AC9 — the main table has a fallback column right after commit", () => {
+    const [main] = threeTables(pageOf([A_TEST, C_FALLBACK_085]))
+    const commit = column(main, /^commit$/i)
+    expect(commit).toBeGreaterThanOrEqual(0)
+    expect(main.header[commit + 1]!).toBe("fallback")
+    expect(main.header.filter((cell) => /^fallback$/i.test(cell))).toHaveLength(
+      1
+    )
+  })
+
+  test("Revision 3 AC9 — the cell is the fallbackLow of the settings line, none when it is null, with nothing-kept when the scope is nothing-kept", () => {
+    const [main] = threeTables(pageOf(sweep))
+    expect(main.rows).toHaveLength(4)
+    expect(fallbackCells(main)).toEqual(
+      ["0.85", "none", "0.8 nothing-kept", "0.8"].sort()
+    )
+  })
+
+  test("Revision 3 AC9 — each row shows the fallback of its own run", () => {
+    const { cwd, runs } = workdir(sweep)
+    const [main] = threeTables(generate(cwd, runs))
+    const fallback = column(main, /^fallback$/i)
+    // The precision tells the runs apart (see sweepRun).
+    const precision = column(main, /^context precision$/i)
+    const expected: [RunSpec, string][] = [
+      [C_FALLBACK_085, "0.85"],
+      [C_FALLBACK_NONE, "none"],
+      [C_FALLBACK_08_NOTHING_KEPT, "0.8 nothing-kept"],
+      [C_FALLBACK_08, "0.8"],
+    ]
+    for (const [spec, cell] of expected) {
+      const rows = main.rows.filter((cells) =>
+        showsRate(cells[precision]!, spec.precision)
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]![fallback]!).toBe(cell)
+    }
+  })
+
+  test("Revision 3 AC9 — the cell is empty for A and for B, whether their settings have no loop part or a loop part without fallbackLow", () => {
+    const [main] = threeTables(
+      pageOf([A_NO_LOOP_SETTINGS, B_LOOP_WITHOUT_FALLBACK, C_FALLBACK_085])
+    )
+    const fallback = column(main, /^fallback$/i)
+    expect(fallback).toBeGreaterThanOrEqual(0)
+    expect(rowOf(main, A_NO_LOOP_SETTINGS)[fallback]!).toBe("")
+    expect(rowOf(main, B_LOOP_WITHOUT_FALLBACK)[fallback]!).toBe("")
+    expect(rowOf(main, C_FALLBACK_085)[fallback]!).toBe("0.85")
+  })
+
+  test("Revision 3 AC9 — a nothing-kept scope without a threshold adds nothing: the cell stays empty", () => {
+    const withScopeOnly: RunSpec = {
+      ...B_TEST,
+      loopSettings: { fallbackWhen: "uncertain" },
+    }
+    const [main] = threeTables(pageOf([withScopeOnly, C_FALLBACK_085]))
+    const fallback = column(main, /^fallback$/i)
+    expect(fallback).toBeGreaterThanOrEqual(0)
+    expect(rowOf(main, withScopeOnly)[fallback]!).toBe("")
+  })
+
+  test("Revision 3 AC9 — the By stage table has the same fallback column after commit", () => {
+    const text = pageOf(sweep)
+    const stage = stageTable(text)
+    const commit = column(stage, /^commit$/i)
+    expect(commit).toBeGreaterThanOrEqual(0)
+    expect(stage.header[commit + 1]!).toBe("fallback")
+    expect(stage.rows).toHaveLength(4)
+    expect(fallbackCells(stage)).toEqual(
+      ["0.85", "none", "0.8 nothing-kept", "0.8"].sort()
+    )
+  })
+
+  test("Revision 3 AC9 — in By stage too, the cell is empty for A and B", () => {
+    const stage = stageTable(
+      pageOf([A_NO_LOOP_SETTINGS, B_LOOP_WITHOUT_FALLBACK, C_FALLBACK_085])
+    )
+    const fallback = column(stage, /^fallback$/i)
+    expect(fallback).toBeGreaterThanOrEqual(0)
+    expect(rowOf(stage, A_NO_LOOP_SETTINGS)[fallback]!).toBe("")
+    expect(rowOf(stage, B_LOOP_WITHOUT_FALLBACK)[fallback]!).toBe("")
+    expect(rowOf(stage, C_FALLBACK_085)[fallback]!).toBe("0.85")
+  })
+
+  test("Revision 3 AC9 — the fallback column does not shift the other By stage columns", () => {
+    const stage = stageTable(pageOf([B_LOOP_WITHOUT_FALLBACK, C_FALLBACK_085]))
+    const row = rowOf(stage, C_FALLBACK_085)
+    expect(clean(row[2]!)).toBe(C_FALLBACK_085.commit)
+    expect(row[3]!).toBe("0.85")
+    expect(numberIn(row[stageColumn(stage, "judgeMs", "median")]!)).toBe(520)
+    expect(numberIn(row[stageColumn(stage, "fallbackMs", "mean")]!)).toBe(940)
+  })
+})
+
+describe("Revision 3 AC10 — labels with the fallback", () => {
+  const tablesOfRuns = (specs: RunSpec[]) => {
+    const { cwd, runs } = workdir(specs)
+    const [main, categories, failures] = threeTables(generate(cwd, runs))
+    return {
+      main,
+      categories,
+      failures,
+      labels: failureLabels(failures, specs.length),
+      groups: categoryLabels(categories),
+    }
+  }
+
+  test("Revision 3 AC10 — a run with a threshold gets fallback <value> after the split", () => {
+    const { labels, groups } = tablesOfRuns([A_TEST, C_FALLBACK_085])
+    expect(labels).toContain("C tuning fallback 0.85")
+    expect(groups).toContain("C tuning fallback 0.85")
+  })
+
+  test("Revision 3 AC10 — none, and nothing-kept after the threshold, are in the label like in the column", () => {
+    const none = tablesOfRuns([C_FALLBACK_NONE])
+    expect(none.labels).toEqual(["C tuning fallback none"])
+    expect(none.groups).toEqual(["C tuning fallback none"])
+    const nothingKept = tablesOfRuns([C_FALLBACK_08_NOTHING_KEPT])
+    expect(nothingKept.labels).toEqual(["C tuning fallback 0.8 nothing-kept"])
+    expect(nothingKept.groups).toEqual(["C tuning fallback 0.8 nothing-kept"])
+    const uncertain = tablesOfRuns([C_FALLBACK_08])
+    expect(uncertain.labels).toEqual(["C tuning fallback 0.8"])
+    expect(uncertain.groups).toEqual(["C tuning fallback 0.8"])
+  })
+
+  test("Revision 3 AC10 — the three measures of the category table carry the label", () => {
+    const { categories } = tablesOfRuns([A_TEST, C_FALLBACK_085])
+    expect(categories.header.slice(1)).toEqual([
+      "A test context complete",
+      "A test context precision",
+      "A test accuracy",
+      "C tuning fallback 0.85 context complete",
+      "C tuning fallback 0.85 context precision",
+      "C tuning fallback 0.85 accuracy",
+    ])
+  })
+
+  test("Revision 3 AC10 — A and B labels are unchanged, with the fallback label of C next to them", () => {
+    const { labels, groups } = tablesOfRuns([
+      A_NO_LOOP_SETTINGS,
+      B_LOOP_WITHOUT_FALLBACK,
+      C_FALLBACK_085,
+    ])
+    expect(labels).toEqual(["A test", "B test", "C tuning fallback 0.85"])
+    expect(groups).toEqual(["A test", "B test", "C tuning fallback 0.85"])
+  })
+
+  test("Revision 3 AC10 — same commit and same minute, fallback 0.85 and none: distinct labels, without commit or time", () => {
+    const { labels, groups } = tablesOfRuns([C_FALLBACK_085, C_FALLBACK_NONE])
+    expect([...labels].sort()).toEqual([
+      "C tuning fallback 0.85",
+      "C tuning fallback none",
+    ])
+    expect([...groups].sort()).toEqual([
+      "C tuning fallback 0.85",
+      "C tuning fallback none",
+    ])
+  })
+
+  test("Revision 3 AC10 — the counts of each run stay in the column of its fallback label", () => {
+    const { failures, labels } = tablesOfRuns([C_FALLBACK_085, C_FALLBACK_NONE])
+    for (const [spec, label] of [
+      [C_FALLBACK_085, "C tuning fallback 0.85"],
+      [C_FALLBACK_NONE, "C tuning fallback none"],
+    ] as const) {
+      const index = labels.indexOf(label)
+      expect(index).toBeGreaterThanOrEqual(0)
+      failures.rows.forEach((row, failure) => {
+        const id = FAILURE_IDS[failure]!
+        expect(row.slice(-labels.length)[index]!).toBe(
+          String(failuresOf(spec)[id])
+        )
+      })
+    }
+  })
+
+  test("Revision 3 AC10 — same fallback, different commits: the commit is added", () => {
+    const otherCommit: RunSpec = {
+      ...C_FALLBACK_085,
+      name: "2026-10-10T11-00-00-000Z-C-tuning",
+      commit: "ccc8888",
+      failureSeed: 3,
+    }
+    const { labels, groups } = tablesOfRuns([C_FALLBACK_085, otherCommit])
+    expect([...labels].sort()).toEqual([
+      "C tuning fallback 0.85 ccc7777",
+      "C tuning fallback 0.85 ccc8888",
+    ])
+    expect([...groups].sort()).toEqual([
+      "C tuning fallback 0.85 ccc7777",
+      "C tuning fallback 0.85 ccc8888",
+    ])
+  })
+
+  test("Revision 3 AC10 — same fallback and same commit: the commit, then the time", () => {
+    const later: RunSpec = {
+      ...C_FALLBACK_085,
+      name: "2026-10-10T10-30-00-000Z-C-tuning",
+      failureSeed: 3,
+    }
+    const { labels, groups } = tablesOfRuns([C_FALLBACK_085, later])
+    expect([...labels].sort()).toEqual([
+      "C tuning fallback 0.85 ccc7777 09:00",
+      "C tuning fallback 0.85 ccc7777 10:30",
+    ])
+    expect([...groups].sort()).toEqual([
+      "C tuning fallback 0.85 ccc7777 09:00",
+      "C tuning fallback 0.85 ccc7777 10:30",
+    ])
+  })
+
+  test("Revision 3 AC10 — only the runs that share the fallback get the commit: a run with another fallback keeps the short label", () => {
+    const otherCommit: RunSpec = {
+      ...C_FALLBACK_085,
+      name: "2026-10-10T11-00-00-000Z-C-tuning",
+      commit: "ccc8888",
+      failureSeed: 2,
+    }
+    const { labels, groups } = tablesOfRuns([
+      C_FALLBACK_085,
+      C_FALLBACK_NONE,
+      otherCommit,
+    ])
+    const expected = [
+      "C tuning fallback 0.85 ccc7777",
+      "C tuning fallback 0.85 ccc8888",
+      "C tuning fallback none",
+    ]
+    expect([...labels].sort()).toEqual(expected)
+    expect([...groups].sort()).toEqual(expected)
+  })
+
+  test("Revision 3 AC10 — a run that shares only the config and the split with a run of another split is not affected", () => {
+    const test: RunSpec = {
+      ...C_FALLBACK_085,
+      name: "2026-10-10T12-00-00-000Z-C-test",
+      split: "test",
+      failureSeed: 3,
+    }
+    const { labels } = tablesOfRuns([C_FALLBACK_085, test])
+    expect([...labels].sort()).toEqual([
+      "C test fallback 0.85",
+      "C tuning fallback 0.85",
+    ])
   })
 })
