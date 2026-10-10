@@ -81,8 +81,8 @@ interface EvalSettings {
   rewrite: RewriterKind
   candidates: number
   systemOne: SystemOneKind
-  /** The lower bound of the grey zone, whose notes the LLM judges again. */
-  fallback: number
+  /** The lower bound of the grey zone, whose notes the LLM judges again; `null` for no fallback. */
+  fallback: number | null
   /** Whether the LLM judges the grey zone always or only when nothing is kept. */
   fallbackWhen: FallbackWhen
 }
@@ -95,6 +95,8 @@ const ANSWERER_MODEL = "claude-haiku-5-5"
 const DEFAULT_K = 5
 const DEFAULT_CANDIDATES = 50
 const DEFAULT_FALLBACK = 0.8
+/** The value of `--fallback` for a run without the LLM judging the grey zone. */
+const NO_FALLBACK = "none"
 /** Rough size of a token, for the dry-run estimate. */
 const CHARS_PER_TOKEN = 4
 
@@ -130,6 +132,11 @@ function parseSettings(
         `--${name} only applies to config C, not to config ${config}`
       )
     }
+  }
+  if (options.fallback === NO_FALLBACK && options.fallbackWhen !== undefined) {
+    throw new Error(
+      `--fallback ${NO_FALLBACK} leaves nothing for --fallback-when to decide`
+    )
   }
   const split = options.split ?? "test"
   if (!isSplit(split)) {
@@ -182,8 +189,9 @@ function parseChoice<T extends string>(
   return choice
 }
 
-/** A number below the keep threshold of C: the grey zone sits under it. */
-function parseFallback(text: string): number {
+/** A number below the keep threshold of C: the grey zone sits under it; `null` for none. */
+function parseFallback(text: string): number | null {
+  if (text === NO_FALLBACK) return null
   const value = text.trim() === "" ? NaN : Number(text)
   if (!(value >= 0 && value <= 1)) {
     throw new Error(`--fallback must be a number from 0 to 1, got "${text}"`)
@@ -344,6 +352,7 @@ const C_VETO = { none: 0.7, best: 0.02 }
  * Config C: like B, but the system one judges the notes, and the LLM judges
  * again those it nearly kept: the grey zone from `--fallback` to the keep
  * threshold of C, always or only when nothing is kept (`--fallback-when`).
+ * With `--fallback none`, the system one judges alone.
  */
 function pipelineC(
   index: Index,
@@ -352,25 +361,28 @@ function pipelineC(
   systemOne: SystemOne
 ): Pipeline {
   const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
+  const systemOneJudge = new SystemOneJudge(systemOne, {
+    veto: C_VETO,
+    sufficiency: asksSufficiency(POLICIES.C),
+  })
   return loopPipeline(
     "C",
     index,
     embedder,
     settings,
     llm,
-    new FallbackJudge(
-      new SystemOneJudge(systemOne, {
-        veto: C_VETO,
-        sufficiency: asksSufficiency(POLICIES.C),
-      }),
-      new RoleTaggedJudge(new LLMJudge(llm)),
-      {
-        low: settings.fallback,
-        isKept: (verdict) => isKept(verdict, POLICIES.C),
-        score: (verdict) => keepScore(verdict, POLICIES.C),
-        when: settings.fallbackWhen,
-      }
-    ),
+    settings.fallback === null
+      ? systemOneJudge
+      : new FallbackJudge(
+          systemOneJudge,
+          new RoleTaggedJudge(new LLMJudge(llm)),
+          {
+            low: settings.fallback,
+            isKept: (verdict) => isKept(verdict, POLICIES.C),
+            score: (verdict) => keepScore(verdict, POLICIES.C),
+            when: settings.fallbackWhen,
+          }
+        ),
     systemOne.model
   )
 }
@@ -384,7 +396,7 @@ interface LoopSettings {
     candidates: number
     /** Config C only. */
     veto?: typeof C_VETO
-    fallbackLow?: number
+    fallbackLow?: number | null
     fallbackWhen?: FallbackWhen
     systemOne?: SystemOneKind
   }
@@ -413,6 +425,17 @@ export function loopSettings(
   }
   if (systemOneModel === undefined) {
     throw new Error("config C needs the model of its system one")
+  }
+  if (settings.fallback === null) {
+    return {
+      models: { judge: systemOneModel, ...models },
+      loop: {
+        ...loop,
+        veto: C_VETO,
+        fallbackLow: null,
+        systemOne: settings.systemOne,
+      },
+    }
   }
   return {
     models: { judge: systemOneModel, fallback: ANSWERER_MODEL, ...models },
@@ -756,7 +779,8 @@ async function dryRunLoop(
             candidates,
             policy,
             settings.rewrite,
-            systemOne.model
+            systemOne.model,
+            { fallback: settings.fallback !== null }
           )
         : await upperBoundCalls(
             question.question,
@@ -776,7 +800,7 @@ async function dryRunLoop(
     [
       `Dry run, config ${config}, ${settings.split} split (only the query embeddings were requested)`,
       `  questions:        ${questions.length}`,
-      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, grey zone from ${settings.fallback} (${settings.fallbackWhen})` : ""}`,
+      `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, ${settings.fallback === null ? "no fallback" : `grey zone from ${settings.fallback} (${settings.fallbackWhen})`}` : ""}`,
       `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), ${systemOne ? `up to ${systemOneCalls.length} system one (${systemOne.model}), ` : ""}up to ${anthropicCalls.length} Anthropic (${ANSWERER_MODEL})`,
       ...(systemOne
         ? [
@@ -843,14 +867,17 @@ export async function upperBoundCalls(
  * candidate notes, as the request the system-one judge builds; then the calls
  * of `upperBoundCalls`, the worst case of the fallback, the rewriter and the
  * answerer. A system-one call has no output, which is free. The fallback is
- * not asked for sufficiency, so its calls are sized without it.
+ * not asked for sufficiency, so its calls are sized without it. Without
+ * fallback (`{ fallback: false }`), the bound holds no judge call, only the
+ * rewriter and answerer calls.
  */
 export async function upperBoundCallsC(
   question: string,
   candidates: NoteForJudge[],
   policy: PolicyConfig,
   rewriter: RewriterKind,
-  systemOneModel: string = JEV_MODEL
+  systemOneModel: string = JEV_MODEL,
+  { fallback }: { fallback: boolean } = { fallback: true }
 ): Promise<ModelCall[]> {
   const { sufficient, ...thresholds } = policy.thresholds
   const requests: SystemOneRequest[] = []
@@ -875,12 +902,14 @@ export async function upperBoundCallsC(
   }))
   return [
     ...Array.from({ length: turns }, () => turnCalls).flat(),
-    ...(await upperBoundCalls(
-      question,
-      candidates,
-      { ...policy, thresholds },
-      rewriter
-    )),
+    ...(
+      await upperBoundCalls(
+        question,
+        candidates,
+        { ...policy, thresholds },
+        rewriter
+      )
+    ).slice(fallback ? 0 : turns),
   ]
 }
 
