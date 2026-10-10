@@ -168,6 +168,8 @@ export interface EvalOptions {
   /** The run stops before a question once its cumulative cost has reached this. */
   maxCostUsd: number
   runsDir: string
+  /** The source of the folder's timestamp; the current time by default. */
+  now?: () => Date
   /** Called after each record is appended to the trace, with the count done. */
   onProgress?: (record: RunRecord, done: number, total: number) => void
   config: string
@@ -217,8 +219,11 @@ export interface EvalResult {
  */
 export async function runEval(options: EvalOptions): Promise<EvalResult> {
   const { questions, config, split } = options
-  const runDir = join(options.runsDir, `${timestamp()}-${config}-${split}`)
-  await mkdir(runDir, { recursive: true })
+  const now = options.now ?? (() => new Date())
+  const runDir = await createRunDir(
+    options.runsDir,
+    `${timestamp(now())}-${config}-${split}`
+  )
   const tracePath = join(runDir, "trace.jsonl")
   await writeFile(tracePath, jsonLine(settingsOf(options)))
 
@@ -609,8 +614,25 @@ export function jsonLine(value: unknown): string {
 }
 
 /** ISO 8601 UTC without the characters that are awkward in a folder name. */
-function timestamp(): string {
-  return new Date().toISOString().replace(/[:.]/g, "-")
+function timestamp(date: Date): string {
+  return date.toISOString().replace(/[:.]/g, "-")
+}
+
+/**
+ * Creates the run folder, which no other run may hold: `mkdir` fails on an
+ * existing folder, so a name already taken gets `-2`, `-3`, and so on.
+ */
+async function createRunDir(runsDir: string, name: string): Promise<string> {
+  await mkdir(runsDir, { recursive: true })
+  for (let attempt = 1; ; attempt++) {
+    const runDir = join(runsDir, attempt === 1 ? name : `${name}-${attempt}`)
+    try {
+      await mkdir(runDir)
+      return runDir
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+    }
+  }
 }
 
 type Column = [string, (metrics: Metrics) => string]
