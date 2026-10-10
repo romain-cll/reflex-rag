@@ -2712,6 +2712,20 @@ describe("Revision 5 AC12 — mean and range", () => {
     })
   })
 
+  test("Revision 5 AC12 — values that differ only below the shown precision get no range", () => {
+    const below = [0.000002, 0.0000024].map((embed) =>
+      repeated(C_TEST, {
+        split: "tuning",
+        loopSettings: { fallbackLow: 0.85 },
+        stage: withRoleCosts(C_TEST, { embed }),
+      })
+    )
+    const { table } = repeatedSection(repeatedPage(below))
+    expect(groupRow(table, below[0]!, "0.85")["embed cost (USD)"]).toBe(
+      "0.00000"
+    )
+  })
+
   test("Revision 5 AC12 — a measure absent from every run of the group (summaries from before the retrieval measures and the costs by role) shows -", () => {
     const { table } = repeatedSection(
       repeatedPage([...REPEATED_LEGACY, REPEATED_B_OTHER_COMMIT])
