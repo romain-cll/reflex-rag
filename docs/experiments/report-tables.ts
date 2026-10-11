@@ -1,9 +1,12 @@
 // The figures of REPORT.md that RESULTS.md does not give directly, from the 15
 // final runs on the test split (three per config): per-category means, failures
 // by layer, who abstained, context precision on answerable questions only and
-// config A's precision ceiling, fallback calls, and the context handed to the
-// answerer. Means over the three runs of a config. No model call.
+// config A's precision ceiling, fallback calls, the context handed to the
+// answerer, and the cost of one judge call. Means over the three runs of a
+// config, except the per-call table, which pools the calls of the three runs.
+// No model call.
 import { readdirSync, readFileSync } from "node:fs"
+import { callCostUsd } from "/Users/romain/projects/reflex-rag/src/eval/prices.ts"
 const ROOT = "/Users/romain/projects/reflex-rag"
 const qs: any[] = (JSON.parse(readFileSync(`${ROOT}/evals/dev/questions.json`, "utf8")) as any).questions
 const byId = new Map(qs.map((q) => [q.id, q]))
@@ -112,5 +115,28 @@ console.log(
       perRun(label, (rs) => mean(rs.map((r) => r.loop?.hops ?? 0))).toFixed(2),
       perRun(label, (rs) => mean(rs.map((r) => r.loop?.rewrites ?? 0))).toFixed(2),
     ])
+  )
+)
+
+console.log("\n## One judge call (calls of the three runs pooled)\n")
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2
+}
+console.log(
+  table(
+    ["config", "judge calls", "latency median (s)", "input tokens mean", "output tokens mean", "cost mean (USD)"],
+    ["B", "C"].map((label) => {
+      const judge = groups.get(label)!.flatMap((g) => g.records.flatMap((r) => r.calls.filter((c: any) => c.role === "judge")))
+      return [
+        label,
+        judge.length.toString(),
+        (median(judge.map((c) => c.latencyMs)) / 1000).toFixed(2),
+        Math.round(mean(judge.map((c) => c.inputTokens))).toLocaleString("en-US"),
+        Math.round(mean(judge.map((c) => c.outputTokens))).toLocaleString("en-US"),
+        mean(judge.map(callCostUsd)).toFixed(5),
+      ]
+    })
   )
 )
