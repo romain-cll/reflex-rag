@@ -2,7 +2,7 @@
 
 Agent harnesses spend LLM calls on yes/no decisions inside their retrieval loops: does this note answer the question, is the answer complete, which link is worth opening. I measured whether a system-one model, which returns a probability for each option of a closed question instead of writing text, can take those decisions instead of the LLM, at equal quality, for less cost and latency.
 
-**Answer, on this bench.** Yes for quality and latency, partly for cost. The loop judged by Jev, TypeSafe's system-one model (config C), matches the same loop judged by Claude Haiku 5.5 (config B): the same share of complete contexts (86.8%) and the same accuracy (51.7/60). Its retrieval takes 0.68 s instead of 6.45 s (p50) and costs $0.00085 per question instead of $0.00203 (−58%). End to end, C's latency is close to simple RAG's (2.5 s against 2.2 s) but its cost is not: simple RAG's retrieval is almost free, and C costs 2.8 times as much.
+**Answer, on this bench.** Yes for quality and latency, partly for cost. The loop judged by Jev, TypeSafe's system-one model (config C), matches the same loop judged by Claude Haiku 5.5 at low reasoning effort (config B): the same share of complete contexts (86.8%) and the same accuracy (51.7/60). Its retrieval takes 0.68 s instead of 6.45 s (p50) and costs $0.00085 per question instead of $0.00203 (−58%). End to end, C's latency is close to simple RAG's (2.5 s against 2.2 s) but its cost is not: simple RAG's retrieval is almost free, and C costs 2.8 times as much.
 
 **The fix the traces pointed to** (section 4). C's Haiku fallback ran in 28 of 60 questions, nearly always after Jev had already found the answer. Restricted to the turns where no note stating the answer is kept yet (config C+), it runs in 1.7 of 60, retrieval p50 drops from 2.24 s to 0.70 s, and C+ is at least as good as B.
 
@@ -436,7 +436,7 @@ The full path is in the spec revisions of `docs/features/` and in `docs/experime
   - Simple RAG is near the ceiling on temporal, contradiction and no-answer questions (section 1), so almost all of the measured gain is multi-hop.
   - 60 test questions: one question moves accuracy by 1.7 points.
 - **Models and prices**:
-  - One LLM, Claude Haiku 5.5, serves as B's judge, C's fallback, the rewriter and the answerer. A stronger LLM judge might raise B.
+  - One LLM, Claude Haiku 5.5, serves as B's judge, C's fallback, the rewriter and the answerer. All four run at effort `low`. A stronger LLM judge, or a higher effort, might raise B.
   - Haiku's probabilities are self-reported in its JSON, since the API exposes no log-probabilities. Jev's are the model's own.
   - C's cost advantage rests on the list prices of section 2; its latency advantage does not.
   - Embeddings come from the Mistral API, so indexing is not local.

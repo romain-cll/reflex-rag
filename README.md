@@ -4,7 +4,7 @@ Agent harnesses spend LLM calls on yes/no decisions inside their retrieval loops
 
 **Hypothesis** (2026-10-09, before config C was built): a retrieval loop judged by a system-one decision model reaches the quality of the same loop judged by an LLM, at a cost and latency close to simple RAG.
 
-**Answer: yes for quality and latency, partly for cost.** The loop judged by Jev, a system-one model (C), matches the same loop judged by Claude Haiku 5.5 (B), with retrieval about ten times faster and 58% cheaper. End to end, C is close to simple RAG (A) in latency, 2.5 s against 2.2 s, but costs 2.8 times as much.
+**Answer: yes for quality and latency, partly for cost.** The loop judged by Jev, a system-one model (C), matches the same loop judged by Claude Haiku 5.5 at low reasoning effort (B), with retrieval about ten times faster and 58% cheaper. End to end, C is close to simple RAG (A) in latency, 2.5 s against 2.2 s, but costs 2.8 times as much.
 
 | Config                                |  Context complete | Retrieval cost / question | Retrieval latency p50 |        Accuracy |
 | ------------------------------------- | ----------------: | ------------------------: | --------------------: | --------------: |
@@ -13,7 +13,7 @@ Agent harnesses spend LLM calls on yes/no decisions inside their retrieval loops
 | C: loop judged by Jev                 | 86.8% [85.4–87.5] |                  $0.00085 |                0.68 s | 51.7/60 [50–53] |
 | C+: C, Haiku fallback while no answer | 88.9% [87.5–89.6] |                  $0.00086 |                0.70 s | 53.3/60 [52–55] |
 
-Test split of 60 questions never used for tuning, mean of three runs [min–max]. Accuracy comes last: the layer under test returns context, not answers. B is my own LLM loop, not a product.
+Test split of 60 questions never used for tuning, mean of three runs [min–max]. Accuracy comes last: the layer under test returns context, not answers. B is my own LLM loop, not a product. Haiku runs at low reasoning effort (`effort: low`) in all four of its roles; it still thinks adaptively, and B's cost and latency include those thinking tokens.
 
 **The full write-up is [`REPORT.md`](REPORT.md).**
 
