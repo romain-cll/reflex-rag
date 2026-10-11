@@ -20,7 +20,7 @@ The full brief is `reflex-rag-plan.md` at the repo root (French, local only, git
 
 Bun + TypeScript (strict), single package. `bun:sqlite` (FTS5) for the derived index, Zod at I/O boundaries, JSONL traces. Models sit behind the interfaces in `src/core/`:
 
-- LLM: Claude Haiku 5.5 (judge for config B, fallback for C, query rewriting, answerer); grader: Claude Sonnet 5.5
+- LLM: Claude Haiku 5.5 (judge for config B, fallback for C, query rewriting, answerer). The grader makes no model call: it is code (`src/eval/grade.ts`)
 - Embeddings: `mistral-embed`
 - System one: Jev (TypeSafe API, `POST https://api.typesafe.ai/v1/systemone`, key `TYPESAFE_API_KEY`) for tuning and the published runs; Clef-flash served locally by Ollama (same API) only to check that code runs. Thresholds tuned on one model do not carry over to the other.
 
