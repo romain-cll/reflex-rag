@@ -15,7 +15,17 @@ export interface ModelCall {
   inputTokens: number
   outputTokens: number
   latencyMs: number
+  /**
+   * Time the provider spent loading the model, kept out of `latencyMs`.
+   * Absent when the provider does not report it.
+   */
+  loadMs?: number
   role?: Role
+}
+
+/** The load time of the calls, 0 for the calls that report none. */
+export function loadMsOf(calls: ModelCall[]): number {
+  return calls.reduce((sum, call) => sum + (call.loadMs ?? 0), 0)
 }
 
 /** A markdown file of the vault. */

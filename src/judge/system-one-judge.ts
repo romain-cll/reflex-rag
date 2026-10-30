@@ -22,6 +22,13 @@ import {
 
 const DEFAULT_MAX_NOTES_PER_CALL = 40
 
+/** What one request of the system one may hold. */
+export interface RequestLimits {
+  maxQuestions: number
+  /** The request body, in UTF-8 bytes, must stay under it. */
+  maxBytes: number
+}
+
 export interface SystemOneJudgeOptions {
   /** Notes scored by one call; more are split into batches. Default 40. */
   maxNotesPerCall?: number
@@ -38,6 +45,12 @@ export interface SystemOneJudgeOptions {
    * the highest answer among the batches.
    */
   sufficiency?: boolean
+  /**
+   * Splits the batches so that each request stays within the limits, in
+   * addition to `maxNotesPerCall`. A note is never truncated: one whose
+   * request alone is over the limit is an error.
+   */
+  limits?: RequestLimits
 }
 
 const NONE_VERDICT: Record<Verdict, number> = { answer: 0, step: 0, none: 1 }
@@ -61,6 +74,7 @@ export class SystemOneJudge implements Judge {
   private readonly maxNotesPerCall: number
   private readonly veto: SystemOneJudgeOptions["veto"]
   private readonly sufficiency: boolean
+  private readonly limits: RequestLimits | undefined
 
   constructor(
     private readonly systemOne: SystemOne,
@@ -69,6 +83,7 @@ export class SystemOneJudge implements Judge {
     this.maxNotesPerCall = options.maxNotesPerCall ?? DEFAULT_MAX_NOTES_PER_CALL
     this.veto = options.veto
     this.sufficiency = options.sufficiency ?? false
+    this.limits = options.limits
   }
 
   async judge(
@@ -76,22 +91,13 @@ export class SystemOneJudge implements Judge {
     notes: NoteForJudge[],
     context: ContextNote[] = []
   ): Promise<Judgement> {
-    const batches: NoteForJudge[][] = []
-    for (let i = 0; i < notes.length; i += this.maxNotesPerCall) {
-      batches.push(notes.slice(i, i + this.maxNotesPerCall))
-    }
+    const batches = this.batchesOf(question, notes, context)
     const calls: (ModelCall | undefined)[] = batches.map(() => undefined)
     const results: BatchResult[] = []
     const outcomes = await Promise.allSettled(
       batches.map(async (batch, index) => {
         const { answers, call } = await this.systemOne.decide(
-          requestOf(
-            question,
-            batch,
-            context,
-            this.veto !== undefined,
-            this.sufficiency
-          )
+          this.requestOf(question, batch, context)
         )
         calls[index] = { ...call, role: "judge" }
         const vetoed = batch.map((_, position) =>
@@ -134,6 +140,79 @@ export class SystemOneJudge implements Judge {
         ? {}
         : { sufficient: Math.max(...sufficients) }),
     }
+  }
+
+  private requestOf(
+    question: string,
+    batch: NoteForJudge[],
+    context: ContextNote[]
+  ): SystemOneRequest {
+    return requestOf(
+      question,
+      batch,
+      context,
+      this.veto !== undefined,
+      this.sufficiency
+    )
+  }
+
+  /**
+   * The notes in order, in batches of at most `maxNotesPerCall`; with
+   * `limits`, each note joins the batch only if its request stays within them.
+   */
+  private batchesOf(
+    question: string,
+    notes: NoteForJudge[],
+    context: ContextNote[]
+  ): NoteForJudge[][] {
+    const batches: NoteForJudge[][] = []
+    const { limits } = this
+    if (limits === undefined) {
+      for (let i = 0; i < notes.length; i += this.maxNotesPerCall) {
+        batches.push(notes.slice(i, i + this.maxNotesPerCall))
+      }
+      return batches
+    }
+    let batch: NoteForJudge[] = []
+    for (const note of notes) {
+      const joined = [...batch, note]
+      if (
+        batch.length > 0 &&
+        batch.length < this.maxNotesPerCall &&
+        this.fits(this.requestOf(question, joined, context), limits)
+      ) {
+        batch = joined
+        continue
+      }
+      if (batch.length > 0) batches.push(batch)
+      const bytes = this.bytesOf(this.requestOf(question, [note], context))
+      if (bytes >= limits.maxBytes) {
+        throw new Error(
+          `System-one request for note ${note.path} is ${bytes} bytes, over the limit of ${limits.maxBytes}`
+        )
+      }
+      batch = [note]
+    }
+    if (batch.length > 0) batches.push(batch)
+    return batches
+  }
+
+  private fits(request: SystemOneRequest, limits: RequestLimits): boolean {
+    return (
+      Object.keys(request.questions).length <= limits.maxQuestions &&
+      this.bytesOf(request) < limits.maxBytes
+    )
+  }
+
+  /** The size of the body `HttpSystemOne` sends. */
+  private bytesOf(request: SystemOneRequest): number {
+    return new TextEncoder().encode(
+      JSON.stringify({
+        model: this.systemOne.model,
+        state: request.state,
+        questions: request.questions,
+      })
+    ).length
   }
 
   /** Whether the veto applies to the note at `position` of a batch. */

@@ -18,6 +18,13 @@ const OLLAMA_PORT = 11434
 const DEFAULT_OLLAMA_HOST = `http://localhost:${OLLAMA_PORT}`
 const CLEF_MODEL = "clef-flash"
 
+/**
+ * What Ollama accepts of `/v1/systemone` (measured 2026-10-30, Ollama 0.40.1):
+ * it answers 413 above 64 KiB of text and schema and 400 above 64 questions,
+ * and never truncates.
+ */
+export const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 65536 }
+
 const AnswerSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("choice"),
@@ -33,6 +40,21 @@ const ResponseSchema = z.object({
   usage: z.object({ input_tokens: z.number(), output_tokens: z.number() }),
 })
 
+/** The models Ollama has loaded, from `/api/ps`. */
+const LoadedModelsSchema = z.object({
+  models: z.array(
+    z.object({ name: z.string().optional(), model: z.string().optional() })
+  ),
+})
+
+/** The request that loads the model: one question, answered by the model. */
+const WARM_UP_REQUEST: SystemOneRequest = {
+  state: "warm-up",
+  questions: {
+    warmup: { type: "noul", instructions: "Is this a warm-up request?" },
+  },
+}
+
 export interface HttpSystemOneOptions {
   baseUrl: string
   model: string
@@ -42,6 +64,13 @@ export interface HttpSystemOneOptions {
   retryBaseMs?: number
   /** Each attempt is aborted after it, and the abort is retried. Default 60000. */
   timeoutMs?: number
+  /**
+   * For a model served by Ollama, which loads it on the first request: before
+   * each request, asks `/api/ps` whether the model is loaded, and if not loads
+   * it with a warm-up request, whose time is reported as `loadMs` and kept out
+   * of `latencyMs`.
+   */
+  preload?: boolean
 }
 
 export class HttpSystemOne implements SystemOne {
@@ -51,6 +80,9 @@ export class HttpSystemOne implements SystemOne {
   private readonly fetch: typeof fetch
   private readonly retryBaseMs: number
   private readonly timeoutMs: number
+  private readonly preload: boolean
+  /** The warm-up in flight, shared by the requests that wait for the model. */
+  private warmUp: Promise<number> | undefined
 
   constructor(options: HttpSystemOneOptions) {
     this.baseUrl = options.baseUrl
@@ -59,33 +91,83 @@ export class HttpSystemOne implements SystemOne {
     this.fetch = options.fetch ?? fetch
     this.retryBaseMs = options.retryBaseMs ?? DEFAULT_RETRY_BASE_MS
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.preload = options.preload ?? false
   }
 
   async decide(
     request: SystemOneRequest
   ): Promise<{ answers: Record<string, SystemOneAnswer>; call: ModelCall }> {
+    const loadMs = this.preload ? await this.ensureLoaded() : undefined
+    const { body, latencyMs } = await this.exchange(request)
+    const answers = Object.fromEntries(
+      Object.keys(request.questions)
+        .filter((id) => id in body.answers)
+        .map((id) => [id, body.answers[id] as SystemOneAnswer])
+    )
+    const call: ModelCall = {
+      model: this.model,
+      inputTokens: body.usage.input_tokens,
+      outputTokens: body.usage.output_tokens,
+      latencyMs,
+      ...(loadMs === undefined ? {} : { loadMs }),
+    }
+    return { answers, call }
+  }
+
+  /** The parsed response, and the time of the attempt that got it. */
+  private async exchange(request: SystemOneRequest) {
     for (let attempt = 0; ; attempt++) {
       const startedAt = performance.now()
       const outcome = await this.post(request)
       if (outcome instanceof Response && outcome.ok) {
         const body = await parseBody(outcome)
-        const answers = Object.fromEntries(
-          Object.keys(request.questions)
-            .filter((id) => id in body.answers)
-            .map((id) => [id, body.answers[id] as SystemOneAnswer])
-        )
-        const call: ModelCall = {
-          model: this.model,
-          inputTokens: body.usage.input_tokens,
-          outputTokens: body.usage.output_tokens,
-          latencyMs: performance.now() - startedAt,
-        }
-        return { answers, call }
+        return { body, latencyMs: performance.now() - startedAt }
       }
       const retryable =
         outcome instanceof Response ? isRetryable(outcome.status) : true
       if (!retryable || attempt >= MAX_RETRIES) throw await failure(outcome)
       await Bun.sleep(this.retryBaseMs * 2 ** attempt)
+    }
+  }
+
+  /**
+   * The time spent loading the model for this request: 0 when it is loaded or
+   * when another request loads it (and carries the time).
+   */
+  private async ensureLoaded(): Promise<number> {
+    if (this.warmUp === undefined && (await this.isLoaded())) return 0
+    if (this.warmUp !== undefined) {
+      await this.warmUp
+      return 0
+    }
+    const startedAt = performance.now()
+    const warmUp = this.exchange(WARM_UP_REQUEST).then(
+      () => performance.now() - startedAt
+    )
+    this.warmUp = warmUp
+    try {
+      return await warmUp
+    } finally {
+      this.warmUp = undefined
+    }
+  }
+
+  /** Whether `/api/ps` lists the model; any failure counts as not loaded, and the warm-up reports it. */
+  private async isLoaded(): Promise<boolean> {
+    try {
+      const response = await this.fetch(`${this.baseUrl}/api/ps`, {
+        signal: AbortSignal.timeout(this.timeoutMs),
+      })
+      if (!response.ok) return false
+      const parsed = LoadedModelsSchema.safeParse(await response.json())
+      if (!parsed.success) return false
+      const names = [this.model, `${this.model}:latest`]
+      return parsed.data.models.some(
+        ({ name, model }) =>
+          names.includes(name ?? "") || names.includes(model ?? "")
+      )
+    } catch {
+      return false
     }
   }
 
@@ -135,11 +217,12 @@ export function clefSystemOne(options: Factory = {}): HttpSystemOne {
     ...options,
     baseUrl: ollamaBaseUrl(process.env.OLLAMA_HOST),
     model: CLEF_MODEL,
+    preload: true,
   })
 }
 
 /** `OLLAMA_HOST` as Ollama reads it: `http://` and `:11434` when missing, the default when empty. */
-function ollamaBaseUrl(host: string | undefined): string {
+export function ollamaBaseUrl(host: string | undefined): string {
   if (host === undefined || host === "") return DEFAULT_OLLAMA_HOST
   const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(host)
     ? host
