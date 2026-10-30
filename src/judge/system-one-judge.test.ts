@@ -1373,3 +1373,138 @@ describe("system-one-judge AC16 — the verdict of a context note stays out of t
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// local-llm: request limits (AC22-AC25)
+// ---------------------------------------------------------------------------
+
+const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 65536 }
+
+/** The body `HttpSystemOne` sends, measured in UTF-8 bytes. */
+function bodyBytes(request: SystemOneRequest, model: string): number {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      model,
+      state: request.state,
+      questions: request.questions,
+    })
+  ).length
+}
+
+/** `count` notes of `text` each, under paths `notes/a0.md`, … */
+function notesOf(count: number, text: string): NoteForJudge[] {
+  return manyNotes(count).map((note) => ({ ...note, text, links: [] }))
+}
+
+function pathsOf(request: SystemOneRequest): string[] {
+  const state = request.state as StateOfRequest
+  return Object.values(state.notes).map((note) => note.path)
+}
+
+const VETO_AND_SUFFICIENCY = {
+  veto: { none: 0.7, best: 0.02 },
+  sufficiency: true,
+}
+
+describe("local-llm AC22 — batches by questions", () => {
+  test("AC22 — 40 short notes with veto and sufficiency: 31 then 9 notes, at most 64 questions and under 64 KiB a request, every note judged", async () => {
+    const notes = manyNotes(40)
+    const { systemOne, requests } = fakeSystemOne()
+    const result = await new SystemOneJudge(systemOne, {
+      ...VETO_AND_SUFFICIENCY,
+      limits: CLEF_LIMITS,
+    }).judge(QUESTION, notes)
+
+    expect(requests).toHaveLength(2)
+    expect(requests.map((request) => pathsOf(request).length)).toEqual([31, 9])
+    expect(requests.flatMap(pathsOf)).toEqual(notes.map((note) => note.path))
+    expect(Object.keys(requests[0]!.questions)).toHaveLength(64)
+    for (const request of requests) {
+      expect(Object.keys(request.questions).length).toBeLessThanOrEqual(64)
+      expect(bodyBytes(request, systemOne.model)).toBeLessThan(65536)
+    }
+    expect(Object.keys(result.notes)).toEqual(notes.map((note) => note.path))
+    expect(result.calls).toHaveLength(2)
+  })
+})
+
+describe("local-llm AC23 — batches by bytes", () => {
+  test("AC23 — long notes split before the note that would reach 65536 bytes, counted in UTF-8 bytes, every text sent whole", async () => {
+    // 10,000 two-byte characters: 20,000 bytes a note, 10,000 characters.
+    const text = "é".repeat(10_000)
+    const notes = notesOf(5, text)
+    const { systemOne, requests } = fakeSystemOne()
+    const result = await new SystemOneJudge(systemOne, {
+      ...VETO_AND_SUFFICIENCY,
+      limits: CLEF_LIMITS,
+    }).judge(QUESTION, notes)
+
+    expect(requests.map((request) => pathsOf(request).length)).toEqual([3, 2])
+    expect(requests.flatMap(pathsOf)).toEqual(notes.map((note) => note.path))
+    for (const request of requests) {
+      expect(bodyBytes(request, systemOne.model)).toBeLessThan(65536)
+      const sent = (
+        request.state as { notes: Record<string, { text: string }> }
+      ).notes
+      for (const note of Object.values(sent)) expect(note.text).toBe(text)
+    }
+    expect(Object.keys(result.notes)).toHaveLength(5)
+  })
+})
+
+describe("local-llm AC24 — a note too big for one request", () => {
+  test("AC24 — throws the size and the limit before any request, with the kept notes of the context counted", async () => {
+    const context: ContextNote[] = [
+      {
+        ...notesOf(1, "kept text")[0]!,
+        path: "notes/kept.md",
+        verdict: { answer: 1, step: 0, none: 0 },
+      },
+    ]
+    const huge: NoteForJudge = {
+      path: "notes/huge.md",
+      date: null,
+      text: "x".repeat(70_000),
+      links: [],
+    }
+    const small = notesOf(1, "short")
+    const options = { ...VETO_AND_SUFFICIENCY, limits: CLEF_LIMITS }
+
+    // The size of the request of the huge note alone, as an unlimited judge builds it.
+    const reference = fakeSystemOne()
+    await new SystemOneJudge(reference.systemOne, VETO_AND_SUFFICIENCY).judge(
+      QUESTION,
+      [huge],
+      context
+    )
+    const size = bodyBytes(reference.requests[0]!, reference.systemOne.model)
+    expect(size).toBeGreaterThan(65536)
+
+    const { systemOne, requests } = fakeSystemOne()
+    const error = await rejection(
+      new SystemOneJudge(systemOne, options).judge(
+        QUESTION,
+        [...small, huge],
+        context
+      )
+    )
+    expect(error.message).toBe(
+      `System-one request for note notes/huge.md is ${size} bytes, over the limit of 65536`
+    )
+    expect(requests).toHaveLength(0)
+  })
+})
+
+describe("local-llm AC25 — no limits", () => {
+  test("AC25 — without limits, 41 long notes make today's batches: 40 notes, then 1, with no byte or question check", async () => {
+    const notes = notesOf(41, "y".repeat(5000))
+    const { systemOne, requests } = fakeSystemOne()
+    await new SystemOneJudge(systemOne, VETO_AND_SUFFICIENCY).judge(
+      QUESTION,
+      notes
+    )
+    expect(requests.map((request) => pathsOf(request).length)).toEqual([40, 1])
+    expect(Object.keys(requests[0]!.questions)).toHaveLength(82)
+    expect(bodyBytes(requests[0]!, systemOne.model)).toBeGreaterThan(65536)
+  })
+})

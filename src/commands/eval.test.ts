@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { JudgeCallsError, type NoteForJudge } from "../core/judge.ts"
 import { LLMCallError } from "../core/llm.ts"
 import type { Chunk, ModelCall, Note } from "../core/types.ts"
@@ -9,6 +9,8 @@ import * as policyModule from "../loop/policy.ts"
 // not the whole file.
 import * as evalCommand from "./eval.ts"
 import * as llmModule from "../models/anthropic-llm.ts"
+import * as systemOneModule from "../models/system-one.ts"
+import { callCostUsd } from "../eval/prices.ts"
 
 const HAIKU = "claude-haiku-5-5"
 
@@ -1626,5 +1628,224 @@ describe("eval-config-c AC21 — upperBoundCallsC without fallback", () => {
         if (value !== undefined) process.env[key] = value
       })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// local-llm: --llm haiku|qwen (AC1-AC5, AC7, AC26)
+//
+// Interfaces the spec leaves open, fixed here:
+// - `llmModel(settings)` returns the model name of the LLM roles;
+// - `requiredEnv(settings)` returns the names of the environment variables;
+// - `upperBoundCalls(..., rewriter, llmModel?)` takes the LLM model as 5th
+//   argument, `upperBoundCallsC(..., { fallback, limits?, llmModel? })` in its
+//   options bag; both default to Haiku, as today;
+// - `systemOneJudgeOptions(settings)` returns the `SystemOneJudge` options;
+// - `llmCallsLabel(llm)` is the label of the LLM calls in the dry-run lines.
+// ---------------------------------------------------------------------------
+
+const QWEN = "qwen3.5:9b-mxfp8"
+
+/** The settings a run is parsed into, with the new `llm` field. */
+const LOCAL_SETTINGS = {
+  split: "tuning",
+  limit: null,
+  k: 4,
+  maxCostUsd: 1,
+  dryRun: false,
+  rewrite: "llm",
+  candidates: 30,
+  systemOne: "clef",
+  fallback: 0.6,
+  fallbackWhen: "uncertain",
+  llm: "haiku",
+} as const
+
+const QWEN_SETTINGS = { ...LOCAL_SETTINGS, llm: "qwen" } as const
+
+describe("local-llm AC1 — default LLM", () => {
+  test("AC1 — with llm haiku, every LLM role of B and C is claude-haiku-5-5 and the system one is still the judge of C", () => {
+    expect(evalCommand.llmModel(LOCAL_SETTINGS)).toBe(HAIKU)
+    expect(evalCommand.loopSettings("B", LOCAL_SETTINGS).models).toEqual({
+      judge: HAIKU,
+      rewriter: HAIKU,
+      answerer: HAIKU,
+    })
+    expect(
+      evalCommand.loopSettings("C", LOCAL_SETTINGS, "clef-flash").models
+    ).toEqual({
+      judge: "clef-flash",
+      fallback: HAIKU,
+      rewriter: HAIKU,
+      answerer: HAIKU,
+    })
+  })
+})
+
+describe("local-llm AC2 — --llm qwen", () => {
+  test("AC2 — llmModel names the pinned Qwen tag", () => {
+    expect(evalCommand.llmModel(QWEN_SETTINGS)).toBe(QWEN)
+  })
+
+  test("AC2 — B: judge, rewriter and answerer are Qwen", () => {
+    expect(evalCommand.loopSettings("B", QWEN_SETTINGS).models).toEqual({
+      judge: QWEN,
+      rewriter: QWEN,
+      answerer: QWEN,
+    })
+  })
+
+  test("AC2 — C: the judge is still the system one's model, the fallback, rewriter and answerer are Qwen", () => {
+    expect(
+      evalCommand.loopSettings("C", QWEN_SETTINGS, "clef-flash").models
+    ).toEqual({
+      judge: "clef-flash",
+      fallback: QWEN,
+      rewriter: QWEN,
+      answerer: QWEN,
+    })
+  })
+
+  test("AC2 — C without fallback: no fallback role, the rewriter and answerer are Qwen", () => {
+    expect(
+      evalCommand.loopSettings(
+        "C",
+        { ...QWEN_SETTINGS, fallback: null },
+        "clef-flash"
+      ).models
+    ).toEqual({ judge: "clef-flash", rewriter: QWEN, answerer: QWEN })
+  })
+})
+
+describe("local-llm AC3 — an invalid --llm", () => {
+  const restores: Array<() => void> = []
+  afterEach(() => {
+    for (const restore of restores.splice(0)) restore()
+  })
+
+  test("AC3 — evalCommand returns 1 and prints the expected message", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => {})
+    restores.push(() => error.mockRestore())
+    const code = await evalCommand.evalCommand("A", { llm: "gpt" })
+    expect(code).toBe(1)
+    expect(error).toHaveBeenCalledWith(
+      'reflex eval: invalid --llm "gpt", expected haiku or qwen'
+    )
+  })
+})
+
+describe("local-llm AC4 — the environment of a run", () => {
+  const names = (settings: object) => [
+    ...(evalCommand.requiredEnv(settings as never) as Iterable<string>),
+  ]
+
+  test("AC4 — qwen needs MISTRAL_API_KEY and not ANTHROPIC_API_KEY, dry run or not", () => {
+    for (const dryRun of [false, true]) {
+      const env = names({ ...QWEN_SETTINGS, dryRun })
+      expect(env).toContain("MISTRAL_API_KEY")
+      expect(env).not.toContain("ANTHROPIC_API_KEY")
+    }
+  })
+
+  test("AC4 — haiku needs ANTHROPIC_API_KEY unless it is a dry run", () => {
+    expect(names({ ...LOCAL_SETTINGS, dryRun: false })).toEqual(
+      expect.arrayContaining(["MISTRAL_API_KEY", "ANTHROPIC_API_KEY"])
+    )
+    const dry = names({ ...LOCAL_SETTINGS, dryRun: true })
+    expect(dry).toContain("MISTRAL_API_KEY")
+    expect(dry).not.toContain("ANTHROPIC_API_KEY")
+  })
+})
+
+describe("local-llm AC5 — the dry-run upper bound with Qwen", () => {
+  test("AC5 — B: the LLM calls are named after Qwen and cost 0", async () => {
+    const calls = await evalCommand.upperBoundCalls(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "llm",
+      QWEN
+    )
+    expect(calls).toHaveLength(4 + 1 + 1)
+    for (const call of calls) expect(call.model).toBe(QWEN)
+    expect(calls.reduce((total, call) => total + callCostUsd(call), 0)).toBe(0)
+  })
+
+  test("AC5 — C: the LLM calls are named after Qwen, the system-one calls after Clef, all at 0 USD", async () => {
+    const calls = await evalCommand.upperBoundCallsC(
+      QUESTION,
+      notes(8, 400),
+      DEFAULT_POLICY,
+      "llm",
+      "clef-flash",
+      { fallback: true, llmModel: QWEN } as never
+    )
+    expect(calls.filter((call) => call.model === "clef-flash")).toHaveLength(4)
+    expect(
+      calls.filter((call) => call.model !== "clef-flash").map((c) => c.model)
+    ).toEqual(Array(4 + 1 + 1).fill(QWEN))
+    expect(calls.reduce((total, call) => total + callCostUsd(call), 0)).toBe(0)
+  })
+})
+
+describe("local-llm AC5 — the dry-run label of the LLM calls", () => {
+  test("AC5 — llmCallsLabel names Ollama and the Qwen tag for qwen, Anthropic and Haiku for haiku", () => {
+    expect(evalCommand.llmCallsLabel("qwen")).toBe("Ollama (qwen3.5:9b-mxfp8)")
+    expect(evalCommand.llmCallsLabel("haiku")).toBe(
+      "Anthropic (claude-haiku-5-5)"
+    )
+  })
+})
+
+describe("local-llm AC7 — Qwen is free", () => {
+  test("AC7 — callCostUsd prices a Qwen call at 0", () => {
+    expect(
+      callCostUsd({
+        model: QWEN,
+        inputTokens: 18_000,
+        outputTokens: 2_500,
+        latencyMs: 1,
+      })
+    ).toBe(0)
+  })
+})
+
+describe("local-llm AC26 — Clef's limits in config C", () => {
+  const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 65536 }
+
+  test("AC26 — CLEF_LIMITS is 64 questions and 65536 bytes", () => {
+    expect(systemOneModule.CLEF_LIMITS).toEqual(CLEF_LIMITS)
+  })
+
+  test("AC26 — the system-one judge gets CLEF_LIMITS with clef and none with jev", () => {
+    const clef = evalCommand.systemOneJudgeOptions({
+      ...LOCAL_SETTINGS,
+      systemOne: "clef",
+    })
+    expect(clef.limits).toEqual(CLEF_LIMITS)
+    const jev = evalCommand.systemOneJudgeOptions({
+      ...LOCAL_SETTINGS,
+      systemOne: "jev",
+    })
+    expect(jev.limits).toBeUndefined()
+  })
+
+  test("AC26 — the dry run of C with the limits counts the calls of the split batches", async () => {
+    // 40 notes with the veto and the sufficiency are 82 questions: two batches a turn.
+    const policyC = policyModule.POLICIES.C
+    const turns = 1 + policyC.budgets.maxHops + policyC.budgets.maxRewrites
+    const count = async (limits?: typeof CLEF_LIMITS) =>
+      (
+        await evalCommand.upperBoundCallsC(
+          QUESTION,
+          notes(40, 100),
+          policyC,
+          "code",
+          "clef-flash",
+          { fallback: false, ...(limits ? { limits } : {}) } as never
+        )
+      ).filter((call) => call.model === "clef-flash").length
+    expect(await count()).toBe(turns)
+    expect(await count(CLEF_LIMITS)).toBe(turns * 2)
   })
 })

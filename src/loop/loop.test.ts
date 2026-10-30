@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import type {
   ContextNote,
   Judge,
@@ -2816,5 +2816,104 @@ describe("retrieval-loop AC18 — sufficiency", () => {
     })
     expect(result.outcome.type).toBe("abstain")
     expect(sufficientOf(result.steps[0]!)).toBe(0.3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// local-llm AC18: the load time of the calls is out of the stages
+// ---------------------------------------------------------------------------
+
+const restores: Array<() => void> = []
+
+afterEach(() => {
+  for (const restore of restores.splice(0)) restore()
+})
+
+/** A virtual clock behind `performance.now` and `Date.now`: no test waits. */
+function fakeClock() {
+  let now = 0
+  const perf = spyOn(performance, "now").mockImplementation(() => now)
+  const date = spyOn(Date, "now").mockImplementation(() => 1.7e12 + now)
+  restores.push(
+    () => perf.mockRestore(),
+    () => date.mockRestore()
+  )
+  return {
+    advance: (ms: number) => {
+      now += ms
+    },
+  }
+}
+
+/**
+ * REWRITE_THEN_ANSWER with a judge and a rewriter that take `judgeMs` and
+ * `rewriteMs` of virtual time per call, and whose calls carry the `loadMs`
+ * given (the judge's by turn).
+ */
+async function runWithLoad(options: {
+  judgeMs: number
+  judgeLoadMs: number[]
+  rewriteMs: number
+  rewriteLoadMs: number
+}) {
+  const clock = fakeClock()
+  const t = setup(REWRITE_THEN_ANSWER)
+  const { judge, rewriter } = t.deps
+  let turn = 0
+  const deps: LoopDeps = {
+    ...t.deps,
+    judge: {
+      async judge(...args) {
+        clock.advance(options.judgeMs)
+        const judgement = await judge.judge(...args)
+        const loadMs = options.judgeLoadMs[turn++]!
+        return {
+          ...judgement,
+          calls: judgement.calls.map((c) => ({ ...c, loadMs })),
+        }
+      },
+    },
+    rewriter: {
+      kind: "fake",
+      async rewrite(...args) {
+        clock.advance(options.rewriteMs)
+        const rewrite = await rewriter.rewrite(...args)
+        return {
+          ...rewrite,
+          calls: rewrite.calls.map((c) => ({
+            ...c,
+            loadMs: options.rewriteLoadMs,
+          })),
+        }
+      },
+    },
+  }
+  return runLoop(t.question, deps)
+}
+
+describe("local-llm AC18 — stages without the load", () => {
+  test("AC18 — rewriteMs and judgeMs are the wall time of the stage minus the loadMs of its calls", async () => {
+    const result = await runWithLoad({
+      judgeMs: 1000,
+      judgeLoadMs: [400, 400],
+      rewriteMs: 700,
+      rewriteLoadMs: 200,
+    })
+    expect(result.stages.judgeMs).toBe(2 * (1000 - 400))
+    expect(result.stages.rewriteMs).toBe(500)
+    expect(result.stages.fallbackMs).toBe(0)
+    // The calls keep their load in the trace.
+    expect(result.calls.filter((c) => c.loadMs !== undefined)).toHaveLength(3)
+  })
+
+  test("AC18 — a stage whose load exceeds its wall time is 0, per turn, not carried to the next", async () => {
+    const result = await runWithLoad({
+      judgeMs: 1000,
+      judgeLoadMs: [5000, 400],
+      rewriteMs: 700,
+      rewriteLoadMs: 9000,
+    })
+    expect(result.stages.judgeMs).toBe(0 + (1000 - 400))
+    expect(result.stages.rewriteMs).toBe(0)
   })
 })
