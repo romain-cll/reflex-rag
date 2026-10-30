@@ -1748,9 +1748,9 @@ describe("local-llm AC4 — the environment of a run", () => {
   })
 
   test("AC4 — haiku needs ANTHROPIC_API_KEY unless it is a dry run", () => {
-    expect(names({ ...LOCAL_SETTINGS, dryRun: false })).toEqual(
-      expect.arrayContaining(["MISTRAL_API_KEY", "ANTHROPIC_API_KEY"])
-    )
+    const env = names({ ...LOCAL_SETTINGS, dryRun: false })
+    expect(env).toContain("MISTRAL_API_KEY")
+    expect(env).toContain("ANTHROPIC_API_KEY")
     const dry = names({ ...LOCAL_SETTINGS, dryRun: true })
     expect(dry).toContain("MISTRAL_API_KEY")
     expect(dry).not.toContain("ANTHROPIC_API_KEY")
@@ -1778,12 +1778,12 @@ describe("local-llm AC5 — the dry-run upper bound with Qwen", () => {
       DEFAULT_POLICY,
       "llm",
       "clef-flash",
-      { fallback: true, llmModel: QWEN } as never
+      { fallback: true, llmModel: QWEN }
     )
     expect(calls.filter((call) => call.model === "clef-flash")).toHaveLength(4)
     expect(
       calls.filter((call) => call.model !== "clef-flash").map((c) => c.model)
-    ).toEqual(Array(4 + 1 + 1).fill(QWEN))
+    ).toEqual(Array.from({ length: 4 + 1 + 1 }, () => QWEN))
     expect(calls.reduce((total, call) => total + callCostUsd(call), 0)).toBe(0)
   })
 })
@@ -1842,7 +1842,7 @@ describe("local-llm AC26 — Clef's limits in config C", () => {
           policyC,
           "code",
           "clef-flash",
-          { fallback: false, ...(limits ? { limits } : {}) } as never
+          { fallback: false, ...(limits ? { limits } : {}) }
         )
       ).filter((call) => call.model === "clef-flash").length
     expect(await count()).toBe(turns)
