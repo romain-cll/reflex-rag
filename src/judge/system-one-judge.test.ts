@@ -317,6 +317,39 @@ describe("SystemOneJudge", () => {
     expect(run.maxInFlight()).toBe(4)
   })
 
+  test("local-llm-q8 — with sequential, sends the batches one at a time, in batch order", async () => {
+    const run = fakeSystemOne({ batch: () => ({ delayMs: 5 }) })
+    const judgement = await new SystemOneJudge(run.systemOne, {
+      maxNotesPerCall: 2,
+      sequential: true,
+    }).judge(QUESTION, manyNotes(8))
+    expect(run.requests).toHaveLength(4)
+    expect(run.maxInFlight()).toBe(1)
+    expect(run.completed).toEqual(
+      run.requests.map(
+        (request) => (request.state as StateOfRequest).notes["n1"]!.path
+      )
+    )
+    expect(Object.keys(judgement.notes)).toHaveLength(8)
+  })
+
+  test("local-llm-q8 — with sequential, a failed batch stops the next ones and the error carries the completed calls", async () => {
+    // Batches start at notes a0, a2 and a4; the second one fails.
+    const run = fakeSystemOne({
+      batch: (firstPath) =>
+        firstPath === "notes/a2.md" ? { error: new Error("boom") } : {},
+    })
+    const error = await rejection(
+      new SystemOneJudge(run.systemOne, {
+        maxNotesPerCall: 2,
+        sequential: true,
+      }).judge(QUESTION, manyNotes(6))
+    )
+    expect(error.message).toContain("boom")
+    expect(error.calls).toHaveLength(1)
+    expect(run.requests).toHaveLength(2)
+  })
+
   test("AC7 — gives every note of every batch its own verdicts", async () => {
     const scripts: Record<string, Record<string, number>> = {
       "notes/a0.md": { answer: 1, step: 0, none: 0 },

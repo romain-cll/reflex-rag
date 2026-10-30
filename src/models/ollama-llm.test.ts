@@ -119,14 +119,14 @@ describe("local-llm AC8 — the request", () => {
       prompt: "Capital of France?",
       maxTokens: 300,
     })
-    expect(QWEN_MODEL).toBe("qwen3.5:9b-mxfp8")
+    expect(QWEN_MODEL).toBe("qwen3.5:9b-q8_0")
     expect(NUM_CTX).toBe(32768)
-    expect(llm.model).toBe("qwen3.5:9b-mxfp8")
+    expect(llm.model).toBe("qwen3.5:9b-q8_0")
     expect(requests).toHaveLength(1)
     expect(requests[0]!.url).toBe("http://localhost:11434/api/chat")
     expect(requests[0]!.method).toBe("POST")
     expect(requests[0]!.body).toEqual({
-      model: "qwen3.5:9b-mxfp8",
+      model: "qwen3.5:9b-q8_0",
       stream: false,
       think: false,
       messages: [
@@ -191,7 +191,7 @@ describe("local-llm AC10 — the recorded call", () => {
       )
     })
     const { call } = await llm.complete({ prompt: "Hi", maxTokens: 100 })
-    expect(call.model).toBe("qwen3.5:9b-mxfp8")
+    expect(call.model).toBe("qwen3.5:9b-q8_0")
     expect(call.inputTokens).toBe(321)
     expect(call.outputTokens).toBe(45)
     expect(call.loadMs).toBe(200)
@@ -226,7 +226,7 @@ describe("local-llm AC11 — truncated output", () => {
     expect(error).toBeInstanceOf(LLMCallError)
     expect(error.message).toMatch(/truncat/i)
     const { call } = error as LLMCallError
-    expect(call.model).toBe("qwen3.5:9b-mxfp8")
+    expect(call.model).toBe("qwen3.5:9b-q8_0")
     expect(call.inputTokens).toBe(50)
     expect(call.outputTokens).toBe(100)
   })
@@ -266,7 +266,7 @@ describe("local-llm AC13 — unusable JSON", () => {
     )
     expect(error).toBeInstanceOf(LLMCallError)
     expect(error.message).toMatch(/not JSON/i)
-    expect((error as LLMCallError).call.model).toBe("qwen3.5:9b-mxfp8")
+    expect((error as LLMCallError).call.model).toBe("qwen3.5:9b-q8_0")
   })
 
   test("AC13 — JSON that fails the schema throws an LLMCallError naming the schema, with the call", async () => {
@@ -287,14 +287,14 @@ describe("local-llm AC14 — HTTP and network failures", () => {
   test("AC14 — a non-2xx response throws the status and the first line of the body", async () => {
     const { llm, requests } = setup(
       () =>
-        new Response("model 'qwen3.5:9b-mxfp8' not found\nsecond line", {
+        new Response("model 'qwen3.5:9b-q8_0' not found\nsecond line", {
           status: 404,
         })
     )
     const error = await rejection(llm.complete({ prompt: "Hi", maxTokens: 10 }))
     expect(error).not.toBeInstanceOf(LLMCallError)
     expect(error.message).toBe(
-      "Ollama request failed (404): model 'qwen3.5:9b-mxfp8' not found"
+      "Ollama request failed (404): model 'qwen3.5:9b-q8_0' not found"
     )
     expect(requests).toHaveLength(1)
   })
