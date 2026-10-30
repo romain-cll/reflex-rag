@@ -1811,9 +1811,9 @@ describe("local-llm AC7 — Qwen is free", () => {
 })
 
 describe("local-llm AC26 — Clef's limits in config C", () => {
-  const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 65536 }
+  const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 49152, maxChoices: 26 }
 
-  test("AC26 — CLEF_LIMITS is 64 questions and 65536 bytes", () => {
+  test("AC26, AC30 — CLEF_LIMITS is 64 questions, 48 KiB and 26 options a choice", () => {
     expect(systemOneModule.CLEF_LIMITS).toEqual(CLEF_LIMITS)
   })
 
