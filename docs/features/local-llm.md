@@ -59,3 +59,12 @@ The first smoke run of B (3 tuning questions) failed on every question: the MLX 
 Decision (2026-10-30, validated by Romain): `q8_0` rather than keeping `mxfp8` with the schema in the prompt. With `q8_0`, B's judge keeps a constrained JSON output as Haiku had, with the same prompt; the price is a different runner from Clef's (GGUF against MLX), whose prefill speed can differ. That gap is measured in the traces (tokens per second of each model) and reported with the figures. Without a constraint, B would get a different prompt and lose a question to every malformed JSON, a bias against B on quality that cannot be corrected afterwards.
 
 Tests: red `381e39b`, implementation `9aeef48`.
+
+## Revision 3 — the second smoke run
+
+The smoke run of C+ (3 tuning questions) ended in `loop_error` on every question, on two limits of Clef that revision 1 missed: `question "best": criteria must contain 2–26 candidates` (the veto's `best` question has an option per note plus `none`, so 31 notes are 32 options), and `Clef input has 17246 tokens; context limit is 16384` (a request under 64 KiB can still be over Clef's context). Four real judge requests measured 3.55 to 3.89 bytes a token (`usage.input_tokens` against the body's UTF-8 bytes).
+
+- **AC30 — the limits**: `CLEF_LIMITS` is `{ maxQuestions: 64, maxBytes: 49152, maxChoices: 26 }`. 48 KiB is 16,384 tokens at 3.0 bytes a token, 15% below the lowest ratio measured; a request over Clef's context still fails loudly with its 400, never truncated.
+- **AC31 — balanced batches**: with the veto and `maxChoices`, a batch holds at most `maxChoices − 1` notes, and the notes are split in batches of even size (40 notes are 20 and 20, 26 are 13 and 13, 25 fit one batch). Without the veto there is no `best` question and `maxChoices` does not cap the batch. The byte and question limits still apply on top.
+
+Tests: red `4bee280`, then the implementation.
