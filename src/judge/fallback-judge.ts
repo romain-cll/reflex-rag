@@ -7,7 +7,7 @@ import {
   type NoteForJudge,
   type Verdict,
 } from "../core/judge.ts"
-import type { ModelCall } from "../core/types.ts"
+import { loadMsOf, type ModelCall } from "../core/types.ts"
 
 export interface FallbackJudgeOptions {
   /** The lower bound of the grey zone: a note not kept whose `score` reaches it is judged again. */
@@ -54,7 +54,10 @@ export class FallbackJudge implements Judge {
     } = this.options
     const primaryStart = performance.now()
     const first = await this.primary.judge(question, notes, context)
-    const judgeMs = performance.now() - primaryStart
+    const judgeMs = Math.max(
+      0,
+      performance.now() - primaryStart - loadMsOf(first.calls)
+    )
 
     const keptNotes = notes.filter((note) => isKept(first.notes[note.path]!))
     const uncertain = notes.filter((note) => {
@@ -88,7 +91,10 @@ export class FallbackJudge implements Judge {
         { cause: error }
       )
     }
-    const fallbackMs = performance.now() - fallbackStart
+    const fallbackMs = Math.max(
+      0,
+      performance.now() - fallbackStart - loadMsOf(second.calls)
+    )
     return {
       notes: { ...first.notes, ...second.notes },
       calls: [...first.calls, ...second.calls.map(asFallback)],

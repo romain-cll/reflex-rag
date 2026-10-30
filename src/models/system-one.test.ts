@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import type {
   SystemOne,
   SystemOneAnswer,
@@ -105,6 +105,13 @@ function setup(script: Responder | Responder[] = ok) {
     input: string | URL | Request,
     init?: RequestInit
   ): Promise<Response> => {
+    // Clef's client first asks which models are loaded (local-llm AC15):
+    // answered as loaded and left out of the recorded requests, which are the
+    // system-one ones.
+    const target = input instanceof Request ? input.url : input.toString()
+    if (target.endsWith("/api/ps")) {
+      return jsonResponse({ models: [{ name: "clef-flash:latest" }] })
+    }
     const recorded: RecordedRequest = {
       url: input instanceof Request ? input.url : input.toString(),
       method: init?.method,
@@ -722,5 +729,201 @@ describe("system-one-client AC7 — OLLAMA_HOST as Ollama reads it", () => {
 
   test("system-one-client AC7 — an empty value means the default", async () => {
     expect(await urlFor("")).toBe("http://localhost:11434/v1/systemone")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// local-llm: Clef's load time (AC15-AC17)
+// ---------------------------------------------------------------------------
+
+interface OllamaCall {
+  method: string
+  url: string
+  body: { model?: string; questions?: Record<string, SystemOneQuestion> }
+}
+
+/** A virtual clock behind `performance.now` and `Date.now`. */
+function fakeClock() {
+  let now = 0
+  const perf = spyOn(performance, "now").mockImplementation(() => now)
+  const date = spyOn(Date, "now").mockImplementation(() => 1.7e12 + now)
+  return {
+    advance: (ms: number) => {
+      now += ms
+    },
+    restore: () => {
+      perf.mockRestore()
+      date.mockRestore()
+    },
+  }
+}
+
+const WARM_UP_MS = 7000
+const REAL_MS = 300
+
+/** An answer for each question of a request, whatever its type. */
+function answersFor(questions: Record<string, SystemOneQuestion>) {
+  return Object.fromEntries(
+    Object.entries(questions).map(([key, question]) => [
+      key,
+      question.type === "noul" ? NOUL_ANSWER : CHOICE_ANSWER,
+    ])
+  )
+}
+
+/** A warm-up is the request of one `noul` question. */
+function isWarmUp(call: OllamaCall): boolean {
+  const questions = Object.values(call.body.questions ?? {})
+  return (
+    call.method === "POST" &&
+    call.url.endsWith("/v1/systemone") &&
+    questions.length === 1 &&
+    questions[0]!.type === "noul"
+  )
+}
+
+/**
+ * A fake Ollama: `/api/ps` lists `loaded`, a warm-up loads Clef (it takes
+ * 7000 ms of virtual time and bills 5 tokens), a real request takes 300 ms.
+ */
+function fakeOllama(options: { loaded: string[]; warmUpStatus?: number }) {
+  const calls: OllamaCall[] = []
+  const clock = fakeClock()
+  let loaded = [...options.loaded]
+  const handle = (
+    input: string | URL | Request,
+    init?: RequestInit
+  ): Response => {
+    const call: OllamaCall = {
+      method: init?.method ?? "GET",
+      url: input instanceof Request ? input.url : input.toString(),
+      body:
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as OllamaCall["body"])
+          : {},
+    }
+    calls.push(call)
+    if (call.url.endsWith("/api/ps")) {
+      return jsonResponse({
+        models: loaded.map((name) => ({ name, model: name })),
+      })
+    }
+    const questions = call.body.questions ?? {}
+    if (isWarmUp(call)) {
+      clock.advance(WARM_UP_MS)
+      if (options.warmUpStatus !== undefined) {
+        return new Response("nope", { status: options.warmUpStatus })
+      }
+      loaded = ["clef-flash:latest"]
+      return jsonResponse({
+        model: "clef-flash",
+        answers: answersFor(questions),
+        usage: { input_tokens: 5, output_tokens: 0 },
+      })
+    }
+    clock.advance(REAL_MS)
+    return jsonResponse(apiBody(answersFor(questions)))
+  }
+  const fakeFetch = (input: string | URL | Request, init?: RequestInit) =>
+    Promise.resolve(handle(input, init))
+  return {
+    calls,
+    clock,
+    client: clefSystemOne({
+      fetch: fakeFetch as unknown as typeof fetch,
+      retryBaseMs: 0,
+    }),
+  }
+}
+
+const OLLAMA = "http://localhost:11434"
+
+describe("local-llm AC15 — Clef already loaded", () => {
+  for (const name of ["clef-flash", "clef-flash:latest"]) {
+    test(`AC15 — ${name} listed by /api/ps: GET /api/ps, then the request, with loadMs 0`, async () => {
+      const t = fakeOllama({ loaded: [name] })
+      try {
+        const { call } = await t.client.decide(REQUEST)
+        expect(t.calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+          `GET ${OLLAMA}/api/ps`,
+          `POST ${OLLAMA}/v1/systemone`,
+        ])
+        expect(call.loadMs).toBe(0)
+        expect(call.latencyMs).toBe(REAL_MS)
+      } finally {
+        t.clock.restore()
+      }
+    })
+  }
+})
+
+describe("local-llm AC16 — Clef not loaded", () => {
+  test("AC16 — one noul warm-up before the request; loadMs is the warm-up, latencyMs and tokens are the request's", async () => {
+    const t = fakeOllama({ loaded: ["qwen3.5:9b-mxfp8"] })
+    try {
+      const { call } = await t.client.decide(REQUEST)
+      expect(t.calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+        `GET ${OLLAMA}/api/ps`,
+        `POST ${OLLAMA}/v1/systemone`,
+        `POST ${OLLAMA}/v1/systemone`,
+      ])
+      const warmUp = t.calls[1]!
+      expect(warmUp.body.model).toBe("clef-flash")
+      expect(Object.values(warmUp.body.questions!)).toHaveLength(1)
+      expect(Object.values(warmUp.body.questions!)[0]!.type).toBe("noul")
+      expect(Object.keys(t.calls[2]!.body.questions!)).toEqual(
+        Object.keys(REQUEST.questions)
+      )
+      expect(call.loadMs).toBe(WARM_UP_MS)
+      expect(call.latencyMs).toBe(REAL_MS)
+      expect(call.inputTokens).toBe(392)
+    } finally {
+      t.clock.restore()
+    }
+  })
+
+  test("AC16 — concurrent decide calls share one warm-up: one call carries the loadMs, the others 0", async () => {
+    const t = fakeOllama({ loaded: [] })
+    try {
+      const results = await Promise.all([
+        t.client.decide(REQUEST),
+        t.client.decide(REQUEST),
+        t.client.decide(REQUEST),
+      ])
+      expect(t.calls.filter(isWarmUp)).toHaveLength(1)
+      expect(
+        results.map(({ call }) => call.loadMs).sort((a, b) => a! - b!)
+      ).toEqual([0, 0, WARM_UP_MS])
+    } finally {
+      t.clock.restore()
+    }
+  })
+
+  test("AC16 — a failed warm-up fails decide with the System-one request error, and the real request is not sent", async () => {
+    const t = fakeOllama({ loaded: [], warmUpStatus: 400 })
+    try {
+      const error = await rejection(t.client.decide(REQUEST))
+      expect(error.message).toBe("System-one request failed (400): nope")
+      expect(t.calls.filter((c) => c.method === "POST")).toHaveLength(1)
+    } finally {
+      t.clock.restore()
+    }
+  })
+})
+
+describe("local-llm AC17 — Jev", () => {
+  test("AC17 — no /api/ps and no warm-up: one request, and the call has no loadMs", async () => {
+    process.env.TYPESAFE_API_KEY = "typesafe-test-key"
+    const calls: string[] = []
+    const fakeFetch = (input: string | URL | Request) => {
+      calls.push(input instanceof Request ? input.url : input.toString())
+      return Promise.resolve(jsonResponse(apiBody()))
+    }
+    const { call } = await jevSystemOne({
+      fetch: fakeFetch as unknown as typeof fetch,
+      retryBaseMs: 0,
+    }).decide(REQUEST)
+    expect(calls).toEqual(["https://api.typesafe.ai/v1/systemone"])
+    expect("loadMs" in call).toBe(false)
   })
 })

@@ -7,7 +7,7 @@ import {
   type Split,
 } from "../../evals/schema.ts"
 import type { Answer, ContextChunk } from "../answer/answerer.ts"
-import { ROLES, type ModelCall, type Role } from "../core/types.ts"
+import { loadMsOf, ROLES, type ModelCall, type Role } from "../core/types.ts"
 import { RULES } from "../loop/policy.ts"
 import {
   contextMeasuresOf,
@@ -142,6 +142,11 @@ export interface Metrics {
 export interface Summary {
   overall: Metrics
   byCategory: Partial<Record<Category, Metrics>>
+  /**
+   * Time the models spent loading, kept out of the latencies: over the calls
+   * that report one; `null` when none does.
+   */
+  modelLoadMs: { total: number; max: number } | null
 }
 
 export interface EvalOptions {
@@ -276,16 +281,10 @@ async function evaluate(
     retrieved = await retrieve(question.question, k)
   } catch (error) {
     if (!isLoopError(error)) throw error
-    const failedAt = performance.now()
+    const failedMs = spanMs(startedAt, performance.now(), error.calls)
     return {
-      ...recordOf(
-        question,
-        [],
-        error.calls,
-        failedAt - startedAt,
-        zeroStages()
-      ),
-      retrievalMs: failedAt - startedAt,
+      ...recordOf(question, [], error.calls, failedMs, zeroStages()),
+      retrievalMs: failedMs,
       output: null,
       error: error.message,
       loop: {
@@ -304,22 +303,27 @@ async function evaluate(
   const { context, calls: retrievalCalls, loop } = retrieved
   const attempt = await attemptAnswer(answer, question.question, context, loop)
   const answeredAt = performance.now()
-  const latencyMs = answeredAt - startedAt
-  const stages = {
-    ...(retrieved.stages ?? {
-      ...zeroStages(),
-      searchMs: retrievedAt - startedAt,
-    }),
-    answerMs: attempt.call ? answeredAt - retrievedAt : 0,
-  }
-
-  const contextNotes = context.map((chunk) => chunk.notePath)
   const calls = attempt.call
     ? [...retrievalCalls, attempt.call]
     : retrievalCalls
+  const retrievalMs = spanMs(startedAt, retrievedAt, retrievalCalls)
+  const stages = {
+    ...(retrieved.stages ?? { ...zeroStages(), searchMs: retrievalMs }),
+    answerMs: attempt.call
+      ? spanMs(retrievedAt, answeredAt, [attempt.call])
+      : 0,
+  }
+
+  const contextNotes = context.map((chunk) => chunk.notePath)
   const record = {
-    ...recordOf(question, contextNotes, calls, latencyMs, stages),
-    retrievalMs: retrievedAt - startedAt,
+    ...recordOf(
+      question,
+      contextNotes,
+      calls,
+      spanMs(startedAt, answeredAt, calls),
+      stages
+    ),
+    retrievalMs,
     ...(loop ? { loop } : {}),
   }
   if (attempt.output === null) {
@@ -356,6 +360,11 @@ function recordOf(
     costUsd: sum(calls.map(callCostUsd)),
     stages,
   }
+}
+
+/** The wall-clock time between two instants, without the load time of the calls made in between. */
+function spanMs(from: number, to: number, calls: ModelCall[]): number {
+  return Math.max(0, to - from - loadMsOf(calls))
 }
 
 function zeroStages(): Stages {
@@ -401,7 +410,17 @@ export function summarize(records: RunRecord[]): Summary {
     const inCategory = records.filter((record) => record.category === category)
     if (inCategory.length > 0) byCategory[category] = metricsOf(inCategory)
   }
-  return { overall: metricsOf(records), byCategory }
+  const loads = records.flatMap((record) =>
+    record.calls.flatMap((call) => call.loadMs ?? [])
+  )
+  return {
+    overall: metricsOf(records),
+    byCategory,
+    modelLoadMs:
+      loads.length === 0
+        ? null
+        : { total: sum(loads), max: Math.max(...loads) },
+  }
 }
 
 function metricsOf(records: RunRecord[]): Metrics {

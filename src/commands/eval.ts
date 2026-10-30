@@ -24,7 +24,11 @@ import { callCostUsd } from "../eval/prices.ts"
 import { progressLine, runEval, type EvalOptions } from "../eval/run.ts"
 import { FallbackJudge } from "../judge/fallback-judge.ts"
 import { LLMJudge } from "../judge/llm-judge.ts"
-import { SystemOneJudge } from "../judge/system-one-judge.ts"
+import {
+  SystemOneJudge,
+  type RequestLimits,
+  type SystemOneJudgeOptions,
+} from "../judge/system-one-judge.ts"
 import { noteText, runLoop } from "../loop/loop.ts"
 import {
   DEFAULT_POLICY,
@@ -40,7 +44,13 @@ import {
   THINKING_HEADROOM_TOKENS,
 } from "../models/anthropic-llm.ts"
 import { MistralEmbedder } from "../models/mistral-embedder.ts"
-import { clefSystemOne, JEV_MODEL, jevSystemOne } from "../models/system-one.ts"
+import { ollamaLLM, QWEN_MODEL } from "../models/ollama-llm.ts"
+import {
+  CLEF_LIMITS,
+  clefSystemOne,
+  JEV_MODEL,
+  jevSystemOne,
+} from "../models/system-one.ts"
 import { HybridRetriever } from "../retrieval/hybrid.ts"
 
 export type EvalConfig = "A" | "B" | "C"
@@ -52,6 +62,8 @@ export interface EvalCliOptions {
   k?: string
   maxCost?: string
   dryRun?: boolean
+  /** The LLM of every LLM role. */
+  llm?: string
   /** Configs B and C. */
   rewrite?: string
   candidates?: string
@@ -60,6 +72,10 @@ export interface EvalCliOptions {
   fallback?: string
   fallbackWhen?: string
 }
+
+const LLMS = ["haiku", "qwen"] as const
+
+type LLMKind = (typeof LLMS)[number]
 
 const REWRITERS = ["llm", "code"] as const
 
@@ -79,6 +95,8 @@ interface EvalSettings {
   k: number
   maxCostUsd: number
   dryRun: boolean
+  /** Haiku when absent. */
+  llm?: LLMKind
   rewrite: RewriterKind
   candidates: number
   systemOne: SystemOneKind
@@ -92,6 +110,15 @@ const QUESTIONS_PATH = "evals/dev/questions.json"
 const INDEX_PATH = ".reflex/index.db"
 const RUNS_DIR = "runs"
 const ANSWERER_MODEL = "claude-haiku-5-5"
+/** The model of the LLM roles (answerer, B's judge, C's fallback, rewriter), by `--llm`. */
+const LLM_MODELS: Record<LLMKind, string> = {
+  haiku: ANSWERER_MODEL,
+  qwen: QWEN_MODEL,
+}
+const LLM_PROVIDERS: Record<LLMKind, string> = {
+  haiku: "Anthropic",
+  qwen: "Ollama",
+}
 /** Notes in the context. */
 const DEFAULT_K = 5
 const DEFAULT_CANDIDATES = 50
@@ -155,6 +182,7 @@ function parseSettings(
         ? 1
         : parseNumber("max-cost", options.maxCost, false),
     dryRun: options.dryRun ?? false,
+    llm: parseChoice("llm", options.llm, LLMS, "haiku"),
     rewrite: parseChoice("rewrite", options.rewrite, REWRITERS, "llm"),
     candidates:
       options.candidates === undefined
@@ -238,8 +266,10 @@ async function runConfig(
   for (const path of [QUESTIONS_PATH, INDEX_PATH]) {
     if (!existsSync(path)) throw new Error(`${path} not found`)
   }
-  const mistralKey = requireKey("MISTRAL_API_KEY")
-  if (!settings.dryRun) requireKey("ANTHROPIC_API_KEY")
+  const keys = Object.fromEntries(
+    requiredEnv(settings).map((name) => [name, requireKey(name)])
+  )
+  const mistralKey = keys["MISTRAL_API_KEY"]!
   const systemOne = config === "C" ? systemOneOf(settings.systemOne) : undefined
   const questions = await loadQuestions(settings)
 
@@ -298,6 +328,36 @@ async function runConfig(
   }
 }
 
+/**
+ * The environment variables a run needs. Qwen runs on Ollama, without a key;
+ * a dry run sends no Anthropic request.
+ */
+export function requiredEnv(settings: Pick<EvalSettings, "dryRun" | "llm">) {
+  return [
+    "MISTRAL_API_KEY",
+    ...(settings.llm === "qwen" || settings.dryRun
+      ? []
+      : ["ANTHROPIC_API_KEY"]),
+  ]
+}
+
+/** The model of the LLM roles of a run. */
+export function llmModel({ llm = "haiku" }: Pick<EvalSettings, "llm">): string {
+  return LLM_MODELS[llm]
+}
+
+/** The LLM calls in the dry-run lines: `Anthropic (claude-haiku-5-5)`. */
+export function llmCallsLabel(llm: LLMKind): string {
+  return `${LLM_PROVIDERS[llm]} (${LLM_MODELS[llm]})`
+}
+
+/** The client of the LLM roles of a run. */
+function llmOf(settings: Pick<EvalSettings, "llm">): LLM {
+  return settings.llm === "qwen"
+    ? ollamaLLM()
+    : new AnthropicLLM({ model: ANSWERER_MODEL })
+}
+
 /** Jev needs `TYPESAFE_API_KEY`: `jevSystemOne` rejects its absence. */
 function systemOneOf(kind: SystemOneKind): SystemOne {
   return kind === "jev" ? jevSystemOne() : clefSystemOne()
@@ -308,7 +368,7 @@ function pipelineA(
   embedder: Embedder,
   settings: EvalSettings
 ): Pipeline {
-  const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
+  const llm = llmOf(settings)
   return {
     retrieve: retrieverOf(index, embedder, settings),
     answer: (query, context) =>
@@ -329,7 +389,7 @@ function pipelineB(
   embedder: Embedder,
   settings: EvalSettings
 ): Pipeline {
-  const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
+  const llm = llmOf(settings)
   return loopPipeline(
     "B",
     index,
@@ -349,6 +409,17 @@ const asksSufficiency = (policy: PolicyConfig) =>
 /** The veto of C's system-one judge (docs/features/system-one-judge.md, AC13). */
 const C_VETO = { none: 0.7, best: 0.02 }
 
+/** The options of C's system-one judge: Clef's request limits apply with Clef only. */
+export function systemOneJudgeOptions(
+  settings: Pick<EvalSettings, "systemOne">
+): SystemOneJudgeOptions {
+  return {
+    veto: C_VETO,
+    sufficiency: asksSufficiency(POLICIES.C),
+    ...(settings.systemOne === "clef" ? { limits: CLEF_LIMITS } : {}),
+  }
+}
+
 /**
  * Config C: like B, but the system one judges the notes, and the LLM judges
  * again those it nearly kept: the grey zone from `--fallback` to the keep
@@ -362,11 +433,11 @@ function pipelineC(
   settings: EvalSettings,
   systemOne: SystemOne
 ): Pipeline {
-  const llm = new AnthropicLLM({ model: ANSWERER_MODEL })
-  const systemOneJudge = new SystemOneJudge(systemOne, {
-    veto: C_VETO,
-    sufficiency: asksSufficiency(POLICIES.C),
-  })
+  const llm = llmOf(settings)
+  const systemOneJudge = new SystemOneJudge(
+    systemOne,
+    systemOneJudgeOptions(settings)
+  )
   return loopPipeline(
     "C",
     index,
@@ -407,16 +478,17 @@ interface LoopSettings {
 
 /**
  * The model of the judge is the system one's in C, which also names its
- * fallback model, the Haiku client's.
+ * fallback model, the LLM client's.
  */
 export function loopSettings(
   config: "B" | "C",
   settings: EvalSettings,
   systemOneModel?: string
 ): LoopSettings {
+  const model = llmModel(settings)
   const models: Record<string, string> = {
-    rewriter: settings.rewrite === "llm" ? ANSWERER_MODEL : "none",
-    answerer: ANSWERER_MODEL,
+    rewriter: settings.rewrite === "llm" ? model : "none",
+    answerer: model,
   }
   const loop: LoopSettings["loop"] = {
     policy: loopPolicy(settings.k, POLICIES[config]),
@@ -424,7 +496,7 @@ export function loopSettings(
     candidates: settings.candidates,
   }
   if (config === "B") {
-    return { models: { judge: ANSWERER_MODEL, ...models }, loop }
+    return { models: { judge: model, ...models }, loop }
   }
   if (systemOneModel === undefined) {
     throw new Error("config C needs the model of its system one")
@@ -441,7 +513,7 @@ export function loopSettings(
     }
   }
   return {
-    models: { judge: systemOneModel, fallback: ANSWERER_MODEL, ...models },
+    models: { judge: systemOneModel, fallback: model, ...models },
     loop: {
       ...loop,
       veto: C_VETO,
@@ -694,15 +766,17 @@ function recordingLLM(requests: LLMRequest[]): LLM {
 
 /**
  * The call a request would make, at its largest: all `maxTokens` of visible
- * output come back, after the whole thinking headroom.
+ * output come back, after the whole thinking headroom (Haiku's; Qwen does not
+ * think).
  */
-function estimatedCall(request: LLMRequest): ModelCall {
+function estimatedCall(request: LLMRequest, model: string): ModelCall {
   return {
-    model: ANSWERER_MODEL,
+    model,
     inputTokens: Math.ceil(
       ((request.system?.length ?? 0) + request.prompt.length) / CHARS_PER_TOKEN
     ),
-    outputTokens: request.maxTokens + THINKING_HEADROOM_TOKENS,
+    outputTokens:
+      request.maxTokens + (model === QWEN_MODEL ? 0 : THINKING_HEADROOM_TOKENS),
     latencyMs: 0,
   }
 }
@@ -727,7 +801,9 @@ async function dryRunA(
     await answerQuestion(question.question, context, recorder)
   }
 
-  const answerCalls = requests.map(estimatedCall)
+  const answerCalls = requests.map((request) =>
+    estimatedCall(request, llmModel(settings))
+  )
   const costUsd = retrievalCostUsd + sum(answerCalls.map(callCostUsd))
   const meanTokens =
     sum(answerCalls.map((call) => call.inputTokens)) / (answerCalls.length || 1)
@@ -735,7 +811,7 @@ async function dryRunA(
     [
       `Dry run, config A, ${settings.split} split (only the query embeddings were requested)`,
       `  questions:        ${questions.length}`,
-      `  expected calls:   ${questions.length} Mistral embeddings, ${answerCalls.length} Anthropic (${ANSWERER_MODEL})`,
+      `  expected calls:   ${questions.length} Mistral embeddings, ${answerCalls.length} ${llmCallsLabel(settings.llm ?? "haiku")}`,
       `  context:          ~${Math.round(meanTokens)} input tokens per question`,
       `  cost upper bound: ${costUsd.toFixed(4)} USD (cap ${settings.maxCostUsd} USD)`,
     ].join("\n")
@@ -759,6 +835,7 @@ async function dryRunLoop(
   const retriever = new HybridRetriever(index, embedder)
   const policy = loopPolicy(settings.k, POLICIES[config])
   const { maxRewrites } = policy.budgets
+  const { limits } = systemOneJudgeOptions(settings)
   let embeddings = 0
   let embeddingCostUsd = 0
   let calls: ModelCall[] = []
@@ -783,32 +860,37 @@ async function dryRunLoop(
             policy,
             settings.rewrite,
             systemOne.model,
-            { fallback: settings.fallback !== null }
+            {
+              fallback: settings.fallback !== null,
+              ...(limits === undefined ? {} : { limits }),
+              llmModel: llmModel(settings),
+            }
           )
         : await upperBoundCalls(
             question.question,
             candidates,
             policy,
-            settings.rewrite
+            settings.rewrite,
+            llmModel(settings)
           )
     )
   }
 
   const systemOneCalls = calls.filter((call) => call.model === systemOne?.model)
-  const anthropicCalls = calls.filter((call) => !systemOneCalls.includes(call))
+  const llmCalls = calls.filter((call) => !systemOneCalls.includes(call))
   const systemOneCostUsd = sum(systemOneCalls.map(callCostUsd))
-  const anthropicCostUsd = sum(anthropicCalls.map(callCostUsd))
-  const costUsd = embeddingCostUsd + systemOneCostUsd + anthropicCostUsd
+  const llmCostUsd = sum(llmCalls.map(callCostUsd))
+  const costUsd = embeddingCostUsd + systemOneCostUsd + llmCostUsd
   console.log(
     [
       `Dry run, config ${config}, ${settings.split} split (only the query embeddings were requested)`,
       `  questions:        ${questions.length}`,
       `  loop:             ${settings.candidates} candidates, ${settings.rewrite} rewriter${systemOne ? `, ${settings.systemOne} system one, ${settings.fallback === null ? "no fallback" : `grey zone from ${settings.fallback} (${settings.fallbackWhen})`}` : ""}`,
-      `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), ${systemOne ? `up to ${systemOneCalls.length} system one (${systemOne.model}), ` : ""}up to ${anthropicCalls.length} Anthropic (${ANSWERER_MODEL})`,
+      `  expected calls:   ${embeddings} Mistral embeddings (up to ${embeddings * (1 + maxRewrites)}), ${systemOne ? `up to ${systemOneCalls.length} system one (${systemOne.model}), ` : ""}up to ${llmCalls.length} ${llmCallsLabel(settings.llm ?? "haiku")}`,
       ...(systemOne
         ? [
             `  system one:       ${systemOneCostUsd.toFixed(4)} USD`,
-            `  Anthropic:        ${anthropicCostUsd.toFixed(4)} USD`,
+            `  ${`${LLM_PROVIDERS[settings.llm ?? "haiku"]}:`.padEnd(18)}${llmCostUsd.toFixed(4)} USD`,
           ]
         : []),
       `  cost upper bound: ${costUsd.toFixed(4)} USD (cap ${settings.maxCostUsd} USD)`,
@@ -831,7 +913,8 @@ export async function upperBoundCalls(
   question: string,
   candidates: NoteForJudge[],
   policy: PolicyConfig,
-  rewriter: RewriterKind
+  rewriter: RewriterKind,
+  model: string = ANSWERER_MODEL
 ): Promise<ModelCall[]> {
   const requests: LLMRequest[] = []
   const recorder = recordingLLM(requests)
@@ -861,7 +944,7 @@ export async function upperBoundCalls(
     }
   }
   await answerQuestion(question, context, recorder)
-  return requests.map(estimatedCall)
+  return requests.map((request) => estimatedCall(request, model))
 }
 
 /**
@@ -880,7 +963,13 @@ export async function upperBoundCallsC(
   policy: PolicyConfig,
   rewriter: RewriterKind,
   systemOneModel: string = JEV_MODEL,
-  { fallback }: { fallback: boolean } = { fallback: true }
+  {
+    fallback,
+    limits,
+    llmModel: model,
+  }: { fallback: boolean; limits?: RequestLimits; llmModel?: string } = {
+    fallback: true,
+  }
 ): Promise<ModelCall[]> {
   const { sufficient, ...thresholds } = policy.thresholds
   const requests: SystemOneRequest[] = []
@@ -895,6 +984,7 @@ export async function upperBoundCallsC(
     maxNotesPerCall: Infinity,
     veto: C_VETO,
     sufficiency: sufficient !== undefined,
+    ...(limits === undefined ? {} : { limits }),
   }).judge(question, candidates)
   const turns = 1 + policy.budgets.maxHops + policy.budgets.maxRewrites
   const turnCalls = requests.map((request): ModelCall => ({
@@ -910,7 +1000,8 @@ export async function upperBoundCallsC(
         question,
         candidates,
         { ...policy, thresholds },
-        rewriter
+        rewriter,
+        model
       )
     ).slice(fallback ? 0 : turns),
   ]

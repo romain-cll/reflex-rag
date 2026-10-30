@@ -11,7 +11,7 @@ Commands:
   ask "<question>"           Ask a question about the vault
   eval --config <A|B|C>      Run the evals
     [--split test|tuning] [--limit <n>] [--k <n>] [--max-cost <usd>] [--dry-run]
-    [--candidates <n>] [--rewrite llm|code]    (--rewrite: configs B and C)
+    [--llm haiku|qwen] [--candidates <n>] [--rewrite llm|code]    (--rewrite: configs B and C)
     [--system-one jev|clef] [--fallback <low>|none]    (config C)
     [--fallback-when uncertain|nothing-kept|no-answer]    (config C)
 
@@ -43,6 +43,7 @@ function run(argv: string[]): number | Promise<number> {
         k: { type: "string" },
         "max-cost": { type: "string" },
         "dry-run": { type: "boolean" },
+        llm: { type: "string" },
         rewrite: { type: "string" },
         candidates: { type: "string" },
         "system-one": { type: "string" },
@@ -85,6 +86,7 @@ function run(argv: string[]): number | Promise<number> {
         k: values.k,
         maxCost: values["max-cost"],
         dryRun: values["dry-run"],
+        llm: values.llm,
         rewrite: values.rewrite,
         candidates: values.candidates,
         systemOne: values["system-one"],

@@ -6,7 +6,7 @@ import {
   type NoteForJudge,
   type Verdict,
 } from "../core/judge.ts"
-import type { ModelCall } from "../core/types.ts"
+import { loadMsOf, type ModelCall } from "../core/types.ts"
 import type { Index } from "../index/read.ts"
 import type { Retrieval } from "../retrieval/hybrid.ts"
 import {
@@ -223,7 +223,10 @@ class Loop {
         best.map(({ note }) => ({ path: note.path, text: note.text }))
       )
     )
-    this.stages.rewriteMs += performance.now() - startedAt
+    this.stages.rewriteMs += Math.max(
+      0,
+      performance.now() - startedAt - loadMsOf(calls)
+    )
     this.calls.push(...calls)
     this.rewrites++
     return this.search(query, "rewrite")
@@ -251,7 +254,10 @@ class Loop {
       this.deps.judge.judge(this.question, notes, context)
     )
     const stages = judgement.stages ?? {
-      judgeMs: performance.now() - startedAt,
+      judgeMs: Math.max(
+        0,
+        performance.now() - startedAt - loadMsOf(judgement.calls)
+      ),
       fallbackMs: 0,
     }
     this.stages.judgeMs += stages.judgeMs

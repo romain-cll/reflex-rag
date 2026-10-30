@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test"
 import {
   existsSync,
   mkdirSync,
@@ -3874,5 +3874,199 @@ describe("AC20 (eval-run) — one folder per run", () => {
     const stamp = new Date(iso).getTime()
     expect(stamp).toBeGreaterThanOrEqual(before - 1000)
     expect(stamp).toBeLessThanOrEqual(Date.now() + 1000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// local-llm AC20-AC21: the load time of the calls is out of the latencies
+// ---------------------------------------------------------------------------
+
+const clockRestores: Array<() => void> = []
+
+afterEach(() => {
+  for (const restore of clockRestores.splice(0)) restore()
+})
+
+/** A virtual clock behind `performance.now` and `Date.now`: no test waits. */
+function fakeClock() {
+  let now = 0
+  const perf = spyOn(performance, "now").mockImplementation(() => now)
+  const date = spyOn(Date, "now").mockImplementation(() => 1.7e12 + now)
+  clockRestores.push(
+    () => perf.mockRestore(),
+    () => date.mockRestore()
+  )
+  return {
+    advance: (ms: number) => {
+      now += ms
+    },
+  }
+}
+
+function loaded(model: string, loadMs: number | undefined): ModelCall {
+  return {
+    ...call(model, 100, 10, 50),
+    ...(loadMs === undefined ? {} : { loadMs }),
+  }
+}
+
+interface ClockedStep {
+  /** Virtual time `retrieve` takes before it returns or throws. */
+  retrieveMs: number
+  retrievalCalls?: ModelCall[]
+  loopError?: ModelCall[]
+  /** Virtual time `answer` takes before it returns or throws. */
+  answerMs?: number
+  answerCall?: ModelCall
+  answerError?: ModelCall
+}
+
+/** A run of the given questions, every one scripted as `step`, on the virtual clock. */
+async function runClocked(questions: Question[], step: ClockedStep) {
+  const clock = fakeClock()
+  const runsDir = join(makeTempDir(), "runs")
+  const result = await runEval({
+    questions,
+    retrieve: (query) => {
+      clock.advance(step.retrieveMs)
+      if (step.loopError) {
+        return Promise.reject(
+          new LoopError("the judge failed", step.loopError, [])
+        )
+      }
+      const question = questions.find((q) => q.question === query)!
+      return Promise.resolve({
+        context: question.sources.map(chunk),
+        calls: step.retrievalCalls ?? [],
+      })
+    },
+    answer: () => {
+      clock.advance(step.answerMs ?? 0)
+      if (step.answerError) {
+        return Promise.reject(
+          new AnswerError("the answerer failed", step.answerError)
+        )
+      }
+      return Promise.resolve({
+        output: answered("Denver"),
+        call: step.answerCall ?? null,
+      })
+    },
+    k: 8,
+    candidates: 50,
+    maxCostUsd: 1000,
+    runsDir,
+    config: "A",
+    split: "test" as const,
+    models: { answerer: "claude-haiku-5-5", embedder: "mistral-embed" },
+    thresholds: {},
+    gitCommit: "abc1234",
+    index: INDEX,
+    now: () => new Date(0),
+  })
+  return { result, runDir: result.runDir }
+}
+
+describe("local-llm AC20 — latencies without the load", () => {
+  test("AC20 — latencyMs, retrievalMs, answerMs and searchMs exclude the loadMs of the calls of their span; the trace keeps each loadMs", async () => {
+    const { result, runDir } = await runClocked([makeQuestion(1)], {
+      retrieveMs: 1000,
+      retrievalCalls: [
+        loaded("mistral-embed", 300),
+        loaded("mistral-embed", 200),
+      ],
+      answerMs: 2000,
+      answerCall: loaded("claude-haiku-5-5", 500),
+    })
+    const record = result.records[0]!
+    expect(record.retrievalMs).toBe(1000 - 500)
+    expect(record.stages!.searchMs).toBe(1000 - 500)
+    expect(record.stages!.answerMs).toBe(2000 - 500)
+    expect(record.latencyMs).toBe(3000 - 1000)
+    expect(record.calls.map((c) => c.loadMs)).toEqual([300, 200, 500])
+    const line = readFileSync(join(runDir, "trace.jsonl"), "utf8")
+      .trim()
+      .split("\n")[1]!
+    const traced = JSON.parse(line) as { calls: ModelCall[] }
+    expect(traced.calls.map((c) => c.loadMs)).toEqual([300, 200, 500])
+  })
+
+  test("AC20 — each span is floored at 0", async () => {
+    const { result } = await runClocked([makeQuestion(1)], {
+      retrieveMs: 100,
+      retrievalCalls: [loaded("mistral-embed", 900)],
+      answerMs: 100,
+      answerCall: loaded("claude-haiku-5-5", 40),
+    })
+    const record = result.records[0]!
+    expect(record.retrievalMs).toBe(0)
+    expect(record.stages!.searchMs).toBe(0)
+    expect(record.stages!.answerMs).toBe(60)
+    expect(record.latencyMs).toBe(0)
+  })
+
+  test("AC20 — a loop error record excludes the loadMs of the calls it carries", async () => {
+    const { result } = await runClocked([makeQuestion(1)], {
+      retrieveMs: 1500,
+      loopError: [loaded("claude-haiku-5-5", 700), loaded("clef-flash", 100)],
+    })
+    const record = result.records[0]!
+    expect(record.grade.failure).toBe("loop_error")
+    expect(record.latencyMs).toBe(1500 - 800)
+    expect(record.retrievalMs).toBe(1500 - 800)
+    expect(record.calls.map((c) => c.loadMs)).toEqual([700, 100])
+  })
+
+  test("AC20 — an answer error record excludes the loadMs of the retrieval calls and of the call the error carries", async () => {
+    const { result } = await runClocked([makeQuestion(1)], {
+      retrieveMs: 500,
+      retrievalCalls: [loaded("mistral-embed", 100)],
+      answerMs: 1000,
+      answerError: loaded("claude-haiku-5-5", 400),
+    })
+    const record = result.records[0]!
+    expect(record.grade.failure).toBe("answer_error")
+    expect(record.retrievalMs).toBe(500 - 100)
+    expect(record.stages!.answerMs).toBe(1000 - 400)
+    expect(record.latencyMs).toBe(1500 - 500)
+  })
+})
+
+describe("local-llm AC21 — modelLoadMs in the summary", () => {
+  test("AC21 — summary.json holds the total and the largest loadMs over the calls that have one", async () => {
+    const { result, runDir } = await runClocked(
+      [makeQuestion(1), makeQuestion(2)],
+      {
+        retrieveMs: 10,
+        retrievalCalls: [
+          loaded("mistral-embed", undefined),
+          loaded("claude-haiku-5-5", 0),
+          loaded("claude-haiku-5-5", 1200),
+        ],
+        answerMs: 10,
+        answerCall: loaded("claude-haiku-5-5", 300),
+      }
+    )
+    // Two questions with the same calls: 0 + 1200 + 300 twice.
+    const expected = { total: 3000, max: 1200 }
+    expect(result.summary.modelLoadMs).toEqual(expected)
+    const written = JSON.parse(
+      readFileSync(join(runDir, "summary.json"), "utf8")
+    ) as { modelLoadMs: unknown }
+    expect(written.modelLoadMs).toEqual(expected)
+  })
+
+  test("AC21 — modelLoadMs is null when no call has a loadMs", async () => {
+    const { result, runDir } = await runClocked([makeQuestion(1)], {
+      retrieveMs: 10,
+      retrievalCalls: [loaded("mistral-embed", undefined)],
+      answerMs: 10,
+      answerCall: loaded("claude-haiku-5-5", undefined),
+    })
+    expect(result.summary.modelLoadMs).toBeNull()
+    const written = JSON.parse(
+      readFileSync(join(runDir, "summary.json"), "utf8")
+    ) as { modelLoadMs: unknown }
+    expect(written.modelLoadMs).toBeNull()
   })
 })

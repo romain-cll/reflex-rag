@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import type { Judge, Judgement, NoteForJudge, Verdict } from "../core/judge.ts"
 import { LLMCallError } from "../core/llm.ts"
 import type { ModelCall } from "../core/types.ts"
@@ -1116,5 +1116,86 @@ describe("system-one-judge AC17 — scope no-answer", () => {
     )
     expect(withContext.requests).toHaveLength(0)
     expect(called).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// local-llm AC19: the load time of the calls is out of the stages
+// ---------------------------------------------------------------------------
+
+const restores: Array<() => void> = []
+
+afterEach(() => {
+  for (const restore of restores.splice(0)) restore()
+})
+
+/** A virtual clock behind `performance.now` and `Date.now`: no test waits. */
+function fakeClock() {
+  let now = 0
+  const perf = spyOn(performance, "now").mockImplementation(() => now)
+  const date = spyOn(Date, "now").mockImplementation(() => 1.7e12 + now)
+  restores.push(
+    () => perf.mockRestore(),
+    () => date.mockRestore()
+  )
+  return {
+    advance: (ms: number) => {
+      now += ms
+    },
+  }
+}
+
+/** A judge that takes `ms` of virtual time and whose calls carry `loadMs`. */
+function clockedJudge(
+  clock: ReturnType<typeof fakeClock>,
+  verdicts: Record<string, Verdicts>,
+  ms: number,
+  loadMs: number
+): Judge {
+  return {
+    judge(_question, notes): Promise<Judgement> {
+      clock.advance(ms)
+      return Promise.resolve({
+        notes: Object.fromEntries(
+          notes.map((note) => [note.path, verdicts[note.path] as Verdicts])
+        ),
+        calls: notes.map((note) => ({
+          ...callOf("any", note.path),
+          loadMs,
+        })),
+      })
+    },
+  }
+}
+
+/** Notes a0 (kept) and a1 (grey zone): the fallback judges a1 again. */
+async function judgeWithLoads(
+  primaryLoadMs: number,
+  fallbackLoadMs: number
+): Promise<Judgement> {
+  const clock = fakeClock()
+  const judge = new FallbackJudge(
+    clockedJudge(clock, PRIMARY_VERDICTS, 1000, primaryLoadMs),
+    clockedJudge(clock, FALLBACK_VERDICTS, 800, fallbackLoadMs),
+    { low: LOW, isKept }
+  )
+  return judge.judge(QUESTION, NOTES.slice(0, 2))
+}
+
+describe("local-llm AC19 — fallback stages without the load", () => {
+  test("AC19 — judgeMs excludes the load of the primary's calls, fallbackMs the load of the fallback's", async () => {
+    const result = await judgeWithLoads(400, 300)
+    expect(result.fallback).toEqual(["notes/a1.md"])
+    // The primary judged two notes, so two calls of 400 ms of load each.
+    expect(result.stages).toEqual({
+      judgeMs: 1000 - 2 * 400,
+      fallbackMs: 800 - 300,
+    })
+    expect(result.calls.every((c) => c.loadMs !== undefined)).toBe(true)
+  })
+
+  test("AC19 — each stage is floored at 0", async () => {
+    const result = await judgeWithLoads(5000, 9000)
+    expect(result.stages).toEqual({ judgeMs: 0, fallbackMs: 0 })
   })
 })

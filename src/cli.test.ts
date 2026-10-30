@@ -1033,3 +1033,19 @@ describe("eval-config-c AC20 — --fallback none", () => {
     expect(exitCode).toBe(1)
   })
 })
+
+describe("local-llm AC3 and AC6 — the --llm option", () => {
+  test("AC3 — an invalid --llm exits 1 with the expected message on stderr", () => {
+    const { stderr, exitCode } = runCli("eval", "--config", "A", "--llm", "gpt")
+    expect(stderr).toContain(
+      'reflex eval: invalid --llm "gpt", expected haiku or qwen'
+    )
+    expect(exitCode).toBe(1)
+  })
+
+  test("AC6 — --help lists [--llm haiku|qwen] for eval", () => {
+    const { stdout, exitCode } = runCli("--help")
+    expect(stdout).toContain("[--llm haiku|qwen]")
+    expect(exitCode).toBe(0)
+  })
+})
