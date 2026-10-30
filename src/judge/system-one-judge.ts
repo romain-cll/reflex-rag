@@ -27,6 +27,12 @@ export interface RequestLimits {
   maxQuestions: number
   /** The request body, in UTF-8 bytes, must stay under it. */
   maxBytes: number
+  /**
+   * Options of a choice question. With the veto, the `best` question has an
+   * option per note plus `none`, so it caps the notes of a batch, and the
+   * batches are balanced (26 notes are 13 and 13, not 25 and 1).
+   */
+  maxChoices?: number
 }
 
 export interface SystemOneJudgeOptions {
@@ -182,12 +188,21 @@ export class SystemOneJudge implements Judge {
       }
       return batches
     }
+    const maxNotes = balancedSize(
+      notes.length,
+      Math.min(
+        this.maxNotesPerCall,
+        this.veto !== undefined && limits.maxChoices !== undefined
+          ? limits.maxChoices - 1
+          : Infinity
+      )
+    )
     let batch: NoteForJudge[] = []
     for (const note of notes) {
       const joined = [...batch, note]
       if (
         batch.length > 0 &&
-        batch.length < this.maxNotesPerCall &&
+        batch.length < maxNotes &&
         this.fits(this.requestOf(question, joined, context), limits)
       ) {
         batch = joined
@@ -369,4 +384,10 @@ async function firstFailureInTurn(
     }
   }
   return undefined
+}
+
+/** The size of the batches that split `count` notes as evenly as `cap` allows. */
+function balancedSize(count: number, cap: number): number {
+  if (count <= cap) return Math.max(count, 1)
+  return Math.ceil(count / Math.ceil(count / cap))
 }

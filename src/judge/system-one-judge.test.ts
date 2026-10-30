@@ -1461,6 +1461,43 @@ describe("local-llm AC22 — batches by questions", () => {
   })
 })
 
+describe("local-llm AC31 — batches by the options of the best question", () => {
+  const LIMITS = { maxQuestions: 64, maxBytes: 65536, maxChoices: 26 }
+  const sizesFor = async (count: number, options: object) => {
+    const notes = manyNotes(count)
+    const { systemOne, requests } = fakeSystemOne()
+    const result = await new SystemOneJudge(systemOne, {
+      ...options,
+      limits: LIMITS,
+    }).judge(QUESTION, notes)
+    expect(requests.flatMap(pathsOf)).toEqual(notes.map((note) => note.path))
+    expect(Object.keys(result.notes)).toEqual(notes.map((note) => note.path))
+    for (const request of requests) {
+      const best = request.questions["best"]
+      if (best?.type === "choice") {
+        expect(Object.keys(best.criteria).length).toBeLessThanOrEqual(26)
+      }
+    }
+    return requests.map((request) => pathsOf(request).length)
+  }
+
+  test("AC31 — with the veto, 40 notes go in two balanced batches of 20, each best question within 26 options", async () => {
+    expect(await sizesFor(40, VETO_AND_SUFFICIENCY)).toEqual([20, 20])
+  })
+
+  test("AC31 — with the veto, 26 notes are 13 and 13, never 25 and 1", async () => {
+    expect(await sizesFor(26, VETO_AND_SUFFICIENCY)).toEqual([13, 13])
+  })
+
+  test("AC31 — with the veto, 25 notes fit one batch: 25 notes and none are 26 options", async () => {
+    expect(await sizesFor(25, VETO_AND_SUFFICIENCY)).toEqual([25])
+  })
+
+  test("AC31 — without the veto there is no best question, and 40 notes stay in one batch", async () => {
+    expect(await sizesFor(40, { sufficiency: true })).toEqual([40])
+  })
+})
+
 describe("local-llm AC23 — batches by bytes", () => {
   test("AC23 — long notes split before the note that would reach 65536 bytes, counted in UTF-8 bytes, every text sent whole", async () => {
     // 10,000 two-byte characters: 20,000 bytes a note, 10,000 characters.

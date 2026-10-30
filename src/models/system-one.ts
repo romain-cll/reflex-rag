@@ -20,10 +20,12 @@ const CLEF_MODEL = "clef-flash"
 
 /**
  * What Ollama accepts of `/v1/systemone` (measured 2026-10-30, Ollama 0.40.1):
- * it answers 413 above 64 KiB of text and schema and 400 above 64 questions,
- * and never truncates.
+ * it answers 400 above 64 questions, above 26 options a choice and above
+ * Clef's 16,384-token context, 413 above 64 KiB, and never truncates. The
+ * tokens are budgeted in bytes: real judge requests run 3.55 to 3.89 bytes a
+ * token, and 48 KiB is 16,384 tokens at 3.0.
  */
-export const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 65536 }
+export const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 49152, maxChoices: 26 }
 
 /**
  * Clef reads about 310 tokens/s on the M4 Pro (14K tokens in 45 s, measured
