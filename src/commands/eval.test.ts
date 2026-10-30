@@ -1644,7 +1644,7 @@ describe("eval-config-c AC21 — upperBoundCallsC without fallback", () => {
 // - `llmCallsLabel(llm)` is the label of the LLM calls in the dry-run lines.
 // ---------------------------------------------------------------------------
 
-const QWEN = "qwen3.5:9b-mxfp8"
+const QWEN = "qwen3.5:9b-q8_0"
 
 /** The settings a run is parsed into, with the new `llm` field. */
 const LOCAL_SETTINGS = {
@@ -1790,7 +1790,7 @@ describe("local-llm AC5 — the dry-run upper bound with Qwen", () => {
 
 describe("local-llm AC5 — the dry-run label of the LLM calls", () => {
   test("AC5 — llmCallsLabel names Ollama and the Qwen tag for qwen, Anthropic and Haiku for haiku", () => {
-    expect(evalCommand.llmCallsLabel("qwen")).toBe("Ollama (qwen3.5:9b-mxfp8)")
+    expect(evalCommand.llmCallsLabel("qwen")).toBe("Ollama (qwen3.5:9b-q8_0)")
     expect(evalCommand.llmCallsLabel("haiku")).toBe(
       "Anthropic (claude-haiku-5-5)"
     )
@@ -1828,6 +1828,19 @@ describe("local-llm AC26 — Clef's limits in config C", () => {
       systemOne: "jev",
     })
     expect(jev.limits).toBeUndefined()
+  })
+
+  test("local-llm-q8 — the system-one judge sends its batches one at a time with clef, in parallel with jev", () => {
+    expect(
+      evalCommand.systemOneJudgeOptions({
+        ...LOCAL_SETTINGS,
+        systemOne: "clef",
+      }).sequential
+    ).toBe(true)
+    expect(
+      evalCommand.systemOneJudgeOptions({ ...LOCAL_SETTINGS, systemOne: "jev" })
+        .sequential
+    ).toBeUndefined()
   })
 
   test("AC26 — the dry run of C with the limits counts the calls of the split batches", async () => {

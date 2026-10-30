@@ -5,7 +5,12 @@ import type {
   SystemOneQuestion,
   SystemOneRequest,
 } from "../core/system-one.ts"
-import { HttpSystemOne, clefSystemOne, jevSystemOne } from "./system-one.ts"
+import {
+  CLEF_TIMEOUT_MS,
+  HttpSystemOne,
+  clefSystemOne,
+  jevSystemOne,
+} from "./system-one.ts"
 
 const BASE_URL = "https://system-one.test"
 const MODEL = "test-model"
@@ -553,6 +558,14 @@ describe("AC4 — factories", () => {
     expect(call.model).toBe("clef-flash")
   })
 
+  test("local-llm-q8 — clefSystemOne waits 10 minutes per attempt, jevSystemOne 60 s", () => {
+    process.env.TYPESAFE_API_KEY = "typesafe-test-key"
+    expect(CLEF_TIMEOUT_MS).toBe(600_000)
+    expect(clefSystemOne().timeoutMs).toBe(600_000)
+    expect(jevSystemOne().timeoutMs).toBe(60_000)
+    expect(clefSystemOne({ timeoutMs: 30 }).timeoutMs).toBe(30)
+  })
+
   test("AC4 — clefSystemOne targets OLLAMA_HOST when set", async () => {
     process.env.OLLAMA_HOST = "http://ollama.internal:9999"
     const t = setup()
@@ -859,7 +872,7 @@ describe("local-llm AC15 — Clef already loaded", () => {
 
 describe("local-llm AC16 — Clef not loaded", () => {
   test("AC16 — one noul warm-up before the request; loadMs is the warm-up, latencyMs and tokens are the request's", async () => {
-    const t = fakeOllama({ loaded: ["qwen3.5:9b-mxfp8"] })
+    const t = fakeOllama({ loaded: ["qwen3.5:9b-q8_0"] })
     try {
       const { call } = await t.client.decide(REQUEST)
       expect(t.calls.map((c) => `${c.method} ${c.url}`)).toEqual([

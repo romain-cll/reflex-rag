@@ -51,6 +51,11 @@ export interface SystemOneJudgeOptions {
    * request alone is over the limit is an error.
    */
   limits?: RequestLimits
+  /**
+   * Sends the batches one after the other instead of in parallel, and stops
+   * at the first that fails. For a server that answers one request at a time.
+   */
+  sequential?: boolean
 }
 
 const NONE_VERDICT: Record<Verdict, number> = { answer: 0, step: 0, none: 1 }
@@ -75,6 +80,7 @@ export class SystemOneJudge implements Judge {
   private readonly veto: SystemOneJudgeOptions["veto"]
   private readonly sufficiency: boolean
   private readonly limits: RequestLimits | undefined
+  private readonly sequential: boolean
 
   constructor(
     private readonly systemOne: SystemOne,
@@ -84,6 +90,7 @@ export class SystemOneJudge implements Judge {
     this.veto = options.veto
     this.sufficiency = options.sufficiency ?? false
     this.limits = options.limits
+    this.sequential = options.sequential ?? false
   }
 
   async judge(
@@ -94,28 +101,30 @@ export class SystemOneJudge implements Judge {
     const batches = this.batchesOf(question, notes, context)
     const calls: (ModelCall | undefined)[] = batches.map(() => undefined)
     const results: BatchResult[] = []
-    const outcomes = await Promise.allSettled(
-      batches.map(async (batch, index) => {
-        const { answers, call } = await this.systemOne.decide(
-          this.requestOf(question, batch, context)
+    const judgeBatch = async (batch: NoteForJudge[], index: number) => {
+      const { answers, call } = await this.systemOne.decide(
+        this.requestOf(question, batch, context)
+      )
+      calls[index] = { ...call, role: "judge" }
+      const vetoed = batch.map((_, position) =>
+        this.isVetoed(answers, position)
+      )
+      results[index] = {
+        verdicts: batch.map((_, position) =>
+          vetoed[position]
+            ? NONE_VERDICT
+            : verdictsOf(answers[alias("n", position)])
+        ),
+        vetoed,
+        ...sufficientOf(answers["sufficient"]),
+      }
+    }
+    const failure = this.sequential
+      ? await firstFailureInTurn(batches, judgeBatch)
+      : (await Promise.allSettled(batches.map(judgeBatch))).find(
+          (outcome) => outcome.status === "rejected"
         )
-        calls[index] = { ...call, role: "judge" }
-        const vetoed = batch.map((_, position) =>
-          this.isVetoed(answers, position)
-        )
-        results[index] = {
-          verdicts: batch.map((_, position) =>
-            vetoed[position]
-              ? NONE_VERDICT
-              : verdictsOf(answers[alias("n", position)])
-          ),
-          vetoed,
-          ...sufficientOf(answers["sufficient"]),
-        }
-      })
-    )
     const completed = calls.filter((call) => call !== undefined)
-    const failure = outcomes.find((outcome) => outcome.status === "rejected")
     if (failure) {
       const reason: unknown = failure.reason
       const error = reason instanceof Error ? reason : new Error(String(reason))
@@ -345,4 +354,19 @@ function verdictsOf(
       (clamped[index] as number) / total,
     ])
   ) as Record<Verdict, number>
+}
+
+/** Runs the batches one after the other; the failure of the first that fails, if any. */
+async function firstFailureInTurn(
+  batches: NoteForJudge[][],
+  judgeBatch: (batch: NoteForJudge[], index: number) => Promise<void>
+): Promise<PromiseRejectedResult | undefined> {
+  for (const [index, batch] of batches.entries()) {
+    try {
+      await judgeBatch(batch, index)
+    } catch (reason) {
+      return { status: "rejected", reason }
+    }
+  }
+  return undefined
 }

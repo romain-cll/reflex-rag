@@ -10,10 +10,11 @@ import type { ModelCall } from "../core/types.ts"
 import { ollamaBaseUrl } from "./system-one.ts"
 
 /**
- * Pinned, so that the runs can be reproduced: the same quantization and
- * runner (mxfp8, MLX) as Clef-flash.
+ * Pinned, so that the runs can be reproduced. 8-bit like Clef-flash (mxfp8),
+ * but on Ollama's GGUF runner: the MLX runner of `qwen3.5:9b-mxfp8` answers
+ * 501 "structured output is unavailable" to any `format` (Ollama 0.40.1).
  */
-export const QWEN_MODEL = "qwen3.5:9b-mxfp8"
+export const QWEN_MODEL = "qwen3.5:9b-q8_0"
 /**
  * Constant for every call: a change of `num_ctx` makes Ollama reload the
  * model.
