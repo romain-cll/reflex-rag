@@ -25,6 +25,13 @@ const CLEF_MODEL = "clef-flash"
  */
 export const CLEF_LIMITS = { maxQuestions: 64, maxBytes: 65536 }
 
+/**
+ * Clef reads about 310 tokens/s on the M4 Pro (14K tokens in 45 s, measured
+ * 2026-10-30), so a request near 64 KiB takes close to 60 s: 10 minutes leave
+ * room for a slow machine, and a timed-out request is sent again in full.
+ */
+export const CLEF_TIMEOUT_MS = 600_000
+
 const AnswerSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("choice"),
@@ -79,7 +86,8 @@ export class HttpSystemOne implements SystemOne {
   private readonly apiKey: string | undefined
   private readonly fetch: typeof fetch
   private readonly retryBaseMs: number
-  private readonly timeoutMs: number
+  /** Each attempt is aborted after it. */
+  readonly timeoutMs: number
   private readonly preload: boolean
   /** The warm-up in flight, shared by the requests that wait for the model. */
   private warmUp: Promise<number> | undefined
@@ -218,6 +226,7 @@ export function clefSystemOne(options: Factory = {}): HttpSystemOne {
     baseUrl: ollamaBaseUrl(process.env.OLLAMA_HOST),
     model: CLEF_MODEL,
     preload: true,
+    timeoutMs: options.timeoutMs ?? CLEF_TIMEOUT_MS,
   })
 }
 

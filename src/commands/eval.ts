@@ -381,7 +381,7 @@ function pipelineA(
 
 /**
  * Config B: the judged retrieval loop, then the answerer, unless the loop
- * abstained. The judge, the rewriter and the answerer share one Haiku client.
+ * abstained. The judge, the rewriter and the answerer share one client, the one `--llm` picks.
  * `--k` caps the notes of the context, `--candidates` the chunks per search.
  */
 function pipelineB(
@@ -409,14 +409,20 @@ const asksSufficiency = (policy: PolicyConfig) =>
 /** The veto of C's system-one judge (docs/features/system-one-judge.md, AC13). */
 const C_VETO = { none: 0.7, best: 0.02 }
 
-/** The options of C's system-one judge: Clef's request limits apply with Clef only. */
+/**
+ * The options of C's system-one judge. With Clef only: its request limits,
+ * and one batch at a time, since Ollama serves one request at a time and a
+ * batch sent in parallel would wait for the others inside its own latency.
+ */
 export function systemOneJudgeOptions(
   settings: Pick<EvalSettings, "systemOne">
 ): SystemOneJudgeOptions {
   return {
     veto: C_VETO,
     sufficiency: asksSufficiency(POLICIES.C),
-    ...(settings.systemOne === "clef" ? { limits: CLEF_LIMITS } : {}),
+    ...(settings.systemOne === "clef"
+      ? { limits: CLEF_LIMITS, sequential: true }
+      : {}),
   }
 }
 

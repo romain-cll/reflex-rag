@@ -20,7 +20,7 @@ export const PRICES: Record<string, Price> = {
   "jev-1.13.0": { input: 0.042, output: 0 },
   // Served locally; only used to check that the code runs.
   "clef-flash": { input: 0, output: 0 },
-  "qwen3.5:9b-mxfp8": { input: 0, output: 0 },
+  "qwen3.5:9b-q8_0": { input: 0, output: 0 },
 }
 
 const MILLION = 1_000_000
