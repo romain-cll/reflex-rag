@@ -110,7 +110,7 @@ async function rejection(promise: Promise<unknown>): Promise<Error> {
 }
 
 describe("local-llm AC8 — the request", () => {
-  test("AC8 — one POST to <OLLAMA_HOST>/api/chat with the pinned model, no thinking, no stream, num_ctx and num_predict only", async () => {
+  test("AC8, AC34, AC35 — one POST to <OLLAMA_HOST>/api/chat with the pinned model, no thinking, no stream, num_ctx, twice maxTokens and greedy sampling", async () => {
     const { llm, requests } = setup(() =>
       jsonResponse(chatReply({ content: "Paris" }))
     )
@@ -133,7 +133,12 @@ describe("local-llm AC8 — the request", () => {
         { role: "system", content: "Be brief." },
         { role: "user", content: "Capital of France?" },
       ],
-      options: { num_ctx: 32768, num_predict: 300 },
+      options: {
+        num_ctx: 32768,
+        num_predict: 600,
+        temperature: 0,
+        presence_penalty: 0,
+      },
     })
     expect(text).toBe("Paris")
   })
@@ -172,7 +177,9 @@ describe("local-llm AC9 — structured output", () => {
     expect(requests[0]!.body["format"]).toEqual(expectedFormat)
     expect(requests[0]!.body["options"]).toEqual({
       num_ctx: 32768,
-      num_predict: 100,
+      num_predict: 200,
+      temperature: 0,
+      presence_penalty: 0,
     })
     expect(value).toEqual({ city: "Lyon", population: 520 })
   })
@@ -233,7 +240,7 @@ describe("local-llm AC11 — truncated output", () => {
 })
 
 describe("local-llm AC12 — full context window", () => {
-  test("AC12 — prompt_eval_count + maxTokens over 32768 throws an LLMCallError about the window, with the call", async () => {
+  test("AC12, AC35 — prompt_eval_count + twice maxTokens over 32768 throws an LLMCallError about the window, with the call", async () => {
     const { llm } = setup(() =>
       jsonResponse(chatReply({ prompt_eval_count: 32000, eval_count: 5 }))
     )
@@ -247,9 +254,20 @@ describe("local-llm AC12 — full context window", () => {
     expect((error as LLMCallError).call.inputTokens).toBe(32000)
   })
 
-  test("AC12 — exactly 32768 fits", async () => {
+  test("AC35 — prompt_eval_count + twice maxTokens over 32768 throws, even when prompt_eval_count + maxTokens fits", async () => {
     const { llm } = setup(() =>
-      jsonResponse(chatReply({ prompt_eval_count: 31768 }))
+      jsonResponse(chatReply({ prompt_eval_count: 31000 }))
+    )
+    const error = await rejection(
+      llm.complete({ prompt: "Hi", maxTokens: 1000 })
+    )
+    expect(error).toBeInstanceOf(LLMCallError)
+    expect(error.message).toContain("num_ctx 32768")
+  })
+
+  test("AC12, AC35 — exactly 32768 fits", async () => {
+    const { llm } = setup(() =>
+      jsonResponse(chatReply({ prompt_eval_count: 30768 }))
     )
     const { text } = await llm.complete({ prompt: "Hi", maxTokens: 1000 })
     expect(text).toBe("hello")
