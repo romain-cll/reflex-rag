@@ -20,6 +20,18 @@ export const QWEN_MODEL = "qwen3.5:9b-q8_0"
  * model.
  */
 export const NUM_CTX = 32768
+/**
+ * The Modelfile's sampling (`temperature 1`, `presence_penalty 1.5`) is set
+ * for chat: it penalises every repeated token of a list of probabilities, and
+ * the same judge request kept from 8 to 28 of its 28 notes. Greedy sampling
+ * makes the calls deterministic.
+ */
+const SAMPLING = { temperature: 0, presence_penalty: 0 }
+/**
+ * The output cap over the request's `maxTokens`, sized for Haiku: Qwen writes
+ * the same JSON in more tokens, and a local output costs nothing.
+ */
+const OUTPUT_HEADROOM = 2
 const ERROR_BODY_CHARS = 200
 const NANOS_PER_MS = 1e6
 
@@ -40,8 +52,8 @@ export interface OllamaLLMOptions {
 }
 
 /**
- * A model served by Ollama. Thinking is off and the output is capped at the
- * request's `maxTokens`; the load time of the model is reported apart from the
+ * A model served by Ollama. Thinking is off, sampling is greedy and the
+ * output is capped at twice the request's `maxTokens`; the load time of the model is reported apart from the
  * latency of the call.
  */
 export class OllamaLLM implements LLM {
@@ -87,6 +99,7 @@ export class OllamaLLM implements LLM {
     request: LLMRequest,
     format?: Record<string, unknown>
   ): Promise<{ text: string; call: ModelCall }> {
+    const numPredict = request.maxTokens * OUTPUT_HEADROOM
     const startedAt = performance.now()
     const reply = await this.send({
       model: this.model,
@@ -99,7 +112,7 @@ export class OllamaLLM implements LLM {
         { role: "user", content: request.prompt },
       ],
       ...(format === undefined ? {} : { format }),
-      options: { num_ctx: NUM_CTX, num_predict: request.maxTokens },
+      options: { num_ctx: NUM_CTX, num_predict: numPredict, ...SAMPLING },
     })
     const loadMs = reply.load_duration / NANOS_PER_MS
     const call: ModelCall = {
@@ -115,7 +128,7 @@ export class OllamaLLM implements LLM {
         call
       )
     }
-    if (reply.prompt_eval_count + request.maxTokens > NUM_CTX) {
+    if (reply.prompt_eval_count + numPredict > NUM_CTX) {
       throw new LLMCallError(
         `Ollama prompt fills the context window (num_ctx ${NUM_CTX}) and may have been truncated`,
         call
