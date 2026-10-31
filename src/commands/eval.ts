@@ -35,6 +35,7 @@ import {
   isAnswerNote,
   isKept,
   keepScore,
+  CLEF_POLICY_C,
   POLICIES,
   type PolicyConfig,
 } from "../loop/policy.ts"
@@ -122,7 +123,6 @@ const LLM_PROVIDERS: Record<LLMKind, string> = {
 /** Notes in the context. */
 const DEFAULT_K = 5
 const DEFAULT_CANDIDATES = 50
-const DEFAULT_FALLBACK = 0.8
 /** The value of `--fallback` for a run without the LLM judging the grey zone. */
 const NO_FALLBACK = "none"
 /** Rough size of a token, for the dry-run estimate. */
@@ -167,6 +167,12 @@ function parseSettings(
     )
   }
   const split = options.split ?? "test"
+  const systemOne = parseChoice(
+    "system-one",
+    options.systemOne,
+    SYSTEM_ONES,
+    "jev"
+  )
   if (!isSplit(split)) {
     throw new Error(`invalid split "${split}", expected ${SPLITS.join(" or ")}`)
   }
@@ -188,11 +194,11 @@ function parseSettings(
       options.candidates === undefined
         ? DEFAULT_CANDIDATES
         : parseNumber("candidates", options.candidates, true),
-    systemOne: parseChoice("system-one", options.systemOne, SYSTEM_ONES, "jev"),
+    systemOne,
     fallback:
       options.fallback === undefined
-        ? DEFAULT_FALLBACK
-        : parseFallback(options.fallback),
+        ? defaultFallback(systemOne)
+        : parseFallback(options.fallback, systemOne),
     fallbackWhen: parseChoice(
       "fallback-when",
       options.fallbackWhen,
@@ -218,14 +224,19 @@ function parseChoice<T extends string>(
   return choice
 }
 
+/** The lower bound of the grey zone: 0.1 under the keep threshold of C with the system one. */
+export function defaultFallback(systemOne: SystemOneKind): number {
+  return systemOne === "clef" ? 0.7 : 0.8
+}
+
 /** A number below the keep threshold of C: the grey zone sits under it; `null` for none. */
-function parseFallback(text: string): number | null {
+function parseFallback(text: string, systemOne: SystemOneKind): number | null {
   if (text === NO_FALLBACK) return null
   const value = text.trim() === "" ? NaN : Number(text)
   if (!(value >= 0 && value <= 1)) {
     throw new Error(`--fallback must be a number from 0 to 1, got "${text}"`)
   }
-  const { keep } = POLICIES.C.thresholds
+  const { keep } = policyOf("C", systemOne).thresholds
   if (keep !== undefined && value >= keep) {
     throw new Error(
       `--fallback must be below the keep threshold of config C (${keep}), got "${text}"`
@@ -402,6 +413,15 @@ function pipelineB(
   )
 }
 
+/** The policy of a config: C's keep threshold depends on its system one. */
+export function policyOf(
+  config: "B" | "C",
+  systemOne: SystemOneKind
+): PolicyConfig {
+  if (config === "B") return POLICIES.B
+  return systemOne === "clef" ? CLEF_POLICY_C : POLICIES.C
+}
+
 /** Whether the judges are asked if the notes state the complete answer: when the policy has a threshold for it. */
 const asksSufficiency = (policy: PolicyConfig) =>
   policy.thresholds.sufficient !== undefined
@@ -419,7 +439,7 @@ export function systemOneJudgeOptions(
 ): SystemOneJudgeOptions {
   return {
     veto: C_VETO,
-    sufficiency: asksSufficiency(POLICIES.C),
+    sufficiency: asksSufficiency(policyOf("C", settings.systemOne)),
     ...(settings.systemOne === "clef"
       ? { limits: CLEF_LIMITS, sequential: true }
       : {}),
@@ -440,6 +460,7 @@ function pipelineC(
   systemOne: SystemOne
 ): Pipeline {
   const llm = llmOf(settings)
+  const policy = policyOf("C", settings.systemOne)
   const systemOneJudge = new SystemOneJudge(
     systemOne,
     systemOneJudgeOptions(settings)
@@ -457,10 +478,10 @@ function pipelineC(
           new RoleTaggedJudge(new LLMJudge(llm)),
           {
             low: settings.fallback,
-            isKept: (verdict) => isKept(verdict, POLICIES.C),
-            score: (verdict) => keepScore(verdict, POLICIES.C),
+            isKept: (verdict) => isKept(verdict, policy),
+            score: (verdict) => keepScore(verdict, policy),
             when: settings.fallbackWhen,
-            isAnswer: (verdict) => isAnswerNote(verdict, POLICIES.C),
+            isAnswer: (verdict) => isAnswerNote(verdict, policy),
           }
         ),
     systemOne.model
@@ -497,7 +518,7 @@ export function loopSettings(
     answerer: model,
   }
   const loop: LoopSettings["loop"] = {
-    policy: loopPolicy(settings.k, POLICIES[config]),
+    policy: loopPolicy(settings.k, policyOf(config, settings.systemOne)),
     rewriter: settings.rewrite,
     candidates: settings.candidates,
   }
@@ -839,7 +860,7 @@ async function dryRunLoop(
   systemOne: SystemOne | undefined
 ): Promise<number> {
   const retriever = new HybridRetriever(index, embedder)
-  const policy = loopPolicy(settings.k, POLICIES[config])
+  const policy = loopPolicy(settings.k, policyOf(config, settings.systemOne))
   const { maxRewrites } = policy.budgets
   const { limits } = systemOneJudgeOptions(settings)
   let embeddings = 0
