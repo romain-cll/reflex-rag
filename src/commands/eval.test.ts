@@ -888,7 +888,7 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
   test("eval-config-c AC15 — the loop of C: the policy of C with k, the rewriter, the candidates, the lower bound of the grey zone and the system one", () => {
     const { loop } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
     expect(loop as unknown).toEqual({
-      policy: evalCommand.loopPolicy(4, policyModule.POLICIES.C),
+      policy: evalCommand.loopPolicy(4, policyModule.CLEF_POLICY_C),
       rewriter: "llm",
       candidates: 30,
       veto: { none: 0.7, best: 0.02 },
@@ -900,7 +900,7 @@ describe("eval-config-c AC10 — loopSettings, config C", () => {
     expect({ ...loop.policy.thresholds }).toEqual({
       answer: 0.7,
       step: 0.7,
-      keep: 0.9,
+      keep: 0.8,
       sufficient: 0.5,
     })
   })
@@ -1182,7 +1182,11 @@ describe("eval-config-c AC19 — the settings record the sufficient threshold", 
   })
 
   test("eval-config-c AC19 — C records thresholds.sufficient 0.5 next to its keep threshold", () => {
-    const { loop } = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    const { loop } = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, systemOne: "jev" },
+      JEV
+    )
     expect(thresholdsOf(loop.policy)).toEqual({
       answer: 0.7,
       step: 0.7,
@@ -1193,7 +1197,11 @@ describe("eval-config-c AC19 — the settings record the sufficient threshold", 
 
   test("eval-config-c AC19 — the policy recorded is the one the run uses, with k", () => {
     for (const config of ["B", "C"] as const) {
-      const { loop } = evalCommand.loopSettings(config, SETTINGS, JEV)
+      const { loop } = evalCommand.loopSettings(
+        config,
+        { ...SETTINGS, systemOne: "jev" },
+        JEV
+      )
       expect(loop.policy).toEqual(
         evalCommand.loopPolicy(4, policyModule.POLICIES[config])
       )
@@ -1437,7 +1445,7 @@ describe("eval-config-c AC20 — loopSettings, config C without fallback", () =>
   test("eval-config-c AC20 — the rest of the loop is that of C: policy with k, veto, rewriter, candidates, system one", () => {
     const { loop } = evalCommand.loopSettings("C", NO_FALLBACK, "clef-flash")
     expect(loop as unknown).toEqual({
-      policy: evalCommand.loopPolicy(4, policyModule.POLICIES.C),
+      policy: evalCommand.loopPolicy(4, policyModule.CLEF_POLICY_C),
       rewriter: "llm",
       candidates: 30,
       veto: { none: 0.7, best: 0.02 },
@@ -1860,5 +1868,45 @@ describe("local-llm AC26 — Clef's limits in config C", () => {
       ).filter((call) => call.model === "clef-flash").length
     expect(await count()).toBe(turns)
     expect(await count(CLEF_LIMITS)).toBe(turns * 2)
+  })
+})
+
+describe("local-llm AC32 — the policy of C with Clef", () => {
+  test("local-llm AC32 — CLEF_POLICY_C is the policy of C with keep 0.8, the rest unchanged", () => {
+    const C = policyModule.POLICIES.C
+    expect(policyModule.CLEF_POLICY_C).toEqual({
+      ...C,
+      thresholds: { ...C.thresholds, keep: 0.8 },
+    })
+    expect(C.thresholds.keep).toBe(0.9)
+  })
+
+  test("local-llm AC32 — policyOf picks Clef's policy for C with Clef only", () => {
+    expect(evalCommand.policyOf("C", "clef")).toBe(policyModule.CLEF_POLICY_C)
+    expect(evalCommand.policyOf("C", "jev")).toBe(policyModule.POLICIES.C)
+    expect(evalCommand.policyOf("B", "clef")).toBe(policyModule.POLICIES.B)
+    expect(evalCommand.policyOf("B", "jev")).toBe(policyModule.POLICIES.B)
+  })
+
+  test("local-llm AC32 — the settings line of C records the policy of its system one", () => {
+    const clef = evalCommand.loopSettings("C", SETTINGS, "clef-flash")
+    expect(clef.loop.policy).toEqual(
+      evalCommand.loopPolicy(4, policyModule.CLEF_POLICY_C)
+    )
+    const jev = evalCommand.loopSettings(
+      "C",
+      { ...SETTINGS, systemOne: "jev" },
+      JEV
+    )
+    expect(jev.loop.policy).toEqual(
+      evalCommand.loopPolicy(4, policyModule.POLICIES.C)
+    )
+  })
+})
+
+describe("local-llm AC33 — the grey zone with Clef", () => {
+  test("local-llm AC33 — --fallback defaults to 0.7 with Clef, 0.8 with Jev", () => {
+    expect(evalCommand.defaultFallback("clef")).toBe(0.7)
+    expect(evalCommand.defaultFallback("jev")).toBe(0.8)
   })
 })

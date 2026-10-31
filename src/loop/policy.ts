@@ -69,6 +69,15 @@ export const POLICIES: Record<"B" | "C", PolicyConfig> = {
   },
 }
 
+/**
+ * C's policy with Clef: its verdicts are less clear-cut than Jev's, so a note
+ * is kept from `answer + step` 0.8 (docs/features/local-llm.md, AC32).
+ */
+export const CLEF_POLICY_C: PolicyConfig = {
+  ...POLICIES.C,
+  thresholds: { ...POLICIES.C.thresholds, keep: 0.8 },
+}
+
 /** A note the judge has classified. */
 export interface JudgedNote {
   path: string

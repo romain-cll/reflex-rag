@@ -677,6 +677,47 @@ describe("eval-config-c AC2 — config C options", () => {
     })
   }
 
+  for (const threshold of ["0.8", "0.85"]) {
+    test(`local-llm AC33 — with Clef, --fallback ${threshold} is not below its keep threshold (0.8): a one-line error naming --fallback, before any file check`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-fallback-clef-high-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--system-one",
+        "clef",
+        "--fallback",
+        threshold
+      )
+      expect(nonEmptyLines(stderr)).toHaveLength(1)
+      expect(stderr).toContain("--fallback")
+      expect(stderr).toContain("0.8")
+      expect(stderr).not.toMatch(/questions\.json|index\.db/)
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
+  for (const options of [[], ["--fallback", "0.75"]]) {
+    test(`local-llm AC33 — with Clef, ${options.length === 0 ? "the default --fallback" : "--fallback 0.75"} is accepted: it goes on to the file checks`, () => {
+      const cwd = makeTempDir("reflex-cli-eval-c-fallback-clef-ok-")
+      const { stdout, stderr, exitCode } = runEvalWithEnv(
+        cwd,
+        DUMMY_TYPESAFE,
+        "--config",
+        "C",
+        "--system-one",
+        "clef",
+        ...options
+      )
+      expect(stderr).toMatch(/questions\.json|index\.db/)
+      expect(stderr).not.toContain("--fallback")
+      expect(stdout).toBe("")
+      expect(exitCode).toBe(1)
+    })
+  }
+
   for (const when of ["uncertain", "nothing-kept", "no-answer"]) {
     test(`eval-config-c AC17 — --fallback-when ${when} is accepted: it goes on to the file checks`, () => {
       const cwd = makeTempDir("reflex-cli-eval-c-fallback-when-ok-")
