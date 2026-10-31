@@ -68,3 +68,12 @@ The smoke run of C+ (3 tuning questions) ended in `loop_error` on every question
 - **AC31 — balanced batches**: with the veto and `maxChoices`, a batch holds at most `maxChoices − 1` notes, and the notes are split in batches of even size (40 notes are 20 and 20, 26 are 13 and 13, 25 fit one batch). Without the veto there is no `best` question and `maxChoices` does not cap the batch. The byte and question limits still apply on top.
 
 Tests: red `4bee280`, then the implementation.
+
+## Revision 4 — Clef's keep threshold
+
+The tuning run of C with Clef and no fallback (`runs/2026-10-30T22-38-37-372Z-C-tuning`) answered 61.7% of the questions, against 90.0% for the same run with Jev (`runs/2026-10-10T12-43-23-494Z-C-tuning`); 21 of its 23 failures are `judge_rejected`. C's keep threshold, `answer + step` ≥ 0.9, was tuned on Jev: over the verdicts of those two runs, it keeps 94% of the source notes Jev judged and 52% of those Clef judged. At 0.8, Clef keeps 65% of its source notes and 6% of the others, where Jev keeps 4% of the others at 0.9. Four of the run's failures had every source above 0.8 (q-028, q-040, q-046, q-047).
+
+- **AC32 — the policy of C with Clef**: `policyOf("C", "clef")` is the policy of C with `keep` 0.8, its other thresholds, budgets and strategy unchanged (`CLEF_POLICY_C`); `policyOf("C", "jev")` is `POLICIES.C` and `policyOf("B", …)` is `POLICIES.B`. The loop, the fallback's grey zone, the dry run and the settings line of a C run all take the policy of `policyOf`.
+- **AC33 — the grey zone with Clef**: with `--system-one clef`, `--fallback` defaults to 0.7, so that the grey zone keeps Jev's width of 0.1 under the keep threshold, and a value at or above 0.8 is refused; with Jev, the default stays 0.8 and the bound 0.9.
+
+Decision (2026-10-31, validated by Romain): only the keep threshold moves. Multi-hop stays at 0% with Clef whatever the threshold. A probe (not traced, so not a published figure) judged the answer note of each multi-hop tuning question alone and then with its intermediate note in context: alone, it mostly scores below 0.5; with it, it scores 0.78 to 0.98. Clef reads a chain once given the first link, but does not flag the intermediate note itself (`step` 0.16 to 0.42), and the loop only gives kept notes as context. Making the loop judge again with context would change the method of C for one model; it waits in `IDEAS.md`.
