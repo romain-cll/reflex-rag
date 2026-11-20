@@ -49,7 +49,7 @@ Read-only commands for the reviewer agent, whose guard allows only npm and npx:
 
 ## Git
 
-Trunk-based: small commits straight on `main`, conventional commits (`feat:`, `test:`, `docs:`, `chore:`, scoped with the feature slug when there is one). No feature branches, no merge requests.
+Trunk-based with short-lived branches: every change goes on its own branch, lives a day or two at most, and reaches `main` through a pull request after review. Conventional commits (`feat:`, `test:`, `docs:`, `chore:`, scoped with the feature slug when there is one).
 
 ## TDD workflow
 
